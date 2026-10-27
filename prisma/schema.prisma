@@ -1,0 +1,206 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  SUPERVISOR
+  CASHIER
+  MANAGER
+  ANALYST
+  ADMIN
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHECK
+  MOBILE_MONEY
+  OTHER
+}
+
+enum TransportStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  firstName    String
+  lastName     String
+  email        String   @unique
+  phoneNumber  String?
+  passwordHash String
+  role         UserRole @default(CASHIER)
+  designation  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  supervisorProfile Supervisor?
+  recordedPayments  Payment[]   @relation("PaymentRecordedBy")
+  auditLogs         AuditLog[]
+
+  @@index([lastName, firstName])
+}
+
+model Supervisor {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  nationalId String   @unique
+  location   String?
+  address    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  assignments TransportAssignment[]
+
+  drivers  Driver[]  @relation("SupervisorDrivers")
+  vehicles Vehicle[] @relation("SupervisorVehicles")
+
+  locationId       String?
+  assignedLocation Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@index([locationId])
+  @@index([location])
+}
+
+model Driver {
+  id            String   @id @default(cuid())
+  firstName     String
+  lastName      String
+  nationalId    String   @unique
+  phoneNumber   String?
+  licenseNumber String   @unique
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  vehicles Vehicle[]
+
+  supervisorId String?
+  supervisor   Supervisor? @relation("SupervisorDrivers", fields: [supervisorId], references: [id], onDelete: Restrict)
+
+  locationId       String?
+  assignedLocation Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@index([locationId])
+  @@index([supervisorId])
+  @@index([lastName, firstName])
+}
+
+model Vehicle {
+  id           String   @id @default(cuid())
+  vehicleType  String
+  licensePlate String   @unique
+  driverId     String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  driver       Driver                @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  assignments  TransportAssignment[]
+  supervisorId String?
+  supervisor   Supervisor?           @relation("SupervisorVehicles", fields: [supervisorId], references: [id], onDelete: Restrict)
+
+  locationId       String?
+  assignedLocation Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@index([locationId])
+  @@index([supervisorId])
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  type        String
+  tonnage     Decimal  @db.Decimal(10, 2)
+  description String?
+  createdAt   DateTime @default(now())
+
+  assignment TransportAssignment?
+}
+
+model TransportAssignment {
+  id           String          @id @default(cuid())
+  supervisorId String
+  productId    String          @unique
+  vehicleId    String
+  assignedAt   DateTime        @default(now())
+  status       TransportStatus @default(PLANNED)
+  notes        String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  supervisor Supervisor @relation(fields: [supervisorId], references: [id], onDelete: Restrict)
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  vehicle    Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  payment    Payment?
+
+  locationId       String?
+  assignedLocation Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  amountDue Decimal? @db.Decimal(14, 2)
+
+  @@index([locationId])
+  @@index([supervisorId])
+  @@index([vehicleId])
+  @@index([assignedAt])
+  @@index([status])
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  assignmentId   String        @unique
+  recordedById   String
+  paymentMethod  PaymentMethod
+  reference      String?
+  amountDue      Decimal       @db.Decimal(14, 2)
+  amountReceived Decimal       @db.Decimal(14, 2)
+  changeReturned Decimal       @default(0) @db.Decimal(14, 2)
+  createdAt      DateTime      @default(now())
+
+  assignment TransportAssignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  recordedBy User                @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([assignmentId])
+  @@index([recordedById])
+  @@index([createdAt])
+  @@index([reference])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  entityType String
+  entityId   String?
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model Location {
+  id             String   @id @default(cuid())
+  name           String
+  normalizedName String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  supervisors Supervisor[]
+  drivers     Driver[]
+  vehicles    Vehicle[]
+  assignments TransportAssignment[]
+}

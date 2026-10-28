@@ -8,10 +8,18 @@ type VehicleData = {
   id: string;
   vehicleType: string;
   licensePlate: string;
-  driver: { firstName: string; lastName: string };
+  driverId: string;
 };
 
-export default function VehicleEditForm({ vehicle }: { vehicle: VehicleData }) {
+type DriverOption = { id: string; firstName: string; lastName: string };
+
+export default function VehicleEditForm({
+  vehicle,
+  drivers,
+}: {
+  vehicle: VehicleData;
+  drivers: DriverOption[];
+}) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -62,11 +70,19 @@ export default function VehicleEditForm({ vehicle }: { vehicle: VehicleData }) {
           className="w-full rounded-lg border border-slate-300 px-3 py-2.5 uppercase" />
       </div>
 
-      <div className="rounded-lg bg-slate-50 p-4">
-        <p className="text-sm font-medium text-slate-700">Chauffeur actuellement associé</p>
-        <p className="mt-1 text-slate-600">{vehicle.driver.firstName} {vehicle.driver.lastName}</p>
+      <div>
+        <label htmlFor="driverId" className="mb-1 block text-sm font-medium text-slate-700">Chauffeur associé</label>
+        <select id="driverId" name="driverId" required defaultValue={vehicle.driverId}
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5">
+          {drivers.map((driver) => (
+            <option key={driver.id} value={driver.id}>
+              {driver.firstName} {driver.lastName}
+            </option>
+          ))}
+        </select>
         <p className="mt-2 text-xs text-slate-500">
-          Le changement de chauffeur n&apos;est pas effectué depuis ce formulaire afin de préserver l&apos;historique des transports.
+          Seuls les chauffeurs actifs de votre lieu sont proposés. Les transports déjà enregistrés
+          conservent leur chauffeur d&apos;origine ; le changement ne concerne que les prochains transports.
         </p>
       </div>
 

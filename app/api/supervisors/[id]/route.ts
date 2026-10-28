@@ -34,6 +34,19 @@ export async function PATCH(
     }
 
     const data = body as Record<string, unknown>;
+
+    // Activation / désactivation du compte du régisseur.
+    if (Object.prototype.hasOwnProperty.call(data, "isActive")) {
+      if (typeof data.isActive !== "boolean" || "locationId" in data) {
+        return NextResponse.json(
+          { message: "Indiquez soit un statut, soit un lieu." },
+          { status: 400 }
+        );
+      }
+
+      return await changeAccountStatus(id, data.isActive, admin.id);
+    }
+
     const locationId =
       typeof data.locationId === "string" ? data.locationId.trim() : "";
 
@@ -160,4 +173,63 @@ export async function PATCH(
       { status: 500 }
     );
   }
+}
+
+// Désactiver un compte invalide aussitôt ses sessions (sessionVersion + 1) :
+// le régisseur est déconnecté à sa prochaine requête, sans supprimer aucun historique.
+async function changeAccountStatus(
+  supervisorId: string,
+  isActive: boolean,
+  adminId: string
+) {
+  const result = await prisma.$transaction(async (tx) => {
+    const supervisor = await tx.supervisor.findUnique({
+      where: { id: supervisorId },
+      select: {
+        id: true,
+        userId: true,
+        user: { select: { email: true, isActive: true } },
+      },
+    });
+
+    if (!supervisor) return { error: "NOT_FOUND" as const };
+    if (supervisor.user.isActive === isActive) {
+      return { error: "UNCHANGED" as const };
+    }
+
+    await tx.user.update({
+      where: { id: supervisor.userId },
+      data: {
+        isActive,
+        ...(isActive ? {} : { sessionVersion: { increment: 1 } }),
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: adminId,
+        action: isActive ? "ACTIVATE" : "DEACTIVATE",
+        entityType: "Supervisor",
+        entityId: supervisor.id,
+        details: { email: supervisor.user.email, isActive },
+      },
+    });
+
+    return { ok: true as const };
+  });
+
+  if ("error" in result) {
+    if (result.error === "NOT_FOUND") {
+      return NextResponse.json({ message: "Régisseur introuvable." }, { status: 404 });
+    }
+    return NextResponse.json(
+      { message: isActive ? "Ce compte est déjà actif." : "Ce compte est déjà désactivé." },
+      { status: 409 }
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    message: isActive ? "Compte réactivé." : "Compte désactivé. Ses sessions sont fermées.",
+  });
 }

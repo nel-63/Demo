@@ -84,7 +84,8 @@ model Driver {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  vehicles Vehicle[]
+  vehicles    Vehicle[]
+  assignments TransportAssignment[] @relation("AssignmentDriver")
 
   supervisorId String?
   supervisor   Supervisor? @relation("SupervisorDrivers", fields: [supervisorId], references: [id], onDelete: Restrict)
@@ -150,9 +151,14 @@ model TransportAssignment {
 
   amountDue Decimal? @db.Decimal(14, 2)
 
+  // Chauffeur au moment du transport : conserve l'historique si le vehicule change de chauffeur.
+  driverId String?
+  driver   Driver? @relation("AssignmentDriver", fields: [driverId], references: [id], onDelete: Restrict)
+
   @@index([locationId])
   @@index([supervisorId])
   @@index([vehicleId])
+  @@index([driverId])
   @@index([assignedAt])
   @@index([status])
 }

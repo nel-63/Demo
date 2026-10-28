@@ -39,16 +39,44 @@ export async function PUT(
       return NextResponse.json({ message: "Type ou immatriculation invalide." }, { status: 400 });
     }
 
-    const vehicle = await prisma.$transaction(async (tx) => {
+    // Chauffeur facultatif : absent = on ne change pas de chauffeur.
+    const requestedDriverId =
+      typeof data.driverId === "string" ? data.driverId.trim() : "";
+
+    const outcome = await prisma.$transaction(async (tx) => {
+      // Verrou : un changement de chauffeur et la création d'un transport ne se croisent pas.
+      await tx.$queryRaw`SELECT "id" FROM "Vehicle" WHERE "id" = ${id} FOR UPDATE`;
+
       const existing = await tx.vehicle.findFirst({
         where: { id, locationId: profile.locationId },
-        select: { id: true },
+        select: {
+          id: true,
+          driverId: true,
+          driver: { select: { firstName: true, lastName: true } },
+        },
       });
-      if (!existing) return null;
+      if (!existing) return { error: "NOT_FOUND" as const };
+
+      const driverChanges =
+        requestedDriverId !== "" && requestedDriverId !== existing.driverId;
+
+      let newDriver: { id: string; firstName: string; lastName: string } | null = null;
+
+      if (driverChanges) {
+        newDriver = await tx.driver.findFirst({
+          where: {
+            id: requestedDriverId,
+            locationId: profile.locationId,
+            isActive: true,
+          },
+          select: { id: true, firstName: true, lastName: true },
+        });
+        if (!newDriver) return { error: "DRIVER_INVALID" as const };
+      }
 
       const updated = await tx.vehicle.update({
         where: { id: existing.id },
-        data: { vehicleType, licensePlate },
+        data: { vehicleType, licensePlate, ...(newDriver ? { driverId: newDriver.id } : {}) },
         select: {
           id: true,
           vehicleType: true,
@@ -67,14 +95,40 @@ export async function PUT(
         },
       });
 
-      return updated;
+      if (newDriver) {
+        // Les anciens transports gardent leur propre chauffeur (TransportAssignment.driverId).
+        await tx.auditLog.create({
+          data: {
+            userId: user.id,
+            action: "CHANGE_DRIVER",
+            entityType: "Vehicle",
+            entityId: updated.id,
+            details: {
+              locationId: profile.locationId,
+              previousDriverId: existing.driverId,
+              previousDriverName: `${existing.driver.firstName} ${existing.driver.lastName}`,
+              newDriverId: newDriver.id,
+              newDriverName: `${newDriver.firstName} ${newDriver.lastName}`,
+              historyPreserved: true,
+            },
+          },
+        });
+      }
+
+      return { vehicle: updated };
     });
 
-    if (!vehicle) {
-      return NextResponse.json({ message: "Véhicule introuvable dans ce lieu." }, { status: 404 });
+    if ("error" in outcome) {
+      if (outcome.error === "NOT_FOUND") {
+        return NextResponse.json({ message: "Véhicule introuvable dans ce lieu." }, { status: 404 });
+      }
+      return NextResponse.json(
+        { message: "Le chauffeur doit être actif et appartenir à votre lieu." },
+        { status: 403 }
+      );
     }
 
-    return NextResponse.json({ ok: true, vehicle });
+    return NextResponse.json({ ok: true, vehicle: outcome.vehicle });
   } catch (error) {
     const code = typeof error === "object" && error !== null && "code" in error
       ? (error as { code?: string }).code : undefined;

@@ -65,6 +65,8 @@ async function TransportsContent({
             { product: { type: { contains: word, mode: "insensitive" as const } } },
             { vehicle: { licensePlate: { contains: word, mode: "insensitive" as const } } },
             { vehicle: { vehicleType: { contains: word, mode: "insensitive" as const } } },
+            { driver: { firstName: { contains: word, mode: "insensitive" as const } } },
+            { driver: { lastName: { contains: word, mode: "insensitive" as const } } },
             { vehicle: { driver: { firstName: { contains: word, mode: "insensitive" as const } } } },
             { vehicle: { driver: { lastName: { contains: word, mode: "insensitive" as const } } } },
           ],
@@ -78,6 +80,7 @@ async function TransportsContent({
         amountDue: true,
         payment: { select: { id: true } },
         product: { select: { name: true, type: true, tonnage: true } },
+        driver: { select: { firstName: true, lastName: true } },
         vehicle: {
           select: {
             licensePlate: true,
@@ -183,7 +186,7 @@ async function TransportsContent({
                         <p className="font-medium">{item.vehicle.licensePlate}</p>
                         <p>{item.vehicle.vehicleType}</p>
                         <p className="text-xs text-slate-500">
-                          {item.vehicle.driver.firstName} {item.vehicle.driver.lastName}
+                          {(item.driver ?? item.vehicle.driver).firstName} {(item.driver ?? item.vehicle.driver).lastName}
                         </p>
                       </td>
                       <td className="px-3 py-4">

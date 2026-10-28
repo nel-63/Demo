@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { validatePassword } from "@/lib/password-policy";
 
 export async function POST(request: Request) {
   const admin = await getCurrentUser();
@@ -44,11 +45,9 @@ export async function POST(request: Request) {
       );
     }
 
-    if (password.length < 12 || password.length > 200) {
-      return NextResponse.json(
-        { message: "Le mot de passe doit contenir entre 12 et 200 caractères." },
-        { status: 400 }
-      );
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return NextResponse.json({ message: passwordError }, { status: 400 });
     }
 
     const location = await prisma.location.findUnique({

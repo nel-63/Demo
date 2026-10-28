@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import SupervisorForm from "./supervisor-form";
 import LocationAssignmentForm from "./location-assignment-form";
+import SupervisorAccountActions from "./supervisor-account-actions";
 
 export default function SupervisorsPage() {
   return (
@@ -117,7 +118,11 @@ async function SupervisorsContent() {
                           />
                         </td>
                         <td className="px-3 py-4">
-                          {item.user.isActive ? "Actif" : "Inactif"}
+                          <SupervisorAccountActions
+                            supervisorId={item.id}
+                            supervisorName={`${item.user.firstName} ${item.user.lastName}`}
+                            isActive={item.user.isActive}
+                          />
                         </td>
                       </tr>
                     ))}

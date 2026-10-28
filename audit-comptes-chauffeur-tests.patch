@@ -1,0 +1,4648 @@
+diff --git a/app/api/payments/route.ts b/app/api/payments/route.ts
+index 73d5ea0..d7fa78d 100644
+--- a/app/api/payments/route.ts
++++ b/app/api/payments/route.ts
+@@ -114,7 +114,15 @@ export async function POST(request: Request) {
+           action: "CREATE",
+           entityType: "Payment",
+           entityId: payment.id,
+-          details: { assignmentId, locationId: profile.locationId },
++          details: {
++            assignmentId,
++            locationId: profile.locationId,
++            paymentMethod: payment.paymentMethod,
++            reference: payment.reference,
++            amountDue: String(payment.amountDue),
++            amountReceived: String(payment.amountReceived),
++            changeReturned: String(payment.changeReturned),
++          },
+         },
+       });
+ 
+diff --git a/app/api/supervisors/[id]/password/route.ts b/app/api/supervisors/[id]/password/route.ts
+new file mode 100644
+index 0000000..995c74c
+--- /dev/null
++++ b/app/api/supervisors/[id]/password/route.ts
+@@ -0,0 +1,91 @@
++import { NextResponse } from "next/server";
++import bcrypt from "bcryptjs";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import { validatePassword } from "@/lib/password-policy";
++
++// Réinitialisation du mot de passe d'un régisseur par l'administrateur.
++export async function POST(
++  request: Request,
++  context: { params: Promise<{ id: string }> }
++) {
++  const admin = await getCurrentUser();
++
++  if (!admin) {
++    return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
++  }
++
++  if (admin.role !== "ADMIN") {
++    return NextResponse.json(
++      { message: "Seul un administrateur peut réinitialiser un mot de passe." },
++      { status: 403 }
++    );
++  }
++
++  try {
++    const { id } = await context.params;
++    const body: unknown = await request.json().catch(() => null);
++    const data = body && typeof body === "object"
++      ? body as Record<string, unknown>
++      : {};
++
++    const passwordError = validatePassword(data.password);
++    if (passwordError) {
++      return NextResponse.json({ message: passwordError }, { status: 400 });
++    }
++
++    const passwordHash = await bcrypt.hash(data.password as string, 12);
++
++    const result = await prisma.$transaction(async (tx) => {
++      const supervisor = await tx.supervisor.findUnique({
++        where: { id },
++        select: {
++          id: true,
++          userId: true,
++          user: { select: { email: true } },
++        },
++      });
++
++      if (!supervisor) return null;
++
++      // sessionVersion + 1 : toutes les sessions ouvertes avec l'ancien mot de passe sont fermées.
++      await tx.user.update({
++        where: { id: supervisor.userId },
++        data: { passwordHash, sessionVersion: { increment: 1 } },
++      });
++
++      // Lève un éventuel blocage dû à des tentatives de connexion échouées.
++      await tx.loginFailure.deleteMany({
++        where: { email: supervisor.user.email },
++      });
++
++      // Le mot de passe n'est jamais écrit dans le journal.
++      await tx.auditLog.create({
++        data: {
++          userId: admin.id,
++          action: "RESET_PASSWORD",
++          entityType: "Supervisor",
++          entityId: supervisor.id,
++          details: { email: supervisor.user.email },
++        },
++      });
++
++      return supervisor;
++    });
++
++    if (!result) {
++      return NextResponse.json({ message: "Régisseur introuvable." }, { status: 404 });
++    }
++
++    return NextResponse.json({
++      ok: true,
++      message: "Mot de passe réinitialisé. Les sessions existantes sont fermées.",
++    });
++  } catch (error) {
++    console.error("Supervisor password reset failed:", error);
++    return NextResponse.json(
++      { message: "Impossible de réinitialiser le mot de passe." },
++      { status: 500 }
++    );
++  }
++}
+diff --git a/app/api/supervisors/[id]/route.ts b/app/api/supervisors/[id]/route.ts
+index 83a200d..d5a615f 100644
+--- a/app/api/supervisors/[id]/route.ts
++++ b/app/api/supervisors/[id]/route.ts
+@@ -34,6 +34,19 @@ export async function PATCH(
+     }
+ 
+     const data = body as Record<string, unknown>;
++
++    // Activation / désactivation du compte du régisseur.
++    if (Object.prototype.hasOwnProperty.call(data, "isActive")) {
++      if (typeof data.isActive !== "boolean" || "locationId" in data) {
++        return NextResponse.json(
++          { message: "Indiquez soit un statut, soit un lieu." },
++          { status: 400 }
++        );
++      }
++
++      return await changeAccountStatus(id, data.isActive, admin.id);
++    }
++
+     const locationId =
+       typeof data.locationId === "string" ? data.locationId.trim() : "";
+ 
+@@ -160,4 +173,63 @@ export async function PATCH(
+       { status: 500 }
+     );
+   }
+-}
+\ No newline at end of file
++}
++
++// Désactiver un compte invalide aussitôt ses sessions (sessionVersion + 1) :
++// le régisseur est déconnecté à sa prochaine requête, sans supprimer aucun historique.
++async function changeAccountStatus(
++  supervisorId: string,
++  isActive: boolean,
++  adminId: string
++) {
++  const result = await prisma.$transaction(async (tx) => {
++    const supervisor = await tx.supervisor.findUnique({
++      where: { id: supervisorId },
++      select: {
++        id: true,
++        userId: true,
++        user: { select: { email: true, isActive: true } },
++      },
++    });
++
++    if (!supervisor) return { error: "NOT_FOUND" as const };
++    if (supervisor.user.isActive === isActive) {
++      return { error: "UNCHANGED" as const };
++    }
++
++    await tx.user.update({
++      where: { id: supervisor.userId },
++      data: {
++        isActive,
++        ...(isActive ? {} : { sessionVersion: { increment: 1 } }),
++      },
++    });
++
++    await tx.auditLog.create({
++      data: {
++        userId: adminId,
++        action: isActive ? "ACTIVATE" : "DEACTIVATE",
++        entityType: "Supervisor",
++        entityId: supervisor.id,
++        details: { email: supervisor.user.email, isActive },
++      },
++    });
++
++    return { ok: true as const };
++  });
++
++  if ("error" in result) {
++    if (result.error === "NOT_FOUND") {
++      return NextResponse.json({ message: "Régisseur introuvable." }, { status: 404 });
++    }
++    return NextResponse.json(
++      { message: isActive ? "Ce compte est déjà actif." : "Ce compte est déjà désactivé." },
++      { status: 409 }
++    );
++  }
++
++  return NextResponse.json({
++    ok: true,
++    message: isActive ? "Compte réactivé." : "Compte désactivé. Ses sessions sont fermées.",
++  });
++}
+diff --git a/app/api/supervisors/route.ts b/app/api/supervisors/route.ts
+index fd5e64d..db35999 100644
+--- a/app/api/supervisors/route.ts
++++ b/app/api/supervisors/route.ts
+@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
+ import bcrypt from "bcryptjs";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
++import { validatePassword } from "@/lib/password-policy";
+ 
+ export async function POST(request: Request) {
+   const admin = await getCurrentUser();
+@@ -44,11 +45,9 @@ export async function POST(request: Request) {
+       );
+     }
+ 
+-    if (password.length < 12 || password.length > 200) {
+-      return NextResponse.json(
+-        { message: "Le mot de passe doit contenir entre 12 et 200 caractères." },
+-        { status: 400 }
+-      );
++    const passwordError = validatePassword(password);
++    if (passwordError) {
++      return NextResponse.json({ message: passwordError }, { status: 400 });
+     }
+ 
+     const location = await prisma.location.findUnique({
+diff --git a/app/api/transports/route.ts b/app/api/transports/route.ts
+index 668702e..1048a3f 100644
+--- a/app/api/transports/route.ts
++++ b/app/api/transports/route.ts
+@@ -82,6 +82,9 @@ export async function POST(request: Request) {
+     }
+ 
+     const result = await prisma.$transaction(async (tx) => {
++      // Verrou : empêche un changement de chauffeur pendant la création du transport.
++      await tx.$queryRaw`SELECT "id" FROM "Vehicle" WHERE "id" = ${vehicleId} FOR UPDATE`;
++
+       const vehicle = await tx.vehicle.findFirst({
+         where: {
+           id: vehicleId,
+@@ -89,7 +92,7 @@ export async function POST(request: Request) {
+           isActive: true,
+           driver: { isActive: true, locationId: profile.locationId },
+         },
+-        select: { id: true },
++        select: { id: true, driverId: true },
+       });
+ 
+       if (!vehicle) return null;
+@@ -110,6 +113,8 @@ export async function POST(request: Request) {
+           supervisorId: profile.id,
+           locationId: profile.locationId!,
+           vehicleId: vehicle.id,
++          // Chauffeur au moment du transport : conservé même si le véhicule change de chauffeur.
++          driverId: vehicle.driverId,
+           amountDue: amountDueText,
+           ...(assignedAt ? { assignedAt } : {}),
+           notes: notes || null,
+diff --git a/app/api/vehicles/[id]/route.ts b/app/api/vehicles/[id]/route.ts
+index 3c3ea4f..54ff96e 100644
+--- a/app/api/vehicles/[id]/route.ts
++++ b/app/api/vehicles/[id]/route.ts
+@@ -39,16 +39,44 @@ export async function PUT(
+       return NextResponse.json({ message: "Type ou immatriculation invalide." }, { status: 400 });
+     }
+ 
+-    const vehicle = await prisma.$transaction(async (tx) => {
++    // Chauffeur facultatif : absent = on ne change pas de chauffeur.
++    const requestedDriverId =
++      typeof data.driverId === "string" ? data.driverId.trim() : "";
++
++    const outcome = await prisma.$transaction(async (tx) => {
++      // Verrou : un changement de chauffeur et la création d'un transport ne se croisent pas.
++      await tx.$queryRaw`SELECT "id" FROM "Vehicle" WHERE "id" = ${id} FOR UPDATE`;
++
+       const existing = await tx.vehicle.findFirst({
+         where: { id, locationId: profile.locationId },
+-        select: { id: true },
++        select: {
++          id: true,
++          driverId: true,
++          driver: { select: { firstName: true, lastName: true } },
++        },
+       });
+-      if (!existing) return null;
++      if (!existing) return { error: "NOT_FOUND" as const };
++
++      const driverChanges =
++        requestedDriverId !== "" && requestedDriverId !== existing.driverId;
++
++      let newDriver: { id: string; firstName: string; lastName: string } | null = null;
++
++      if (driverChanges) {
++        newDriver = await tx.driver.findFirst({
++          where: {
++            id: requestedDriverId,
++            locationId: profile.locationId,
++            isActive: true,
++          },
++          select: { id: true, firstName: true, lastName: true },
++        });
++        if (!newDriver) return { error: "DRIVER_INVALID" as const };
++      }
+ 
+       const updated = await tx.vehicle.update({
+         where: { id: existing.id },
+-        data: { vehicleType, licensePlate },
++        data: { vehicleType, licensePlate, ...(newDriver ? { driverId: newDriver.id } : {}) },
+         select: {
+           id: true,
+           vehicleType: true,
+@@ -67,14 +95,40 @@ export async function PUT(
+         },
+       });
+ 
+-      return updated;
++      if (newDriver) {
++        // Les anciens transports gardent leur propre chauffeur (TransportAssignment.driverId).
++        await tx.auditLog.create({
++          data: {
++            userId: user.id,
++            action: "CHANGE_DRIVER",
++            entityType: "Vehicle",
++            entityId: updated.id,
++            details: {
++              locationId: profile.locationId,
++              previousDriverId: existing.driverId,
++              previousDriverName: `${existing.driver.firstName} ${existing.driver.lastName}`,
++              newDriverId: newDriver.id,
++              newDriverName: `${newDriver.firstName} ${newDriver.lastName}`,
++              historyPreserved: true,
++            },
++          },
++        });
++      }
++
++      return { vehicle: updated };
+     });
+ 
+-    if (!vehicle) {
+-      return NextResponse.json({ message: "Véhicule introuvable dans ce lieu." }, { status: 404 });
++    if ("error" in outcome) {
++      if (outcome.error === "NOT_FOUND") {
++        return NextResponse.json({ message: "Véhicule introuvable dans ce lieu." }, { status: 404 });
++      }
++      return NextResponse.json(
++        { message: "Le chauffeur doit être actif et appartenir à votre lieu." },
++        { status: 403 }
++      );
+     }
+ 
+-    return NextResponse.json({ ok: true, vehicle });
++    return NextResponse.json({ ok: true, vehicle: outcome.vehicle });
+   } catch (error) {
+     const code = typeof error === "object" && error !== null && "code" in error
+       ? (error as { code?: string }).code : undefined;
+diff --git a/app/dashboard/audit/page.tsx b/app/dashboard/audit/page.tsx
+new file mode 100644
+index 0000000..0c9452a
+--- /dev/null
++++ b/app/dashboard/audit/page.tsx
+@@ -0,0 +1,265 @@
++import { Suspense } from "react";
++import Link from "next/link";
++import { redirect } from "next/navigation";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import {
++  ACTION_LABELS,
++  AUDIT_PAGE_SIZE,
++  ENTITY_LABELS,
++  PERIOD_OPTIONS,
++  ROLE_LABELS,
++  actionLabel,
++  buildAuditWhere,
++  describeAudit,
++  entityLabel,
++} from "@/lib/audit";
++import ListFilters from "../list-filters";
++import { readChoice, readParam, type SearchParams } from "../search-params";
++
++const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
++  dateStyle: "short",
++  timeStyle: "medium",
++  timeZone: "Indian/Antananarivo",
++});
++
++export default function AuditPage({
++  searchParams,
++}: {
++  searchParams: Promise<SearchParams>;
++}) {
++  return (
++    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
++      <Suspense fallback={<p>Chargement...</p>}>
++        <AuditContent searchParams={searchParams} />
++      </Suspense>
++    </main>
++  );
++}
++
++async function AuditContent({
++  searchParams,
++}: {
++  searchParams: Promise<SearchParams>;
++}) {
++  const user = await getCurrentUser();
++  if (!user) redirect("/login");
++  if (user.role !== "ADMIN") redirect("/dashboard");
++
++  const params = await searchParams;
++  const q = readParam(params, "q");
++  const entityType = readChoice(params, "type", Object.keys(ENTITY_LABELS));
++  const action = readChoice(params, "action", Object.keys(ACTION_LABELS));
++  const period = readChoice(params, "periode", PERIOD_OPTIONS.map((item) => item.value));
++  const requestedPage = Number.parseInt(readParam(params, "page", 6), 10);
++  const where = buildAuditWhere({ q, entityType, action, period });
++
++  const total = await prisma.auditLog.count({ where });
++  const pageCount = Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE));
++  const page = Math.min(
++    Math.max(Number.isFinite(requestedPage) ? requestedPage : 1, 1),
++    pageCount,
++  );
++
++  const [logs, locations] = await Promise.all([
++    prisma.auditLog.findMany({
++      where,
++      orderBy: { createdAt: "desc" },
++      skip: (page - 1) * AUDIT_PAGE_SIZE,
++      take: AUDIT_PAGE_SIZE,
++      select: {
++        id: true,
++        action: true,
++        entityType: true,
++        entityId: true,
++        details: true,
++        createdAt: true,
++        user: {
++          select: { firstName: true, lastName: true, email: true, role: true },
++        },
++      },
++    }),
++    prisma.location.findMany({ select: { id: true, name: true } }),
++  ]);
++
++  const locationNames = Object.fromEntries(
++    locations.map((location) => [location.id, location.name]),
++  );
++
++  // Anciens logs de paiement (créés avant l'ajout du montant dans les détails) :
++  // on relit le paiement lui-même, qui n'est jamais modifié après création.
++  const legacyPaymentIds = logs
++    .filter((log) => {
++      const details = log.details as Record<string, unknown> | null;
++      return (
++        log.entityType === "Payment" &&
++        log.action === "CREATE" &&
++        log.entityId &&
++        details?.amountReceived === undefined
++      );
++    })
++    .map((log) => log.entityId as string);
++
++  const legacyPayments =
++    legacyPaymentIds.length > 0
++      ? await prisma.payment.findMany({
++          where: { id: { in: legacyPaymentIds } },
++          select: {
++            id: true,
++            amountDue: true,
++            amountReceived: true,
++            changeReturned: true,
++            paymentMethod: true,
++            reference: true,
++          },
++        })
++      : [];
++  const legacyById = new Map(legacyPayments.map((payment) => [payment.id, payment]));
++
++  function hrefForPage(target: number) {
++    const query = new URLSearchParams();
++    if (q) query.set("q", q);
++    if (entityType) query.set("type", entityType);
++    if (action) query.set("action", action);
++    if (period) query.set("periode", period);
++    if (target > 1) query.set("page", String(target));
++    const text = query.toString();
++    return text ? `/dashboard/audit?${text}` : "/dashboard/audit";
++  }
++
++  return (
++    <div className="mx-auto max-w-7xl">
++      <Link href="/dashboard" className="text-sm font-medium text-blue-700 hover:underline">
++        &larr; Retour au tableau de bord
++      </Link>
++
++      <header className="my-6">
++        <h1 className="text-3xl font-bold text-slate-900">Journal d&apos;audit</h1>
++        <p className="mt-2 text-slate-600">
++          Qui a fait quoi, sur quel enregistrement et à quel moment. Ce journal est en lecture seule.
++        </p>
++      </header>
++
++      <section className="rounded-2xl bg-white p-6 shadow-sm">
++        <h2 className="mb-5 text-xl font-semibold">Opérations ({total})</h2>
++
++        <ListFilters
++          action="/dashboard/audit"
++          q={q}
++          placeholder="Nom, email ou identifiant"
++          filters={[
++            {
++              name: "type",
++              label: "Type",
++              value: entityType,
++              options: Object.entries(ENTITY_LABELS).map(([value, label]) => ({ value, label })),
++            },
++            {
++              name: "action",
++              label: "Action",
++              value: action,
++              options: Object.entries(ACTION_LABELS).map(([value, label]) => ({ value, label })),
++            },
++            {
++              name: "periode",
++              label: "Période",
++              value: period,
++              options: PERIOD_OPTIONS.map((item) => ({ value: item.value, label: item.label })),
++            },
++          ]}
++        />
++
++        {logs.length === 0 ? (
++          <p className="text-slate-500">Aucune opération ne correspond à ces critères.</p>
++        ) : (
++          <div className="overflow-x-auto">
++            <table className="w-full text-left text-sm">
++              <thead className="border-b text-slate-500">
++                <tr>
++                  <th className="px-3 py-3">Date</th>
++                  <th className="px-3 py-3">Auteur</th>
++                  <th className="px-3 py-3">Action</th>
++                  <th className="px-3 py-3">Enregistrement</th>
++                  <th className="px-3 py-3">Détails</th>
++                </tr>
++              </thead>
++              <tbody className="divide-y">
++                {logs.map((log) => {
++                  const legacy = log.entityId ? legacyById.get(log.entityId) : undefined;
++                  const base = (log.details && typeof log.details === "object" && !Array.isArray(log.details)
++                    ? log.details
++                    : {}) as Record<string, unknown>;
++                  const details = legacy
++                    ? {
++                        ...base,
++                        amountDue: String(legacy.amountDue),
++                        amountReceived: String(legacy.amountReceived),
++                        changeReturned: String(legacy.changeReturned),
++                        paymentMethod: legacy.paymentMethod,
++                        reference: legacy.reference,
++                      }
++                    : base;
++                  const lines = describeAudit(log.entityType, log.action, details, {
++                    locations: locationNames,
++                  });
++
++                  return (
++                    <tr key={log.id} className="align-top">
++                      <td className="whitespace-nowrap px-3 py-4">
++                        {dateFormatter.format(log.createdAt)}
++                      </td>
++                      <td className="px-3 py-4">
++                        <p className="font-medium">
++                          {log.user.firstName} {log.user.lastName}
++                        </p>
++                        <p className="text-xs text-slate-500">
++                          {ROLE_LABELS[log.user.role] ?? log.user.role} — {log.user.email}
++                        </p>
++                      </td>
++                      <td className="px-3 py-4">{actionLabel(log.action)}</td>
++                      <td className="px-3 py-4">
++                        <p>{entityLabel(log.entityType)}</p>
++                        {log.entityId && (
++                          <p className="font-mono text-xs text-slate-500" title={log.entityId}>
++                            …{log.entityId.slice(-8)}
++                          </p>
++                        )}
++                      </td>
++                      <td className="px-3 py-4">
++                        {lines.length === 0 ? (
++                          <span className="text-slate-400">—</span>
++                        ) : (
++                          <ul className="space-y-0.5">
++                            {lines.map((line) => (
++                              <li key={line}>{line}</li>
++                            ))}
++                          </ul>
++                        )}
++                      </td>
++                    </tr>
++                  );
++                })}
++              </tbody>
++            </table>
++          </div>
++        )}
++
++        {pageCount > 1 && (
++          <nav className="mt-6 flex items-center justify-between text-sm" aria-label="Pagination">
++            {page > 1 ? (
++              <Link href={hrefForPage(page - 1)} className="rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-100">
++                &larr; Plus récent
++              </Link>
++            ) : <span />}
++            <span className="text-slate-500">Page {page} sur {pageCount}</span>
++            {page < pageCount ? (
++              <Link href={hrefForPage(page + 1)} className="rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-100">
++                Plus ancien &rarr;
++              </Link>
++            ) : <span />}
++          </nav>
++        )}
++      </section>
++    </div>
++  );
++}
+diff --git a/app/dashboard/page.tsx b/app/dashboard/page.tsx
+index d839243..fad1456 100644
+--- a/app/dashboard/page.tsx
++++ b/app/dashboard/page.tsx
+@@ -130,6 +130,9 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
+         <Link href="/dashboard/locations" className="rounded-lg border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-100">
+           Gérer les lieux
+         </Link>
++        <Link href="/dashboard/audit" className="rounded-lg border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-100">
++          Journal d&apos;audit
++        </Link>
+       
+         <LogoutButton />
+       </header>
+diff --git a/app/dashboard/supervisors/page.tsx b/app/dashboard/supervisors/page.tsx
+index 3373717..feac163 100644
+--- a/app/dashboard/supervisors/page.tsx
++++ b/app/dashboard/supervisors/page.tsx
+@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
+ import SupervisorForm from "./supervisor-form";
+ import LocationAssignmentForm from "./location-assignment-form";
++import SupervisorAccountActions from "./supervisor-account-actions";
+ 
+ export default function SupervisorsPage() {
+   return (
+@@ -117,7 +118,11 @@ async function SupervisorsContent() {
+                           />
+                         </td>
+                         <td className="px-3 py-4">
+-                          {item.user.isActive ? "Actif" : "Inactif"}
++                          <SupervisorAccountActions
++                            supervisorId={item.id}
++                            supervisorName={`${item.user.firstName} ${item.user.lastName}`}
++                            isActive={item.user.isActive}
++                          />
+                         </td>
+                       </tr>
+                     ))}
+diff --git a/app/dashboard/supervisors/supervisor-account-actions.tsx b/app/dashboard/supervisors/supervisor-account-actions.tsx
+new file mode 100644
+index 0000000..84dffee
+--- /dev/null
++++ b/app/dashboard/supervisors/supervisor-account-actions.tsx
+@@ -0,0 +1,205 @@
++"use client";
++
++import { useState, type FormEvent } from "react";
++import { useRouter } from "next/navigation";
++
++// Mot de passe aléatoire de 16 caractères (sans caractères ambigus : 0/O, 1/l/I).
++function generatePassword(): string {
++  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
++  const bytes = new Uint8Array(16);
++  crypto.getRandomValues(bytes);
++  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
++}
++
++export default function SupervisorAccountActions({
++  supervisorId,
++  supervisorName,
++  isActive,
++}: {
++  supervisorId: string;
++  supervisorName: string;
++  isActive: boolean;
++}) {
++  const router = useRouter();
++  const [loading, setLoading] = useState(false);
++  const [message, setMessage] = useState("");
++  const [error, setError] = useState("");
++  const [showReset, setShowReset] = useState(false);
++  const [password, setPassword] = useState("");
++  const [visible, setVisible] = useState(false);
++
++  async function toggleStatus() {
++    const question = isActive
++      ? `Désactiver le compte de ${supervisorName} ? Il sera déconnecté et ne pourra plus se connecter.`
++      : `Réactiver le compte de ${supervisorName} ?`;
++
++    if (!window.confirm(question)) return;
++
++    setLoading(true);
++    setMessage("");
++    setError("");
++
++    try {
++      const response = await fetch(`/api/supervisors/${supervisorId}`, {
++        method: "PATCH",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ isActive: !isActive }),
++      });
++      const result = await response.json().catch(() => ({}));
++
++      if (!response.ok) {
++        setError(result.message ?? "Modification impossible.");
++        return;
++      }
++
++      setMessage(result.message ?? "Statut modifié.");
++      router.refresh();
++    } catch {
++      setError("Impossible de contacter le serveur.");
++    } finally {
++      setLoading(false);
++    }
++  }
++
++  async function resetPassword(event: FormEvent<HTMLFormElement>) {
++    event.preventDefault();
++    setMessage("");
++    setError("");
++
++    if (password.length < 12) {
++      setError("Le mot de passe doit contenir au moins 12 caractères.");
++      return;
++    }
++
++    if (
++      !window.confirm(
++        `Réinitialiser le mot de passe de ${supervisorName} ? Ses sessions ouvertes seront fermées.`
++      )
++    ) {
++      return;
++    }
++
++    setLoading(true);
++
++    try {
++      const response = await fetch(`/api/supervisors/${supervisorId}/password`, {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ password }),
++      });
++      const result = await response.json().catch(() => ({}));
++
++      if (!response.ok) {
++        setError(result.message ?? "Réinitialisation impossible.");
++        return;
++      }
++
++      setMessage(result.message ?? "Mot de passe réinitialisé.");
++      setPassword("");
++      setVisible(false);
++      setShowReset(false);
++      router.refresh();
++    } catch {
++      setError("Impossible de contacter le serveur.");
++    } finally {
++      setLoading(false);
++    }
++  }
++
++  return (
++    <div className="min-w-52 space-y-2">
++      <span
++        className={
++          isActive
++            ? "rounded-full bg-green-50 px-2 py-1 text-xs text-green-700"
++            : "rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600"
++        }
++      >
++        {isActive ? "Actif" : "Inactif"}
++      </span>
++
++      <div className="flex flex-wrap gap-2">
++        <button
++          type="button"
++          onClick={toggleStatus}
++          disabled={loading}
++          aria-label={`${isActive ? "Désactiver" : "Réactiver"} le compte de ${supervisorName}`}
++          className={
++            isActive
++              ? "rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
++              : "rounded-lg border border-green-200 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-50 disabled:opacity-50"
++          }
++        >
++          {isActive ? "Désactiver" : "Réactiver"}
++        </button>
++
++        <button
++          type="button"
++          onClick={() => {
++            setShowReset((value) => !value);
++            setError("");
++            setMessage("");
++          }}
++          disabled={loading}
++          className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
++        >
++          Mot de passe
++        </button>
++      </div>
++
++      {showReset && (
++        <form onSubmit={resetPassword} className="space-y-2 rounded-lg bg-slate-50 p-3">
++          <label
++            htmlFor={`password-${supervisorId}`}
++            className="block text-xs font-medium text-slate-600"
++          >
++            Nouveau mot de passe (12 caractères minimum)
++          </label>
++          <input
++            id={`password-${supervisorId}`}
++            type={visible ? "text" : "password"}
++            autoComplete="new-password"
++            minLength={12}
++            maxLength={200}
++            required
++            value={password}
++            onChange={(event) => setPassword(event.target.value)}
++            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
++          />
++          <div className="flex flex-wrap gap-2">
++            <button
++              type="button"
++              onClick={() => {
++                setPassword(generatePassword());
++                setVisible(true);
++              }}
++              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white"
++            >
++              Générer
++            </button>
++            <button
++              type="button"
++              onClick={() => setVisible((value) => !value)}
++              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white"
++            >
++              {visible ? "Masquer" : "Afficher"}
++            </button>
++            <button
++              type="submit"
++              disabled={loading}
++              className="rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
++            >
++              {loading ? "Enregistrement..." : "Réinitialiser"}
++            </button>
++          </div>
++          <p className="text-xs text-slate-500">
++            Notez le mot de passe avant de valider : il ne sera plus affiché ensuite.
++          </p>
++        </form>
++      )}
++
++      {message && <p role="status" className="text-xs text-green-700">{message}</p>}
++      {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
++    </div>
++  );
++}
+diff --git a/app/dashboard/transports/page.tsx b/app/dashboard/transports/page.tsx
+index 9819861..fa3650c 100644
+--- a/app/dashboard/transports/page.tsx
++++ b/app/dashboard/transports/page.tsx
+@@ -65,6 +65,8 @@ async function TransportsContent({
+             { product: { type: { contains: word, mode: "insensitive" as const } } },
+             { vehicle: { licensePlate: { contains: word, mode: "insensitive" as const } } },
+             { vehicle: { vehicleType: { contains: word, mode: "insensitive" as const } } },
++            { driver: { firstName: { contains: word, mode: "insensitive" as const } } },
++            { driver: { lastName: { contains: word, mode: "insensitive" as const } } },
+             { vehicle: { driver: { firstName: { contains: word, mode: "insensitive" as const } } } },
+             { vehicle: { driver: { lastName: { contains: word, mode: "insensitive" as const } } } },
+           ],
+@@ -78,6 +80,7 @@ async function TransportsContent({
+         amountDue: true,
+         payment: { select: { id: true } },
+         product: { select: { name: true, type: true, tonnage: true } },
++        driver: { select: { firstName: true, lastName: true } },
+         vehicle: {
+           select: {
+             licensePlate: true,
+@@ -183,7 +186,7 @@ async function TransportsContent({
+                         <p className="font-medium">{item.vehicle.licensePlate}</p>
+                         <p>{item.vehicle.vehicleType}</p>
+                         <p className="text-xs text-slate-500">
+-                          {item.vehicle.driver.firstName} {item.vehicle.driver.lastName}
++                          {(item.driver ?? item.vehicle.driver).firstName} {(item.driver ?? item.vehicle.driver).lastName}
+                         </p>
+                       </td>
+                       <td className="px-3 py-4">
+diff --git a/app/dashboard/vehicles/[id]/edit/page.tsx b/app/dashboard/vehicles/[id]/edit/page.tsx
+index 465e13c..f1a34b6 100644
+--- a/app/dashboard/vehicles/[id]/edit/page.tsx
++++ b/app/dashboard/vehicles/[id]/edit/page.tsx
+@@ -40,12 +40,31 @@ async function EditVehicleContent({ params }: PageProps) {
+       id: true,
+       vehicleType: true,
+       licensePlate: true,
+-      driver: { select: { firstName: true, lastName: true } },
++      driverId: true,
++      driver: { select: { firstName: true, lastName: true, isActive: true } },
+     },
+   });
+ 
+   if (!vehicle) notFound();
+ 
++  const activeDrivers = await prisma.driver.findMany({
++    where: { locationId: profile.locationId, isActive: true },
++    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
++    select: { id: true, firstName: true, lastName: true },
++  });
++
++  // Le chauffeur actuel reste dans la liste même s'il a été désactivé depuis.
++  const drivers = activeDrivers.some((driver) => driver.id === vehicle.driverId)
++    ? activeDrivers
++    : [
++        {
++          id: vehicle.driverId,
++          firstName: vehicle.driver.firstName,
++          lastName: `${vehicle.driver.lastName} (inactif)`,
++        },
++        ...activeDrivers,
++      ];
++
+   return (
+     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+       <section className="mx-auto max-w-xl rounded-2xl bg-white p-8 shadow-sm">
+@@ -53,7 +72,15 @@ async function EditVehicleContent({ params }: PageProps) {
+           &larr; Retour aux véhicules
+         </Link>
+         <h1 className="mb-6 mt-4 text-2xl font-bold text-slate-900">Modifier le véhicule</h1>
+-        <VehicleEditForm vehicle={vehicle} />
++        <VehicleEditForm
++          vehicle={{
++            id: vehicle.id,
++            vehicleType: vehicle.vehicleType,
++            licensePlate: vehicle.licensePlate,
++            driverId: vehicle.driverId,
++          }}
++          drivers={drivers}
++        />
+       </section>
+     </main>
+   );
+diff --git a/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx b/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx
+index 07fbf6e..3b021da 100644
+--- a/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx
++++ b/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx
+@@ -8,10 +8,18 @@ type VehicleData = {
+   id: string;
+   vehicleType: string;
+   licensePlate: string;
+-  driver: { firstName: string; lastName: string };
++  driverId: string;
+ };
+ 
+-export default function VehicleEditForm({ vehicle }: { vehicle: VehicleData }) {
++type DriverOption = { id: string; firstName: string; lastName: string };
++
++export default function VehicleEditForm({
++  vehicle,
++  drivers,
++}: {
++  vehicle: VehicleData;
++  drivers: DriverOption[];
++}) {
+   const router = useRouter();
+   const [error, setError] = useState("");
+   const [loading, setLoading] = useState(false);
+@@ -62,11 +70,19 @@ export default function VehicleEditForm({ vehicle }: { vehicle: VehicleData }) {
+           className="w-full rounded-lg border border-slate-300 px-3 py-2.5 uppercase" />
+       </div>
+ 
+-      <div className="rounded-lg bg-slate-50 p-4">
+-        <p className="text-sm font-medium text-slate-700">Chauffeur actuellement associé</p>
+-        <p className="mt-1 text-slate-600">{vehicle.driver.firstName} {vehicle.driver.lastName}</p>
++      <div>
++        <label htmlFor="driverId" className="mb-1 block text-sm font-medium text-slate-700">Chauffeur associé</label>
++        <select id="driverId" name="driverId" required defaultValue={vehicle.driverId}
++          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5">
++          {drivers.map((driver) => (
++            <option key={driver.id} value={driver.id}>
++              {driver.firstName} {driver.lastName}
++            </option>
++          ))}
++        </select>
+         <p className="mt-2 text-xs text-slate-500">
+-          Le changement de chauffeur n&apos;est pas effectué depuis ce formulaire afin de préserver l&apos;historique des transports.
++          Seuls les chauffeurs actifs de votre lieu sont proposés. Les transports déjà enregistrés
++          conservent leur chauffeur d&apos;origine ; le changement ne concerne que les prochains transports.
+         </p>
+       </div>
+ 
+diff --git a/lib/audit.ts b/lib/audit.ts
+new file mode 100644
+index 0000000..206a6d7
+--- /dev/null
++++ b/lib/audit.ts
+@@ -0,0 +1,183 @@
++// Outils du journal d'audit : libellés français, description lisible des détails
++// et construction des filtres. Fonctions pures (sans accès base) pour rester testables.
++
++export const ACTION_LABELS: Record<string, string> = {
++  CREATE: "Création",
++  UPDATE: "Modification",
++  ACTIVATE: "Activation",
++  DEACTIVATE: "Désactivation",
++  CHANGE_LOCATION: "Changement de lieu",
++  CHANGE_DRIVER: "Changement de chauffeur",
++  CHANGE_TRANSPORT_STATUS: "Changement de statut",
++  SET_TRANSPORT_AMOUNT: "Fixation du montant",
++  RESET_PASSWORD: "Réinitialisation du mot de passe",
++};
++
++export const ENTITY_LABELS: Record<string, string> = {
++  Location: "Lieu",
++  Supervisor: "Régisseur",
++  Driver: "Chauffeur",
++  Vehicle: "Véhicule",
++  TransportAssignment: "Transport",
++  Payment: "Paiement",
++};
++
++export const ROLE_LABELS: Record<string, string> = {
++  ADMIN: "Administrateur",
++  SUPERVISOR: "Régisseur",
++  CASHIER: "Caissier",
++  MANAGER: "Responsable",
++  ANALYST: "Analyste",
++};
++
++export const PAYMENT_METHOD_LABELS: Record<string, string> = {
++  CASH: "Espèces",
++  BANK_TRANSFER: "Virement bancaire",
++  CHECK: "Chèque",
++  MOBILE_MONEY: "Mobile money",
++  OTHER: "Autre",
++};
++
++export const TRANSPORT_STATUS_LABELS: Record<string, string> = {
++  PLANNED: "Planifié",
++  IN_PROGRESS: "En cours",
++  COMPLETED: "Terminé",
++  CANCELLED: "Annulé",
++};
++
++export const PERIOD_OPTIONS = [
++  { value: "today", label: "Aujourd'hui" },
++  { value: "7d", label: "7 derniers jours" },
++  { value: "30d", label: "30 derniers jours" },
++] as const;
++
++export type AuditPeriod = (typeof PERIOD_OPTIONS)[number]["value"];
++
++export const AUDIT_PAGE_SIZE = 25;
++
++export function actionLabel(action: string): string {
++  return ACTION_LABELS[action] ?? action;
++}
++
++export function entityLabel(entityType: string): string {
++  return ENTITY_LABELS[entityType] ?? entityType;
++}
++
++export function formatMGA(value: unknown): string {
++  const number = Number(value);
++  if (!Number.isFinite(number)) return String(value ?? "");
++  return `${number.toLocaleString("fr-FR", {
++    minimumFractionDigits: 2,
++    maximumFractionDigits: 2,
++  })} MGA`;
++}
++
++type Details = Record<string, unknown>;
++
++function asDetails(details: unknown): Details {
++  return details && typeof details === "object" && !Array.isArray(details)
++    ? (details as Details)
++    : {};
++}
++
++function str(value: unknown): string | null {
++  return typeof value === "string" && value !== "" ? value : null;
++}
++
++export type DescribeContext = {
++  // id de lieu -> nom, pour afficher « Lieu : X » au lieu d'un identifiant.
++  locations?: Record<string, string>;
++};
++
++// Transforme les détails bruts d'un log en lignes lisibles pour l'administrateur.
++export function describeAudit(
++  entityType: string,
++  action: string,
++  rawDetails: unknown,
++  context: DescribeContext = {},
++): string[] {
++  const details = asDetails(rawDetails);
++  const lines: string[] = [];
++
++  if (entityType === "Payment" && action === "CREATE") {
++    if (details.amountDue !== undefined) lines.push(`Montant dû : ${formatMGA(details.amountDue)}`);
++    if (details.amountReceived !== undefined) lines.push(`Montant reçu : ${formatMGA(details.amountReceived)}`);
++    if (details.changeReturned !== undefined) lines.push(`Monnaie rendue : ${formatMGA(details.changeReturned)}`);
++    const method = str(details.paymentMethod);
++    if (method) lines.push(`Mode : ${PAYMENT_METHOD_LABELS[method] ?? method}`);
++    const reference = str(details.reference);
++    if (reference) lines.push(`Référence : ${reference}`);
++  } else if (action === "CHANGE_TRANSPORT_STATUS") {
++    const from = str(details.previousStatus);
++    const to = str(details.newStatus);
++    if (from && to) {
++      lines.push(`Statut : ${TRANSPORT_STATUS_LABELS[from] ?? from} → ${TRANSPORT_STATUS_LABELS[to] ?? to}`);
++    }
++  } else if (action === "SET_TRANSPORT_AMOUNT" || (entityType === "TransportAssignment" && action === "CREATE")) {
++    if (details.amountDue !== undefined) lines.push(`Montant officiel : ${formatMGA(details.amountDue)}`);
++  } else if (action === "CHANGE_LOCATION") {
++    const email = str(details.email);
++    if (email) lines.push(`Compte : ${email}`);
++    const previous = str(details.previousLocationId);
++    const next = str(details.newLocationName) ?? (str(details.newLocationId) ? context.locations?.[details.newLocationId as string] : null);
++    if (previous) lines.push(`Ancien lieu : ${context.locations?.[previous] ?? "—"}`);
++    if (next) lines.push(`Nouveau lieu : ${next}`);
++  } else if (action === "CHANGE_DRIVER") {
++    const from = str(details.previousDriverName) ?? "—";
++    const to = str(details.newDriverName) ?? "—";
++    lines.push(`Chauffeur : ${from} → ${to}`);
++  } else if (action === "RESET_PASSWORD") {
++    const email = str(details.email);
++    if (email) lines.push(`Compte : ${email}`);
++    lines.push("Sessions existantes invalidées");
++  } else {
++    const email = str(details.email);
++    if (email) lines.push(`Compte : ${email}`);
++  }
++
++  const locationId = str(details.locationId);
++  if (locationId && context.locations?.[locationId]) {
++    lines.push(`Lieu : ${context.locations[locationId]}`);
++  }
++
++  return lines;
++}
++
++// Début de la période choisie (null = pas de limite).
++export function periodStart(period: string, now: Date = new Date()): Date | null {
++  if (period === "today") {
++    const start = new Date(now);
++    start.setUTCHours(0, 0, 0, 0);
++    return start;
++  }
++  if (period === "7d") return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
++  if (period === "30d") return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
++  return null;
++}
++
++// Construit la clause `where` Prisma du journal à partir des filtres validés.
++export function buildAuditWhere(
++  filters: { q: string; entityType: string; action: string; period: string },
++  now: Date = new Date(),
++) {
++  const since = periodStart(filters.period, now);
++  const words = filters.q.split(/\s+/).filter(Boolean).slice(0, 5);
++
++  return {
++    ...(filters.entityType ? { entityType: filters.entityType } : {}),
++    ...(filters.action ? { action: filters.action } : {}),
++    ...(since ? { createdAt: { gte: since } } : {}),
++    ...(words.length > 0
++      ? {
++          AND: words.map((word) => ({
++            OR: [
++              { entityId: { contains: word } },
++              { user: { firstName: { contains: word, mode: "insensitive" as const } } },
++              { user: { lastName: { contains: word, mode: "insensitive" as const } } },
++              { user: { email: { contains: word, mode: "insensitive" as const } } },
++            ],
++          })),
++        }
++      : {}),
++  };
++}
+diff --git a/lib/password-policy.ts b/lib/password-policy.ts
+new file mode 100644
+index 0000000..40908e7
+--- /dev/null
++++ b/lib/password-policy.ts
+@@ -0,0 +1,14 @@
++export const PASSWORD_MIN_LENGTH = 12;
++export const PASSWORD_MAX_LENGTH = 200;
++
++// Retourne un message d'erreur, ou null si le mot de passe est acceptable.
++export function validatePassword(password: unknown): string | null {
++  if (
++    typeof password !== "string" ||
++    password.length < PASSWORD_MIN_LENGTH ||
++    password.length > PASSWORD_MAX_LENGTH
++  ) {
++    return `Le mot de passe doit contenir entre ${PASSWORD_MIN_LENGTH} et ${PASSWORD_MAX_LENGTH} caractères.`;
++  }
++  return null;
++}
+diff --git a/package-lock.json b/package-lock.json
+index ad51952..54a8b14 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -30,7 +30,8 @@
+         "prisma": "^7.10.1",
+         "tailwindcss": "^4",
+         "tsx": "^4.23.15",
+-        "typescript": "^5"
++        "typescript": "^5",
++        "vitest": "^4.1.12"
+       }
+     },
+     "node_modules/@alloc/quick-lru": {
+@@ -1113,9 +1114,6 @@
+       "cpu": [
+         "arm"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1132,9 +1130,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1151,9 +1146,6 @@
+       "cpu": [
+         "ppc64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1170,9 +1162,6 @@
+       "cpu": [
+         "riscv64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1189,9 +1178,6 @@
+       "cpu": [
+         "s390x"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1208,9 +1194,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1227,9 +1210,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1246,9 +1226,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -1265,9 +1242,6 @@
+       "cpu": [
+         "arm"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1290,9 +1264,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1315,9 +1286,6 @@
+       "cpu": [
+         "ppc64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1340,9 +1308,6 @@
+       "cpu": [
+         "riscv64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1365,9 +1330,6 @@
+       "cpu": [
+         "s390x"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1390,9 +1352,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1415,9 +1374,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1440,9 +1396,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1710,9 +1663,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1729,9 +1679,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1748,9 +1695,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1767,9 +1711,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -1859,6 +1800,16 @@
+         "node": ">=12.4.0"
+       }
+     },
++    "node_modules/@oxc-project/types": {
++      "version": "0.155.0",
++      "resolved": "https://registry.npmjs.org/@oxc-project/types/-/types-0.155.0.tgz",
++      "integrity": "sha512-SeE8JPwW1xs1tHeNycjUtUBdhorRa8o4jlvjwk49R7/Z291i+4DQa7JJIgOm/TaYQZx+QrPQbVJ/9c8dMIZN8Q==",
++      "dev": true,
++      "license": "MIT",
++      "funding": {
++        "url": "https://github.com/sponsors/oxc-project"
++      }
++    },
+     "node_modules/@prisma/adapter-pg": {
+       "version": "7.10.1",
+       "resolved": "https://registry.npmjs.org/@prisma/adapter-pg/-/adapter-pg-7.10.1.tgz",
+@@ -2256,6 +2207,268 @@
+         }
+       }
+     },
++    "node_modules/@rolldown/binding-android-arm-eabi": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-android-arm-eabi/-/binding-android-arm-eabi-1.2.15.tgz",
++      "integrity": "sha512-aLcgK9gIJ3YRvrrtfSBbRa27F5WrpiTaPulnFpsHPxpUHgFlSgnU4854MHwoRGEBhfRJDWCS2WQ7lIjskE9Olw==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/binding-android-arm64": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-android-arm64/-/binding-android-arm64-1.2.15.tgz",
++      "integrity": "sha512-xD7DdZCrbThKuxNg7ooQmvp07ys4J/pnSEMTG3/OdOWl6daC67m/Q4fL78sRHMxTH/N4fGUbYhcPM0MF5WFHkg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/binding-darwin-arm64": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-darwin-arm64/-/binding-darwin-arm64-1.2.15.tgz",
++      "integrity": "sha512-m2WuQ6r0B4OTYxyPpNLtXaMRbRDUbG8YQV2Q3KTdSSK8Th6KHCnC8jVCJt8bvYeSB5WivkkNbc85mKadaSdOxA==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/binding-darwin-x64": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-darwin-x64/-/binding-darwin-x64-1.2.15.tgz",
++      "integrity": "sha512-5RtnsHM36nodM9WbMy+zip0LGS/G+y5wro5RHrpOlr4ac24+1zSi9kiV2MP1myZeZ/ifEHfulQcWjnAXzc2C2A==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/binding-freebsd-x64": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-freebsd-x64/-/binding-freebsd-x64-1.2.15.tgz",
++      "integrity": "sha512-g3l09pyFqhu+135JKkbkwiKGQmwU5hUMUPJ4VdBADvuqR8d33L6H578rh8m7rtxbdp+VmX/+nzI7nvhSZlzpUQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/binding-linux-arm-gnueabihf": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-1.2.15.tgz",
++      "integrity": "sha512-nIe3VugI97nGQtspPxDqA4sXMUpeiocKIP/CqpY/u/vgbT+alX+cVxu1C/oVBPKg4feNTmYovE91v4DgXvXNwQ==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/binding-linux-arm64-gnu": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-1.2.15.tgz",
++      "integrity": "sha512-iTBjXx+B5QSvgI89lJfmqh4wTh8NabR1YZIIN3hNx4zSG0EVfVqkOvLulNpG4251pbd6/IAmZ/LefVk1Y4rPhw==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/binding-linux-arm64-musl": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-arm64-musl/-/binding-linux-arm64-musl-1.2.15.tgz",
++      "integrity": "sha512-uN26XOnVR7rqQupG3V9oAG2EGGatWjcJHOeDOHUFCh4TBWmP2tHTFoVN13aYbwfm0aHqJAEmcwhAu6sooIjfqQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/binding-linux-ppc64-gnu": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-ppc64-gnu/-/binding-linux-ppc64-gnu-1.2.15.tgz",
++      "integrity": "sha512-9nWkcdd+H+XhaA3fQIwpHnKIrfx/PQ6rO0pivr78Og07tXlUlctBBJoEYLPfhTmCR/QxEVdn6uPjHV5SymPhdw==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/binding-linux-s390x-gnu": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-s390x-gnu/-/binding-linux-s390x-gnu-1.2.15.tgz",
++      "integrity": "sha512-Ggh0ciFjLwIusLSLz7LZYEaGdxOAUJXI+Qu5JCbhPJJHEt8vP+IjRATTJheiJsdzzTYgUiHUiw3X1Ea3ZpMBdA==",
++      "cpu": [
++        "s390x"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/binding-linux-x64-gnu": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-x64-gnu/-/binding-linux-x64-gnu-1.2.15.tgz",
++      "integrity": "sha512-FHg60rS6DBePAYZ9X9F67x+JObFdmgn6tupA1C/a3B+CufFmTD4mX+e8M75tCiAO3foR/6xwVBI0KQiI7sn/rw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/binding-linux-x64-musl": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-linux-x64-musl/-/binding-linux-x64-musl-1.2.15.tgz",
++      "integrity": "sha512-/cvV/7v5VGz/moiz0XKRj2dE8DzsKyhIu1KpOvJGPjRywg3yscON889UGvAe8zfiJLHup7VLjBduoGWi3HusWQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/binding-openharmony-arm64": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-openharmony-arm64/-/binding-openharmony-arm64-1.2.15.tgz",
++      "integrity": "sha512-MyzC5Hrv/sm+Z7TSGKP/j8001RO2xQm1zOpCNVL4j0cY/VhBZviludA2YFQ7i4lH6ZAXxQm0lcMdBzM+99mE7w==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "openharmony"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/binding-win32-arm64-msvc": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.2.15.tgz",
++      "integrity": "sha512-+PgYiS+AH5omy6L45ZLxybasauJaj3M8buoT83D+nzPmCayXlxUV9hydhciCKVyIg0B/v0BtXPDE1uGqNwCPpg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/binding-win32-x64-msvc": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.15.tgz",
++      "integrity": "sha512-HFZd2QNQYn1JbIi+Hpd7H+r/lkWxcfIu28nirZ6eCn2LafuvmExMlb/P96Sfx5tf7pPArw39IdhmCF8vmV+NhQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      }
++    },
++    "node_modules/@rolldown/pluginutils": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/@rolldown/pluginutils/-/pluginutils-1.0.1.tgz",
++      "integrity": "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/@rtsao/scc": {
+       "version": "1.1.0",
+       "resolved": "https://registry.npmjs.org/@rtsao/scc/-/scc-1.1.0.tgz",
+@@ -2412,9 +2625,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2432,9 +2642,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2452,9 +2659,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2472,9 +2676,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -2572,6 +2773,17 @@
+         "tslib": "^2.4.0"
+       }
+     },
++    "node_modules/@types/chai": {
++      "version": "5.2.3",
++      "resolved": "https://registry.npmjs.org/@types/chai/-/chai-5.2.3.tgz",
++      "integrity": "sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/deep-eql": "*",
++        "assertion-error": "^2.0.1"
++      }
++    },
+     "node_modules/@types/d3-array": {
+       "version": "3.0.3",
+       "resolved": "https://registry.npmjs.org/@types/d3-array/-/d3-array-3.0.3.tgz",
+@@ -2661,6 +2873,13 @@
+       "devOptional": true,
+       "license": "MIT"
+     },
++    "node_modules/@types/deep-eql": {
++      "version": "4.0.2",
++      "resolved": "https://registry.npmjs.org/@types/deep-eql/-/deep-eql-4.0.2.tgz",
++      "integrity": "sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/@types/estree": {
+       "version": "1.0.9",
+       "resolved": "https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz",
+@@ -2730,7 +2949,7 @@
+       "version": "19.3.0",
+       "resolved": "https://registry.npmjs.org/@types/react-dom/-/react-dom-19.3.0.tgz",
+       "integrity": "sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q==",
+-      "devOptional": true,
++      "dev": true,
+       "license": "MIT",
+       "peerDependencies": {
+         "@types/react": "^19.3.0"
+@@ -3137,9 +3356,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3154,9 +3370,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3171,9 +3384,6 @@
+         "loong64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3188,9 +3398,6 @@
+         "loong64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3205,9 +3412,6 @@
+         "ppc64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3222,9 +3426,6 @@
+         "riscv64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3239,9 +3440,6 @@
+         "riscv64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3256,9 +3454,6 @@
+         "s390x"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3273,9 +3468,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3290,9 +3482,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -3536,30 +3725,143 @@
+         "node": ">=12"
+       }
+     },
+-    "node_modules/acorn": {
+-      "version": "8.19.0",
+-      "resolved": "https://registry.npmjs.org/acorn/-/acorn-8.19.0.tgz",
+-      "integrity": "sha512-oJlA3XiRm7Cyk6qFD2Jn8ak9B7jSy0qy00ADO3+8dpT0LSjFihQYv4C02LFCSYJV3Q37xYwwRy5m+IpIiUzqWw==",
++    "node_modules/@vitest/expect": {
++      "version": "4.1.12",
++      "resolved": "https://registry.npmjs.org/@vitest/expect/-/expect-4.1.12.tgz",
++      "integrity": "sha512-vFlTt+YEu9WBpNjdGayNmlMVzrWPi1+sv853/7t2FU7hpO5gAFBKHzQmkCq5Xjpr+evegF2994LQT3hF3mRlqQ==",
+       "dev": true,
+       "license": "MIT",
+-      "bin": {
+-        "acorn": "bin/acorn"
++      "dependencies": {
++        "@standard-schema/spec": "^1.1.0",
++        "@types/chai": "^5.2.2",
++        "@vitest/spy": "4.1.12",
++        "@vitest/utils": "4.1.12",
++        "chai": "^6.2.2",
++        "tinyrainbow": "^3.1.0"
+       },
+-      "engines": {
+-        "node": ">=0.4.0"
++      "funding": {
++        "url": "https://opencollective.com/vitest"
+       }
+     },
+-    "node_modules/acorn-jsx": {
+-      "version": "5.3.2",
+-      "resolved": "https://registry.npmjs.org/acorn-jsx/-/acorn-jsx-5.3.2.tgz",
+-      "integrity": "sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==",
++    "node_modules/@vitest/mocker": {
++      "version": "4.1.12",
++      "resolved": "https://registry.npmjs.org/@vitest/mocker/-/mocker-4.1.12.tgz",
++      "integrity": "sha512-fKShNpKZzupWZuY0z7egydvL0sqW4INEZBEExMBMAa6izlENEVHwoXgdaTCaBZ5fwlr4xf2o1wXC83n9RpO+NA==",
+       "dev": true,
+       "license": "MIT",
++      "dependencies": {
++        "@vitest/spy": "4.1.12",
++        "estree-walker": "^3.0.3",
++        "magic-string": "^0.30.21"
++      },
++      "funding": {
++        "url": "https://opencollective.com/vitest"
++      },
+       "peerDependencies": {
+-        "acorn": "^6.0.0 || ^7.0.0 || ^8.0.0"
+-      }
+-    },
+-    "node_modules/ajv": {
++        "msw": "^2.4.9",
++        "vite": "^6.0.0 || ^7.0.0 || ^8.0.0"
++      },
++      "peerDependenciesMeta": {
++        "msw": {
++          "optional": true
++        },
++        "vite": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/@vitest/pretty-format": {
++      "version": "4.1.12",
++      "resolved": "https://registry.npmjs.org/@vitest/pretty-format/-/pretty-format-4.1.12.tgz",
++      "integrity": "sha512-XW9O8+Mxx4VpCtkYdMJLZQQwsVryP9wk7cPKDxtXFfwSak6yRh5+2fep/Y0XF/ElBvJHq8bcYdi6aeuai0opZA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "tinyrainbow": "^3.1.0"
++      },
++      "funding": {
++        "url": "https://opencollective.com/vitest"
++      }
++    },
++    "node_modules/@vitest/runner": {
++      "version": "4.1.12",
++      "resolved": "https://registry.npmjs.org/@vitest/runner/-/runner-4.1.12.tgz",
++      "integrity": "sha512-NKlVKCr5QnCe8jijdMnmkpHHU+WTqiLFR6G0pHji9uRjXK9xJl1k1nTw6F3pOOj2PDcsDt2GKQMI7wIsaT491w==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@vitest/utils": "4.1.12",
++        "pathe": "^2.0.3"
++      },
++      "funding": {
++        "url": "https://opencollective.com/vitest"
++      }
++    },
++    "node_modules/@vitest/snapshot": {
++      "version": "4.1.12",
++      "resolved": "https://registry.npmjs.org/@vitest/snapshot/-/snapshot-4.1.12.tgz",
++      "integrity": "sha512-ko1y1Qgb/slzQ9mr+b89Cuqud8WG1TKtsPD8r7ZUBdvVOGt85Af2HwCqHujrhwJq95hs/9RM7fcAPg57o1vlzw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@vitest/pretty-format": "4.1.12",
++        "@vitest/utils": "4.1.12",
++        "magic-string": "^0.30.21",
++        "pathe": "^2.0.3"
++      },
++      "funding": {
++        "url": "https://opencollective.com/vitest"
++      }
++    },
++    "node_modules/@vitest/spy": {
++      "version": "4.1.12",
++      "resolved": "https://registry.npmjs.org/@vitest/spy/-/spy-4.1.12.tgz",
++      "integrity": "sha512-RGq9x4JNGNTZHEJxvN0oSiJjeSCExm0n2gZKKJZHY9cX5AVA6M7VJILBT3ZJ/tJ/0J9uWT7fETV9/btoi//vSg==",
++      "dev": true,
++      "license": "MIT",
++      "funding": {
++        "url": "https://opencollective.com/vitest"
++      }
++    },
++    "node_modules/@vitest/utils": {
++      "version": "4.1.12",
++      "resolved": "https://registry.npmjs.org/@vitest/utils/-/utils-4.1.12.tgz",
++      "integrity": "sha512-Q3awXrwOfEV+qc3WmO5ONyE0yO7Q1gQ9/oyHxGLZ/pl7N3NO/ZztqQwKLuwMkV+CA1JYSIeO3gkHnRDIo4AVaA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@vitest/pretty-format": "4.1.12",
++        "convert-source-map": "^2.0.0",
++        "tinyrainbow": "^3.1.0"
++      },
++      "funding": {
++        "url": "https://opencollective.com/vitest"
++      }
++    },
++    "node_modules/acorn": {
++      "version": "8.19.0",
++      "resolved": "https://registry.npmjs.org/acorn/-/acorn-8.19.0.tgz",
++      "integrity": "sha512-oJlA3XiRm7Cyk6qFD2Jn8ak9B7jSy0qy00ADO3+8dpT0LSjFihQYv4C02LFCSYJV3Q37xYwwRy5m+IpIiUzqWw==",
++      "dev": true,
++      "license": "MIT",
++      "bin": {
++        "acorn": "bin/acorn"
++      },
++      "engines": {
++        "node": ">=0.4.0"
++      }
++    },
++    "node_modules/acorn-jsx": {
++      "version": "5.3.2",
++      "resolved": "https://registry.npmjs.org/acorn-jsx/-/acorn-jsx-5.3.2.tgz",
++      "integrity": "sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==",
++      "dev": true,
++      "license": "MIT",
++      "peerDependencies": {
++        "acorn": "^6.0.0 || ^7.0.0 || ^8.0.0"
++      }
++    },
++    "node_modules/ajv": {
+       "version": "6.15.0",
+       "resolved": "https://registry.npmjs.org/ajv/-/ajv-6.15.0.tgz",
+       "integrity": "sha512-fgFx7Hfoq60ytK2c7DhnF8jIvzYgOMxfugjLOSMHjLIPgenqa7S7oaagATUq99mV6IYvN2tRmC0wnTYX6iPbMw==",
+@@ -3769,6 +4071,16 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/assertion-error": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/assertion-error/-/assertion-error-2.0.1.tgz",
++      "integrity": "sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=12"
++      }
++    },
+     "node_modules/ast-types-flow": {
+       "version": "0.0.8",
+       "resolved": "https://registry.npmjs.org/ast-types-flow/-/ast-types-flow-0.0.8.tgz",
+@@ -4047,6 +4359,16 @@
+       ],
+       "license": "CC-BY-4.0"
+     },
++    "node_modules/chai": {
++      "version": "6.3.0",
++      "resolved": "https://registry.npmjs.org/chai/-/chai-6.3.0.tgz",
++      "integrity": "sha512-XWAtwJ6OHO+tj0EKCs0Y2UamnyOxseZWltU4x2U2wh8g4AigdjwvtUjvLP2tqkA/avxHEtzxNaqGq/YGNwckKg==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      }
++    },
+     "node_modules/chalk": {
+       "version": "4.1.2",
+       "resolved": "https://registry.npmjs.org/chalk/-/chalk-4.1.2.tgz",
+@@ -4718,6 +5040,13 @@
+         "node": ">= 0.4"
+       }
+     },
++    "node_modules/es-module-lexer": {
++      "version": "2.3.2",
++      "resolved": "https://registry.npmjs.org/es-module-lexer/-/es-module-lexer-2.3.2.tgz",
++      "integrity": "sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/es-object-atoms": {
+       "version": "1.1.2",
+       "resolved": "https://registry.npmjs.org/es-object-atoms/-/es-object-atoms-1.1.2.tgz",
+@@ -5243,6 +5572,16 @@
+         "node": ">=4.0"
+       }
+     },
++    "node_modules/estree-walker": {
++      "version": "3.0.3",
++      "resolved": "https://registry.npmjs.org/estree-walker/-/estree-walker-3.0.3.tgz",
++      "integrity": "sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/estree": "^1.0.0"
++      }
++    },
+     "node_modules/esutils": {
+       "version": "2.0.3",
+       "resolved": "https://registry.npmjs.org/esutils/-/esutils-2.0.3.tgz",
+@@ -5253,6 +5592,16 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/expect-type": {
++      "version": "1.4.0",
++      "resolved": "https://registry.npmjs.org/expect-type/-/expect-type-1.4.0.tgz",
++      "integrity": "sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": ">=12.0.0"
++      }
++    },
+     "node_modules/exsolve": {
+       "version": "1.1.3",
+       "resolved": "https://registry.npmjs.org/exsolve/-/exsolve-1.1.3.tgz",
+@@ -6702,9 +7051,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -6726,9 +7072,6 @@
+         "arm64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -6750,9 +7093,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -6774,9 +7114,6 @@
+         "x64"
+       ],
+       "dev": true,
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -7264,6 +7601,20 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/obug": {
++      "version": "2.2.1",
++      "resolved": "https://registry.npmjs.org/obug/-/obug-2.2.1.tgz",
++      "integrity": "sha512-XrsrhT5sybtKI6wakr2SPOlGZWWYbUXZ7a0jT8/QOeAPau+1X/bSegNe5YR75oJmEZQbKningirmGOEJCIk61Q==",
++      "dev": true,
++      "funding": [
++        "https://github.com/sponsors/sxzz",
++        "https://opencollective.com/debug"
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": ">=12.20.0"
++      }
++    },
+     "node_modules/ohash": {
+       "version": "2.0.12",
+       "resolved": "https://registry.npmjs.org/ohash/-/ohash-2.0.12.tgz",
+@@ -7934,6 +8285,40 @@
+       "devOptional": true,
+       "license": "Unlicense"
+     },
++    "node_modules/rolldown": {
++      "version": "1.2.15",
++      "resolved": "https://registry.npmjs.org/rolldown/-/rolldown-1.2.15.tgz",
++      "integrity": "sha512-6odND+fel5zVw3I4Yc2e69gvguDnX0CAAGiNDZSq4ik5WUcaLrkD2GLuog0XcODbor31hZ5ayEMgVDno+KPV5g==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@oxc-project/types": "=0.155.0",
++        "@rolldown/pluginutils": "^1.0.0"
++      },
++      "bin": {
++        "rolldown": "bin/cli.mjs"
++      },
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      },
++      "optionalDependencies": {
++        "@rolldown/binding-android-arm-eabi": "1.2.15",
++        "@rolldown/binding-android-arm64": "1.2.15",
++        "@rolldown/binding-darwin-arm64": "1.2.15",
++        "@rolldown/binding-darwin-x64": "1.2.15",
++        "@rolldown/binding-freebsd-x64": "1.2.15",
++        "@rolldown/binding-linux-arm-gnueabihf": "1.2.15",
++        "@rolldown/binding-linux-arm64-gnu": "1.2.15",
++        "@rolldown/binding-linux-arm64-musl": "1.2.15",
++        "@rolldown/binding-linux-ppc64-gnu": "1.2.15",
++        "@rolldown/binding-linux-s390x-gnu": "1.2.15",
++        "@rolldown/binding-linux-x64-gnu": "1.2.15",
++        "@rolldown/binding-linux-x64-musl": "1.2.15",
++        "@rolldown/binding-openharmony-arm64": "1.2.15",
++        "@rolldown/binding-win32-arm64-msvc": "1.2.15",
++        "@rolldown/binding-win32-x64-msvc": "1.2.15"
++      }
++    },
+     "node_modules/run-parallel": {
+       "version": "1.2.0",
+       "resolved": "https://registry.npmjs.org/run-parallel/-/run-parallel-1.2.0.tgz",
+@@ -8270,6 +8655,13 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/siginfo": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/siginfo/-/siginfo-2.0.0.tgz",
++      "integrity": "sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g==",
++      "dev": true,
++      "license": "ISC"
++    },
+     "node_modules/signal-exit": {
+       "version": "4.1.0",
+       "resolved": "https://registry.npmjs.org/signal-exit/-/signal-exit-4.1.0.tgz",
+@@ -8324,6 +8716,13 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/stackback": {
++      "version": "0.0.2",
++      "resolved": "https://registry.npmjs.org/stackback/-/stackback-0.0.2.tgz",
++      "integrity": "sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/std-env": {
+       "version": "3.10.0",
+       "resolved": "https://registry.npmjs.org/std-env/-/std-env-3.10.0.tgz",
+@@ -8552,6 +8951,23 @@
+         "url": "https://opencollective.com/webpack"
+       }
+     },
++    "node_modules/tinybench": {
++      "version": "2.9.0",
++      "resolved": "https://registry.npmjs.org/tinybench/-/tinybench-2.9.0.tgz",
++      "integrity": "sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/tinyexec": {
++      "version": "1.3.1",
++      "resolved": "https://registry.npmjs.org/tinyexec/-/tinyexec-1.3.1.tgz",
++      "integrity": "sha512-GCvB3aoys96IuDFBMcTB46JOR6mdMtAToqwiW8JlWhsoh1mhHi/xn9ss/Dg7N555GiJyEt2qzoG/NHCwM6h1EA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      }
++    },
+     "node_modules/tinyglobby": {
+       "version": "0.2.17",
+       "resolved": "https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz",
+@@ -8600,6 +9016,16 @@
+         "url": "https://github.com/sponsors/jonschlinkert"
+       }
+     },
++    "node_modules/tinyrainbow": {
++      "version": "3.2.0",
++      "resolved": "https://registry.npmjs.org/tinyrainbow/-/tinyrainbow-3.2.0.tgz",
++      "integrity": "sha512-LgO3D9yZJjApUiuUfl9iFAwrtaX4+lok3wJIqttGoKCHlWUqHqbQpnxCf82L8FjgKsh4iGo78hqJwgL8F6To2A==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=14.0.0"
++      }
++    },
+     "node_modules/to-regex-range": {
+       "version": "5.0.1",
+       "resolved": "https://registry.npmjs.org/to-regex-range/-/to-regex-range-5.0.1.tgz",
+@@ -8924,6 +9350,497 @@
+         }
+       }
+     },
++    "node_modules/vite": {
++      "version": "8.3.5",
++      "resolved": "https://registry.npmjs.org/vite/-/vite-8.3.5.tgz",
++      "integrity": "sha512-z1YpjieJ9g0ebTmQpLBv/oq9E3F9EIlOe+7LahW8SrE3LTiG3udBRUXQOlYXP9b+IC2q2phHeVxj9xGlw34OEQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "lightningcss": "^1.33.0",
++        "picomatch": "^4.0.7",
++        "postcss": "^8.5.30",
++        "rolldown": "~1.2.14",
++        "tinyglobby": "^0.2.17"
++      },
++      "bin": {
++        "vite": "bin/vite.js"
++      },
++      "engines": {
++        "node": "^20.19.0 || >=22.12.0"
++      },
++      "funding": {
++        "url": "https://github.com/vitejs/vite?sponsor=1"
++      },
++      "optionalDependencies": {
++        "fsevents": "~2.3.3"
++      },
++      "peerDependencies": {
++        "@types/node": "^20.19.0 || >=22.12.0",
++        "@vitejs/devtools": "^0.7.1 || ^0.8.0",
++        "esbuild": "^0.27.0 || ^0.28.0",
++        "jiti": ">=1.21.0",
++        "less": "^4.0.0",
++        "sass": "^1.70.0",
++        "sass-embedded": "^1.70.0",
++        "stylus": ">=0.54.8",
++        "sugarss": "^5.0.0",
++        "terser": "^5.16.0",
++        "tsx": "^4.8.1",
++        "yaml": "^2.4.2"
++      },
++      "peerDependenciesMeta": {
++        "@types/node": {
++          "optional": true
++        },
++        "@vitejs/devtools": {
++          "optional": true
++        },
++        "esbuild": {
++          "optional": true
++        },
++        "jiti": {
++          "optional": true
++        },
++        "less": {
++          "optional": true
++        },
++        "sass": {
++          "optional": true
++        },
++        "sass-embedded": {
++          "optional": true
++        },
++        "stylus": {
++          "optional": true
++        },
++        "sugarss": {
++          "optional": true
++        },
++        "terser": {
++          "optional": true
++        },
++        "tsx": {
++          "optional": true
++        },
++        "yaml": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss/-/lightningcss-1.33.0.tgz",
++      "integrity": "sha512-WkUDrojuJs0xkgGf2udWxa3yGBRxPtxUkB79i6aCZLRgc7PM8fZe9TosfPDcvEpQZbuFASnHYmRLBLUbmLOIIA==",
++      "dev": true,
++      "license": "MPL-2.0",
++      "dependencies": {
++        "detect-libc": "^2.0.3"
++      },
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      },
++      "optionalDependencies": {
++        "lightningcss-android-arm64": "1.33.0",
++        "lightningcss-darwin-arm64": "1.33.0",
++        "lightningcss-darwin-x64": "1.33.0",
++        "lightningcss-freebsd-x64": "1.33.0",
++        "lightningcss-linux-arm-gnueabihf": "1.33.0",
++        "lightningcss-linux-arm64-gnu": "1.33.0",
++        "lightningcss-linux-arm64-musl": "1.33.0",
++        "lightningcss-linux-x64-gnu": "1.33.0",
++        "lightningcss-linux-x64-musl": "1.33.0",
++        "lightningcss-win32-arm64-msvc": "1.33.0",
++        "lightningcss-win32-x64-msvc": "1.33.0"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-android-arm64": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-android-arm64/-/lightningcss-android-arm64-1.33.0.tgz",
++      "integrity": "sha512-gEpRTalKdosp4Bb8qWtc2iOgE5SeIHlpS1up9bFq2wAyYhl1UdTObYiHe98zEM9SQvSoqQZ1IQD0JNpg3Ml5pg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-darwin-arm64": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-darwin-arm64/-/lightningcss-darwin-arm64-1.33.0.tgz",
++      "integrity": "sha512-Sciaz8eenNTKn9b3t7+xr0ipTp9YxKQY4npwQ3mrRuL0BAVHBLyZxofhaKBAVtzmtRZ/zTyo0/to4B1uWG/Djg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-darwin-x64": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-darwin-x64/-/lightningcss-darwin-x64-1.33.0.tgz",
++      "integrity": "sha512-Z5UPAxzrjlWNNyGy6i65cJzzvgJ5D3T6wMvs+gWpY9d7qRhANrxqAp6LhxIgZhWEw18RfJTGcRxjuLIBr+m8XQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-freebsd-x64": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-freebsd-x64/-/lightningcss-freebsd-x64-1.33.0.tgz",
++      "integrity": "sha512-QQM/Ti/hQajJwCY+RiWuCZ9sdtI/XQk7nDK5vC8kkdwixezOlDgvDx7+RT+QjK6FcFT4MpsuoBnHIo/O3StRRg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-linux-arm-gnueabihf": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-linux-arm-gnueabihf/-/lightningcss-linux-arm-gnueabihf-1.33.0.tgz",
++      "integrity": "sha512-N7FVBe6iS24MlM6R/4RBTxGhQheZGs7tiQ9U32UtF75NzP5Q7xWPRqLBCKxlRQRk3rY1jCIPLzx7WzOhuUIRLQ==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-linux-arm64-gnu": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-linux-arm64-gnu/-/lightningcss-linux-arm64-gnu-1.33.0.tgz",
++      "integrity": "sha512-j2v/itmy4HlNxlc6voKXYgBqNi0Ng2LShg4z7GufpEgs05P+2suBVyi9I6YHq5uoVFx9ETin3eCEhLVyXGQnKg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-linux-arm64-musl": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-linux-arm64-musl/-/lightningcss-linux-arm64-musl-1.33.0.tgz",
++      "integrity": "sha512-yiO5ROMuYQgXbC60yjZU5CYSFZGKXL0HFATXt9mHJn1+zW55oCtMI9NfcVhYLMFDL7gV7oBPon/EmMMGg2OvtQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-linux-x64-gnu": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-linux-x64-gnu/-/lightningcss-linux-x64-gnu-1.33.0.tgz",
++      "integrity": "sha512-ar+Ju7LmcN0Jo4FpL4hpFybwNG9/3A/Br5KW2n2jyODg3MEZXaDYADdemoNS+BDNfMgKvylJLj4S5tyRActuAg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-linux-x64-musl": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-linux-x64-musl/-/lightningcss-linux-x64-musl-1.33.0.tgz",
++      "integrity": "sha512-RYiYbkokw0trfKqqzfF55lginwEPrD3OJDfTuJzFs1MK6iFnDenaz1fqLLtX4ITG3OktJQXOeTaw1awrBAlZPw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-win32-arm64-msvc": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-win32-arm64-msvc/-/lightningcss-win32-arm64-msvc-1.33.0.tgz",
++      "integrity": "sha512-1K+MPfLSFVpphzpdbfkhlWk6wBrTObBzS2T6db10PNOZgR9GoVsAWzwNyuhUYYbTp23j+4RrncfujZ4uAzXvwA==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/lightningcss-win32-x64-msvc": {
++      "version": "1.33.0",
++      "resolved": "https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz",
++      "integrity": "sha512-OlEICDx/Xl0FqSp4bry8zFnCvGpig3Gl4gCquvYwHuqJKEC1+n9NgDniFvqHGmMv1ZkqDJrDqKKSykTDX+ehuA==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MPL-2.0",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/parcel"
++      }
++    },
++    "node_modules/vite/node_modules/picomatch": {
++      "version": "4.0.7",
++      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.7.tgz",
++      "integrity": "sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=12"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/jonschlinkert"
++      }
++    },
++    "node_modules/vite/node_modules/postcss": {
++      "version": "8.5.32",
++      "resolved": "https://registry.npmjs.org/postcss/-/postcss-8.5.32.tgz",
++      "integrity": "sha512-LJlKCCAUFKOuZxipUdYw1NzIITEsPcgyOG9LkvRJvuKj/bRzbuRY0ARXvL0pWGpsZvn8jku+LMep2eU0seHp8g==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/postcss/"
++        },
++        {
++          "type": "tidelift",
++          "url": "https://tidelift.com/funding/github/npm/postcss"
++        },
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/ai"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "nanoid": "^3.3.20",
++        "picocolors": "^1.1.1",
++        "source-map-js": "^1.2.2"
++      },
++      "engines": {
++        "node": "^10 || ^12 || >=14"
++      }
++    },
++    "node_modules/vitest": {
++      "version": "4.1.12",
++      "resolved": "https://registry.npmjs.org/vitest/-/vitest-4.1.12.tgz",
++      "integrity": "sha512-5eWdz2yb3ajxWF3C8C4TjkXl7FGm3n2E/VlazALrQHzK7nYMSGFnCZto0bbPNl77AwkOZVLk0YnBAejUu0NiWA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@vitest/expect": "4.1.12",
++        "@vitest/mocker": "4.1.12",
++        "@vitest/pretty-format": "4.1.12",
++        "@vitest/runner": "4.1.12",
++        "@vitest/snapshot": "4.1.12",
++        "@vitest/spy": "4.1.12",
++        "@vitest/utils": "4.1.12",
++        "es-module-lexer": "^2.0.0",
++        "expect-type": "^1.3.0",
++        "magic-string": "^0.30.21",
++        "obug": "^2.1.1",
++        "pathe": "^2.0.3",
++        "picomatch": "^4.0.3",
++        "std-env": "^4.0.0-rc.1",
++        "tinybench": "^2.9.0",
++        "tinyexec": "^1.0.2",
++        "tinyglobby": "^0.2.15",
++        "tinyrainbow": "^3.1.0",
++        "vite": "^6.0.0 || ^7.0.0 || ^8.0.0",
++        "why-is-node-running": "^2.3.0"
++      },
++      "bin": {
++        "vitest": "vitest.mjs"
++      },
++      "engines": {
++        "node": "^20.0.0 || ^22.0.0 || >=24.0.0"
++      },
++      "funding": {
++        "url": "https://opencollective.com/vitest"
++      },
++      "peerDependencies": {
++        "@edge-runtime/vm": "*",
++        "@opentelemetry/api": "^1.9.0",
++        "@types/node": "^20.0.0 || ^22.0.0 || >=24.0.0",
++        "@vitest/browser-playwright": "4.1.12",
++        "@vitest/browser-preview": "4.1.12",
++        "@vitest/browser-webdriverio": "^4.1.11",
++        "@vitest/coverage-istanbul": "4.1.12",
++        "@vitest/coverage-v8": "4.1.12",
++        "@vitest/ui": "4.1.12",
++        "happy-dom": "*",
++        "jsdom": "*",
++        "vite": "^6.0.0 || ^7.0.0 || ^8.0.0"
++      },
++      "peerDependenciesMeta": {
++        "@edge-runtime/vm": {
++          "optional": true
++        },
++        "@opentelemetry/api": {
++          "optional": true
++        },
++        "@types/node": {
++          "optional": true
++        },
++        "@vitest/browser-playwright": {
++          "optional": true
++        },
++        "@vitest/browser-preview": {
++          "optional": true
++        },
++        "@vitest/browser-webdriverio": {
++          "optional": true
++        },
++        "@vitest/coverage-istanbul": {
++          "optional": true
++        },
++        "@vitest/coverage-v8": {
++          "optional": true
++        },
++        "@vitest/ui": {
++          "optional": true
++        },
++        "happy-dom": {
++          "optional": true
++        },
++        "jsdom": {
++          "optional": true
++        },
++        "vite": {
++          "optional": false
++        }
++      }
++    },
++    "node_modules/vitest/node_modules/picomatch": {
++      "version": "4.0.7",
++      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.7.tgz",
++      "integrity": "sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=12"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/jonschlinkert"
++      }
++    },
++    "node_modules/vitest/node_modules/std-env": {
++      "version": "4.3.0",
++      "resolved": "https://registry.npmjs.org/std-env/-/std-env-4.3.0.tgz",
++      "integrity": "sha512-OtU/EgQ1kIm5KwqQpBC6ZEMXrZRui11w8zgfTWp8cdO9B8OaPsbA8bTHO2P+HNo1VlUTGMVBwPhydu6poeXiag==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/which": {
+       "version": "2.0.2",
+       "resolved": "https://registry.npmjs.org/which/-/which-2.0.2.tgz",
+@@ -9029,6 +9946,23 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/why-is-node-running": {
++      "version": "2.3.0",
++      "resolved": "https://registry.npmjs.org/why-is-node-running/-/why-is-node-running-2.3.0.tgz",
++      "integrity": "sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "siginfo": "^2.0.0",
++        "stackback": "0.0.2"
++      },
++      "bin": {
++        "why-is-node-running": "cli.js"
++      },
++      "engines": {
++        "node": ">=8"
++      }
++    },
+     "node_modules/word-wrap": {
+       "version": "1.2.5",
+       "resolved": "https://registry.npmjs.org/word-wrap/-/word-wrap-1.2.5.tgz",
+diff --git a/package.json b/package.json
+index d5ababa..af9d03c 100644
+--- a/package.json
++++ b/package.json
+@@ -7,7 +7,10 @@
+     "build": "next build",
+     "start": "next start",
+     "lint": "eslint",
+-    "postinstall": "prisma generate"
++    "postinstall": "prisma generate",
++    "test": "vitest run",
++    "test:watch": "vitest",
++    "test:integration": "vitest run --config vitest.integration.config.mts"
+   },
+   "dependencies": {
+     "@prisma/adapter-pg": "^7.10.1",
+@@ -31,6 +34,7 @@
+     "prisma": "^7.10.1",
+     "tailwindcss": "^4",
+     "tsx": "^4.23.15",
+-    "typescript": "^5"
++    "typescript": "^5",
++    "vitest": "^4.1.12"
+   }
+ }
+diff --git a/prisma/migrations/20261028090000_add_assignment_driver_snapshot/migration.sql b/prisma/migrations/20261028090000_add_assignment_driver_snapshot/migration.sql
+new file mode 100644
+index 0000000..d81bb73
+--- /dev/null
++++ b/prisma/migrations/20261028090000_add_assignment_driver_snapshot/migration.sql
+@@ -0,0 +1,14 @@
++-- AlterTable
++ALTER TABLE "TransportAssignment" ADD COLUMN     "driverId" TEXT;
++
++-- Reprise de l'existant : chaque ancien transport garde le chauffeur actuel de son vehicule.
++UPDATE "TransportAssignment" AS ta
++SET "driverId" = v."driverId"
++FROM "Vehicle" AS v
++WHERE ta."vehicleId" = v."id";
++
++-- CreateIndex
++CREATE INDEX "TransportAssignment_driverId_idx" ON "TransportAssignment"("driverId");
++
++-- AddForeignKey
++ALTER TABLE "TransportAssignment" ADD CONSTRAINT "TransportAssignment_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+index cc53fe5..2f3dd03 100644
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -84,7 +84,8 @@ model Driver {
+   createdAt     DateTime @default(now())
+   updatedAt     DateTime @updatedAt
+ 
+-  vehicles Vehicle[]
++  vehicles    Vehicle[]
++  assignments TransportAssignment[] @relation("AssignmentDriver")
+ 
+   supervisorId String?
+   supervisor   Supervisor? @relation("SupervisorDrivers", fields: [supervisorId], references: [id], onDelete: Restrict)
+@@ -150,9 +151,14 @@ model TransportAssignment {
+ 
+   amountDue Decimal? @db.Decimal(14, 2)
+ 
++  // Chauffeur au moment du transport : conserve l'historique si le vehicule change de chauffeur.
++  driverId String?
++  driver   Driver? @relation("AssignmentDriver", fields: [driverId], references: [id], onDelete: Restrict)
++
+   @@index([locationId])
+   @@index([supervisorId])
+   @@index([vehicleId])
++  @@index([driverId])
+   @@index([assignedAt])
+   @@index([status])
+ }
+diff --git a/tests/api/access-control.test.ts b/tests/api/access-control.test.ts
+new file mode 100644
+index 0000000..fd827ac
+--- /dev/null
++++ b/tests/api/access-control.test.ts
+@@ -0,0 +1,115 @@
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import { resetFakePrisma, type FakePrisma } from "../helpers/fake-prisma";
++import { ADMIN, SUPERVISOR, jsonRequest, params } from "../helpers/http";
++
++import { POST as driversPost } from "@/app/api/drivers/route";
++import { PUT as driversPut, PATCH as driversPatch } from "@/app/api/drivers/[id]/route";
++import { POST as vehiclesPost } from "@/app/api/vehicles/route";
++import { PUT as vehiclesPut, PATCH as vehiclesPatch } from "@/app/api/vehicles/[id]/route";
++import { POST as transportsPost } from "@/app/api/transports/route";
++import { PATCH as transportsPatch } from "@/app/api/transports/[id]/route";
++import { POST as paymentsPost } from "@/app/api/payments/route";
++import { POST as locationsPost } from "@/app/api/locations/route";
++import { POST as supervisorsPost } from "@/app/api/supervisors/route";
++import { PATCH as supervisorsPatch } from "@/app/api/supervisors/[id]/route";
++import { POST as supervisorsPassword } from "@/app/api/supervisors/[id]/password/route";
++import { GET as dbTest } from "@/app/api/db-test/route";
++
++vi.mock("@/lib/prisma", async () => {
++  const { createFakePrisma } = await import("../helpers/fake-prisma");
++  return { prisma: createFakePrisma() };
++});
++vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn() }));
++
++const db = prisma as unknown as FakePrisma;
++
++type Call = () => Promise<Response>;
++
++const body = { x: "y" };
++const post = (url: string) => jsonRequest(url, "POST", body);
++const put = (url: string) => jsonRequest(url, "PUT", body);
++const patch = (url: string) => jsonRequest(url, "PATCH", body);
++
++// Routes réservées aux régisseurs : formulaires opérationnels.
++const supervisorRoutes: Array<[string, Call]> = [
++  ["POST /api/drivers", () => driversPost(post("/api/drivers"))],
++  ["PUT /api/drivers/[id]", () => driversPut(put("/api/drivers/x"), params())],
++  ["PATCH /api/drivers/[id]", () => driversPatch(patch("/api/drivers/x"), params())],
++  ["POST /api/vehicles", () => vehiclesPost(post("/api/vehicles"))],
++  ["PUT /api/vehicles/[id]", () => vehiclesPut(put("/api/vehicles/x"), params())],
++  ["PATCH /api/vehicles/[id]", () => vehiclesPatch(patch("/api/vehicles/x"), params())],
++  ["POST /api/transports", () => transportsPost(post("/api/transports"))],
++  ["PATCH /api/transports/[id]", () => transportsPatch(patch("/api/transports/x"), params())],
++  ["POST /api/payments", () => paymentsPost(post("/api/payments"))],
++];
++
++// Routes réservées à l'administrateur : lieux et comptes.
++const adminRoutes: Array<[string, Call]> = [
++  ["POST /api/locations", () => locationsPost(post("/api/locations"))],
++  ["POST /api/supervisors", () => supervisorsPost(post("/api/supervisors"))],
++  ["PATCH /api/supervisors/[id]", () => supervisorsPatch(patch("/api/supervisors/x"), params())],
++  ["POST /api/supervisors/[id]/password", () => supervisorsPassword(post("/api/supervisors/x/password"), params())],
++  ["GET /api/db-test", () => dbTest()],
++];
++
++// Aucune de ces routes ne doit toucher à la base avant d'avoir vérifié l'identité et le rôle.
++function expectDatabaseUntouched() {
++  expect(db.$transaction).not.toHaveBeenCalled();
++  for (const [name, model] of Object.entries(db)) {
++    if (name.startsWith("$")) continue;
++    for (const fn of Object.values(model as Record<string, { mock: { calls: unknown[] } }>)) {
++      expect(fn.mock.calls).toHaveLength(0);
++    }
++  }
++}
++
++beforeEach(() => {
++  resetFakePrisma(db);
++});
++
++describe("utilisateur non connecté : toute l'API est fermée", () => {
++  it.each([...supervisorRoutes, ...adminRoutes])("%s → 401", async (_name, call) => {
++    vi.mocked(getCurrentUser).mockResolvedValue(null);
++    const response = await call();
++
++    expect(response.status).toBe(401);
++    expectDatabaseUntouched();
++  });
++});
++
++describe("l'administrateur n'accède pas aux formulaires opérationnels", () => {
++  it.each(supervisorRoutes)("%s → 403", async (_name, call) => {
++    vi.mocked(getCurrentUser).mockResolvedValue(ADMIN);
++    const response = await call();
++
++    expect(response.status).toBe(403);
++    expectDatabaseUntouched();
++  });
++});
++
++describe("un régisseur n'accède pas à l'administration", () => {
++  it.each(adminRoutes)("%s → 403", async (_name, call) => {
++    vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
++    const response = await call();
++
++    expect(response.status).toBe(403);
++    expectDatabaseUntouched();
++  });
++});
++
++describe("rôles non prévus (CASHIER, MANAGER, ANALYST)", () => {
++  it.each(["CASHIER", "MANAGER", "ANALYST"] as const)(
++    "%s est refusé partout",
++    async (role) => {
++      vi.mocked(getCurrentUser).mockResolvedValue({ ...SUPERVISOR, role });
++
++      for (const [, call] of [...supervisorRoutes, ...adminRoutes]) {
++        const response = await call();
++        expect(response.status).toBe(403);
++      }
++      expectDatabaseUntouched();
++    },
++  );
++});
+diff --git a/tests/api/login.test.ts b/tests/api/login.test.ts
+new file mode 100644
+index 0000000..2a7d143
+--- /dev/null
++++ b/tests/api/login.test.ts
+@@ -0,0 +1,136 @@
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import bcrypt from "bcryptjs";
++import { POST as login } from "@/app/api/auth/login/route";
++import { POST as logout } from "@/app/api/auth/logout/route";
++import { prisma } from "@/lib/prisma";
++import { createSession, endSession } from "@/lib/auth";
++import { resetFakePrisma, type FakePrisma } from "../helpers/fake-prisma";
++import { jsonRequest, read } from "../helpers/http";
++
++vi.mock("@/lib/prisma", async () => {
++  const { createFakePrisma } = await import("../helpers/fake-prisma");
++  return { prisma: createFakePrisma() };
++});
++vi.mock("@/lib/auth", () => ({
++  createSession: vi.fn(),
++  endSession: vi.fn(),
++}));
++
++const db = prisma as unknown as FakePrisma;
++
++const PASSWORD = "Mot-de-passe-correct-1";
++// Coût 4 : suffisant pour un test, bien plus rapide que le coût 12 de production.
++const hash = bcrypt.hashSync(PASSWORD, 4);
++
++function user(overrides: Record<string, unknown> = {}) {
++  return {
++    id: "u1",
++    firstName: "Rina",
++    lastName: "R",
++    email: "rina@test.mg",
++    passwordHash: hash,
++    role: "SUPERVISOR",
++    isActive: true,
++    sessionVersion: 3,
++    ...overrides,
++  };
++}
++
++function attempt(email: string, password: string) {
++  return login(jsonRequest("/api/auth/login", "POST", { email, password }));
++}
++
++beforeEach(() => {
++  resetFakePrisma(db);
++  vi.mocked(createSession).mockReset();
++  vi.mocked(endSession).mockReset();
++  db.loginFailure.count.mockResolvedValue(0);
++});
++
++describe("connexion réussie", () => {
++  it("ouvre une session avec la version de session actuelle et efface les échecs", async () => {
++    db.user.findUnique.mockResolvedValue(user());
++    const { status, body } = await read(await attempt("Rina@Test.mg ", PASSWORD));
++
++    expect(status).toBe(200);
++    expect(createSession).toHaveBeenCalledWith({ id: "u1", sessionVersion: 3 });
++    expect(db.user.findUnique.mock.calls[0][0].where).toEqual({ email: "rina@test.mg" });
++    expect(db.loginFailure.deleteMany).toHaveBeenCalled();
++    expect(JSON.stringify(body)).not.toContain("passwordHash");
++  });
++});
++
++describe("erreurs de connexion", () => {
++  it("refuse un mauvais mot de passe et enregistre l'échec", async () => {
++    db.user.findUnique.mockResolvedValue(user());
++    const { status, body } = await read(await attempt("rina@test.mg", "mauvais-mot-de-passe"));
++
++    expect(status).toBe(401);
++    expect(body.message).toBe("Email ou mot de passe incorrect.");
++    expect(createSession).not.toHaveBeenCalled();
++    expect(db.loginFailure.create).toHaveBeenCalledTimes(1);
++  });
++
++  it("répond de la même façon pour un email inconnu (pas de fuite d'information)", async () => {
++    db.user.findUnique.mockResolvedValue(null);
++    const unknown = await read(await attempt("inconnu@test.mg", PASSWORD));
++
++    db.user.findUnique.mockResolvedValue(user());
++    const wrong = await read(await attempt("rina@test.mg", "mauvais-mot-de-passe"));
++
++    expect(unknown.status).toBe(401);
++    expect(unknown).toEqual(wrong);
++  });
++
++  it("refuse un compte désactivé même avec le bon mot de passe", async () => {
++    db.user.findUnique.mockResolvedValue(user({ isActive: false }));
++    const { status } = await read(await attempt("rina@test.mg", PASSWORD));
++
++    expect(status).toBe(401);
++    expect(createSession).not.toHaveBeenCalled();
++  });
++
++  it("refuse des champs vides ou trop longs", async () => {
++    expect((await read(await attempt("", PASSWORD))).status).toBe(400);
++    expect((await read(await attempt("rina@test.mg", ""))).status).toBe(400);
++    expect((await read(await attempt("rina@test.mg", "x".repeat(201)))).status).toBe(400);
++    expect(db.user.findUnique).not.toHaveBeenCalled();
++  });
++});
++
++describe("limitation des tentatives", () => {
++  it("bloque un email après 5 échecs, même avec le bon mot de passe", async () => {
++    db.loginFailure.count.mockResolvedValueOnce(5).mockResolvedValueOnce(0);
++    db.user.findUnique.mockResolvedValue(user());
++    const response = await attempt("rina@test.mg", PASSWORD);
++
++    expect(response.status).toBe(429);
++    expect(response.headers.get("Retry-After")).toBe("900");
++    expect(db.user.findUnique).not.toHaveBeenCalled();
++    expect(createSession).not.toHaveBeenCalled();
++  });
++
++  it("bloque une adresse IP après 20 échecs", async () => {
++    db.loginFailure.count.mockResolvedValueOnce(0).mockResolvedValueOnce(20);
++    const response = await attempt("autre@test.mg", PASSWORD);
++
++    expect(response.status).toBe(429);
++    expect(db.user.findUnique).not.toHaveBeenCalled();
++  });
++});
++
++describe("déconnexion", () => {
++  it("invalide la session côté serveur", async () => {
++    const { status } = await read(await logout());
++
++    expect(status).toBe(200);
++    expect(endSession).toHaveBeenCalledTimes(1);
++  });
++
++  it("répond quand même si l'invalidation échoue (le cookie est supprimé)", async () => {
++    vi.mocked(endSession).mockRejectedValue(new Error("base indisponible"));
++    vi.spyOn(console, "error").mockImplementation(() => {});
++
++    expect((await read(await logout())).status).toBe(200);
++  });
++});
+diff --git a/tests/api/payments.test.ts b/tests/api/payments.test.ts
+new file mode 100644
+index 0000000..6042ba0
+--- /dev/null
++++ b/tests/api/payments.test.ts
+@@ -0,0 +1,216 @@
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import { POST } from "@/app/api/payments/route";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import { auditEntries, resetFakePrisma, type FakePrisma } from "../helpers/fake-prisma";
++import { ADMIN, SUPERVISOR, jsonRequest, read } from "../helpers/http";
++
++vi.mock("@/lib/prisma", async () => {
++  const { createFakePrisma } = await import("../helpers/fake-prisma");
++  return { prisma: createFakePrisma() };
++});
++vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn() }));
++
++const db = prisma as unknown as FakePrisma;
++
++function pay(body: Record<string, unknown>) {
++  return POST(jsonRequest("/api/payments", "POST", { assignmentId: "t1", ...body }));
++}
++
++// Transport de base : 40 000 MGA dus, non payé, non annulé.
++function givenTransport(overrides: Record<string, unknown> = {}) {
++  db.transportAssignment.findFirst.mockResolvedValue({
++    id: "t1",
++    amountDue: "40000.00",
++    payment: null,
++    ...overrides,
++  });
++}
++
++beforeEach(() => {
++  resetFakePrisma(db);
++  vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
++  db.supervisor.findUnique.mockResolvedValue({ id: "sup-1", locationId: "loc-1" });
++  db.payment.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
++    id: "pay-1",
++    ...data,
++  }));
++});
++
++describe("accès", () => {
++  it("refuse un utilisateur non connecté", async () => {
++    vi.mocked(getCurrentUser).mockResolvedValue(null);
++    const { status } = await read(await pay({ amountReceived: "40000", paymentMethod: "CASH" }));
++    expect(status).toBe(401);
++    expect(db.payment.create).not.toHaveBeenCalled();
++  });
++
++  it("refuse l'administrateur (formulaire réservé aux régisseurs)", async () => {
++    vi.mocked(getCurrentUser).mockResolvedValue(ADMIN);
++    const { status } = await read(await pay({ amountReceived: "40000", paymentMethod: "CASH" }));
++    expect(status).toBe(403);
++    expect(db.payment.create).not.toHaveBeenCalled();
++  });
++
++  it("refuse un régisseur sans lieu affecté", async () => {
++    db.supervisor.findUnique.mockResolvedValue({ id: "sup-1", locationId: null });
++    const { status } = await read(await pay({ amountReceived: "40000", paymentMethod: "CASH" }));
++    expect(status).toBe(403);
++  });
++});
++
++describe("paiement en espèces", () => {
++  it("calcule la monnaie à rendre quand le montant reçu dépasse le montant dû", async () => {
++    givenTransport();
++    const { status, body } = await read(
++      await pay({ amountReceived: "50000", paymentMethod: "CASH" }),
++    );
++
++    expect(status).toBe(201);
++    expect(db.payment.create.mock.calls[0][0].data).toMatchObject({
++      amountDue: "40000.00",
++      amountReceived: "50000.00",
++      changeReturned: "10000.00",
++    });
++    expect((body.payment as Record<string, string>).changeReturned).toBe("10000.00");
++  });
++
++  it("accepte le montant exact sans monnaie", async () => {
++    givenTransport();
++    const { status } = await read(await pay({ amountReceived: "40000", paymentMethod: "CASH" }));
++    expect(status).toBe(201);
++    expect(db.payment.create.mock.calls[0][0].data.changeReturned).toBe("0.00");
++  });
++
++  it("refuse un montant reçu insuffisant (aucun paiement partiel)", async () => {
++    givenTransport();
++    const { status } = await read(await pay({ amountReceived: "39999.99", paymentMethod: "CASH" }));
++    expect(status).toBe(400);
++    expect(db.payment.create).not.toHaveBeenCalled();
++  });
++});
++
++describe("paiement non liquide", () => {
++  it("exige une référence", async () => {
++    givenTransport();
++    const { status } = await read(
++      await pay({ amountReceived: "40000", paymentMethod: "BANK_TRANSFER" }),
++    );
++    expect(status).toBe(400);
++    expect(db.payment.create).not.toHaveBeenCalled();
++  });
++
++  it("exige le montant exact, même supérieur", async () => {
++    givenTransport();
++    const { status } = await read(
++      await pay({ amountReceived: "40001", paymentMethod: "MOBILE_MONEY", reference: "MM-1" }),
++    );
++    expect(status).toBe(400);
++    expect(db.payment.create).not.toHaveBeenCalled();
++  });
++
++  it("refuse un montant incomplet", async () => {
++    givenTransport();
++    const { status } = await read(
++      await pay({ amountReceived: "30000", paymentMethod: "CHECK", reference: "CHQ-9" }),
++    );
++    expect(status).toBe(400);
++    expect(db.payment.create).not.toHaveBeenCalled();
++  });
++
++  it("enregistre un paiement exact avec référence", async () => {
++    givenTransport();
++    const { status } = await read(
++      await pay({ amountReceived: "40000", paymentMethod: "BANK_TRANSFER", reference: "VIR-1" }),
++    );
++    expect(status).toBe(201);
++    expect(db.payment.create.mock.calls[0][0].data).toMatchObject({
++      paymentMethod: "BANK_TRANSFER",
++      reference: "VIR-1",
++      changeReturned: "0.00",
++    });
++  });
++});
++
++describe("règles du transport", () => {
++  it("ignore tout montant dû envoyé par le client : la base fait foi", async () => {
++    givenTransport();
++    await pay({ amountReceived: "40000", paymentMethod: "CASH", amountDue: "1" });
++    expect(db.payment.create.mock.calls[0][0].data.amountDue).toBe("40000.00");
++  });
++
++  it("refuse un transport annulé ou hors du lieu (introuvable)", async () => {
++    db.transportAssignment.findFirst.mockResolvedValue(null);
++    const { status } = await read(await pay({ amountReceived: "40000", paymentMethod: "CASH" }));
++    expect(status).toBe(404);
++    // la recherche exclut les transports annulés et ceux d'un autre lieu
++    expect(db.transportAssignment.findFirst.mock.calls[0][0].where).toMatchObject({
++      locationId: "loc-1",
++      status: { not: "CANCELLED" },
++    });
++  });
++
++  it("refuse un transport sans montant officiel", async () => {
++    givenTransport({ amountDue: null });
++    const { status } = await read(await pay({ amountReceived: "40000", paymentMethod: "CASH" }));
++    expect(status).toBe(400);
++  });
++
++  it("refuse un second paiement", async () => {
++    givenTransport({ payment: { id: "pay-0" } });
++    const { status } = await read(await pay({ amountReceived: "40000", paymentMethod: "CASH" }));
++    expect(status).toBe(409);
++    expect(db.payment.create).not.toHaveBeenCalled();
++  });
++
++  it("convertit un paiement concurrent (contrainte unique) en refus 409", async () => {
++    givenTransport();
++    db.payment.create.mockRejectedValue(Object.assign(new Error("unique"), { code: "P2002" }));
++    const { status } = await read(await pay({ amountReceived: "40000", paymentMethod: "CASH" }));
++    expect(status).toBe(409);
++  });
++
++  it("verrouille la ligne du transport avant de décider", async () => {
++    givenTransport();
++    await pay({ amountReceived: "40000", paymentMethod: "CASH" });
++    expect(db.$queryRaw).toHaveBeenCalledTimes(1);
++  });
++});
++
++describe("validation des champs", () => {
++  it.each([
++    ["montant négatif", { amountReceived: "-5", paymentMethod: "CASH" }],
++    ["montant à 3 décimales", { amountReceived: "10.123", paymentMethod: "CASH" }],
++    ["montant non numérique", { amountReceived: "abc", paymentMethod: "CASH" }],
++    ["montant nul", { amountReceived: "0", paymentMethod: "CASH" }],
++    ["mode inconnu", { amountReceived: "40000", paymentMethod: "BITCOIN" }],
++    ["montant manquant", { paymentMethod: "CASH" }],
++  ])("refuse : %s", async (_label, body) => {
++    givenTransport();
++    const { status } = await read(await pay(body));
++    expect(status).toBe(400);
++    expect(db.payment.create).not.toHaveBeenCalled();
++  });
++});
++
++describe("traçabilité", () => {
++  it("journalise le montant, le mode et la référence du paiement", async () => {
++    givenTransport();
++    await pay({ amountReceived: "50000", paymentMethod: "CASH" });
++
++    const [entry] = auditEntries(db);
++    expect(entry).toMatchObject({
++      userId: SUPERVISOR.id,
++      action: "CREATE",
++      entityType: "Payment",
++      entityId: "pay-1",
++    });
++    expect(entry.details).toMatchObject({
++      assignmentId: "t1",
++      paymentMethod: "CASH",
++      amountDue: "40000.00",
++      amountReceived: "50000.00",
++      changeReturned: "10000.00",
++    });
++  });
++});
+diff --git a/tests/api/supervisors-admin.test.ts b/tests/api/supervisors-admin.test.ts
+new file mode 100644
+index 0000000..49f0f2d
+--- /dev/null
++++ b/tests/api/supervisors-admin.test.ts
+@@ -0,0 +1,176 @@
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import bcrypt from "bcryptjs";
++import { PATCH } from "@/app/api/supervisors/[id]/route";
++import { POST as resetPassword } from "@/app/api/supervisors/[id]/password/route";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import { auditEntries, resetFakePrisma, type FakePrisma } from "../helpers/fake-prisma";
++import { ADMIN, SUPERVISOR, jsonRequest, params, read } from "../helpers/http";
++
++vi.mock("@/lib/prisma", async () => {
++  const { createFakePrisma } = await import("../helpers/fake-prisma");
++  return { prisma: createFakePrisma() };
++});
++vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn() }));
++
++const db = prisma as unknown as FakePrisma;
++
++function givenSupervisor(isActive: boolean) {
++  db.supervisor.findUnique.mockResolvedValue({
++    id: "sup-1",
++    userId: "user-sup-1",
++    user: { email: "rina@test.mg", isActive },
++  });
++}
++
++beforeEach(() => {
++  resetFakePrisma(db);
++  vi.mocked(getCurrentUser).mockResolvedValue(ADMIN);
++});
++
++describe("désactivation / réactivation du compte", () => {
++  const patch = (body: unknown) =>
++    PATCH(jsonRequest("/api/supervisors/sup-1", "PATCH", body), params("sup-1"));
++
++  it("désactive le compte, ferme ses sessions et journalise", async () => {
++    givenSupervisor(true);
++    const { status } = await read(await patch({ isActive: false }));
++
++    expect(status).toBe(200);
++    expect(db.user.update.mock.calls[0][0]).toMatchObject({
++      where: { id: "user-sup-1" },
++      data: { isActive: false, sessionVersion: { increment: 1 } },
++    });
++    expect(auditEntries(db)[0]).toMatchObject({
++      userId: ADMIN.id,
++      action: "DEACTIVATE",
++      entityType: "Supervisor",
++      entityId: "sup-1",
++      details: { email: "rina@test.mg" },
++    });
++  });
++
++  it("réactive le compte sans toucher à la version de session", async () => {
++    givenSupervisor(false);
++    const { status } = await read(await patch({ isActive: true }));
++
++    expect(status).toBe(200);
++    expect(db.user.update.mock.calls[0][0].data).toEqual({ isActive: true });
++    expect(auditEntries(db)[0]).toMatchObject({ action: "ACTIVATE" });
++  });
++
++  it("refuse de désactiver un compte déjà inactif", async () => {
++    givenSupervisor(false);
++    expect((await read(await patch({ isActive: false }))).status).toBe(409);
++    expect(db.user.update).not.toHaveBeenCalled();
++  });
++
++  it("répond 404 pour un régisseur inconnu", async () => {
++    db.supervisor.findUnique.mockResolvedValue(null);
++    expect((await read(await patch({ isActive: false }))).status).toBe(404);
++  });
++
++  it("refuse un statut qui n'est pas un booléen", async () => {
++    expect((await read(await patch({ isActive: "false" }))).status).toBe(400);
++  });
++
++  it("refuse de mélanger statut et changement de lieu", async () => {
++    expect((await read(await patch({ isActive: false, locationId: "loc-2" }))).status).toBe(400);
++    expect(db.user.update).not.toHaveBeenCalled();
++  });
++
++  it("refuse un régisseur et un utilisateur non connecté", async () => {
++    vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
++    expect((await read(await patch({ isActive: false }))).status).toBe(403);
++    vi.mocked(getCurrentUser).mockResolvedValue(null);
++    expect((await read(await patch({ isActive: false }))).status).toBe(401);
++    expect(db.user.update).not.toHaveBeenCalled();
++  });
++});
++
++describe("changement de lieu (non-régression)", () => {
++  it("garde le comportement existant : le lieu change et l'historique est conservé", async () => {
++    db.supervisor.findUnique.mockResolvedValue({
++      id: "sup-1",
++      locationId: "loc-1",
++      location: "Tana",
++      user: { firstName: "R", lastName: "R", email: "rina@test.mg" },
++    });
++    db.location.findUnique.mockResolvedValue({ id: "loc-2", name: "Tamatave" });
++    db.supervisor.update.mockResolvedValue({ id: "sup-1", locationId: "loc-2" });
++
++    const { status } = await read(
++      await PATCH(jsonRequest("/api/supervisors/sup-1", "PATCH", { locationId: "loc-2" }), params("sup-1")),
++    );
++
++    expect(status).toBe(200);
++    expect(db.supervisor.update.mock.calls[0][0].data).toEqual({
++      locationId: "loc-2",
++      location: "Tamatave",
++    });
++    expect(auditEntries(db)[0]).toMatchObject({ action: "CHANGE_LOCATION" });
++    // aucun transport, véhicule ou chauffeur n'est déplacé
++    expect(db.transportAssignment.update).not.toHaveBeenCalled();
++    expect(db.vehicle.update).not.toHaveBeenCalled();
++    expect(db.driver.update).not.toHaveBeenCalled();
++  });
++});
++
++describe("réinitialisation du mot de passe", () => {
++  const reset = (body: unknown) =>
++    resetPassword(jsonRequest("/api/supervisors/sup-1/password", "POST", body), params("sup-1"));
++
++  beforeEach(() => givenSupervisor(true));
++
++  it("enregistre un hash bcrypt, ferme les sessions et lève le blocage de connexion", async () => {
++    const newPassword = "Nouveau-mot-de-passe-42";
++    const { status } = await read(await reset({ password: newPassword }));
++
++    expect(status).toBe(200);
++
++    const data = db.user.update.mock.calls[0][0].data as {
++      passwordHash: string;
++      sessionVersion: { increment: number };
++    };
++    expect(data.passwordHash).not.toBe(newPassword);
++    expect(await bcrypt.compare(newPassword, data.passwordHash)).toBe(true);
++    expect(data.sessionVersion).toEqual({ increment: 1 });
++    expect(db.loginFailure.deleteMany.mock.calls[0][0]).toEqual({
++      where: { email: "rina@test.mg" },
++    });
++  });
++
++  it("n'écrit jamais le mot de passe dans le journal d'audit", async () => {
++    const newPassword = "Nouveau-mot-de-passe-42";
++    await reset({ password: newPassword });
++
++    const [entry] = auditEntries(db);
++    expect(entry).toMatchObject({
++      userId: ADMIN.id,
++      action: "RESET_PASSWORD",
++      entityType: "Supervisor",
++      entityId: "sup-1",
++    });
++    expect(JSON.stringify(entry)).not.toContain(newPassword);
++  });
++
++  it("refuse un mot de passe trop court sans toucher au compte", async () => {
++    const { status } = await read(await reset({ password: "court" }));
++    expect(status).toBe(400);
++    expect(db.user.update).not.toHaveBeenCalled();
++  });
++
++  it("répond 404 pour un régisseur inconnu", async () => {
++    db.supervisor.findUnique.mockResolvedValue(null);
++    expect((await read(await reset({ password: "Nouveau-mot-de-passe-42" }))).status).toBe(404);
++    expect(db.user.update).not.toHaveBeenCalled();
++  });
++
++  it("est réservée à l'administrateur", async () => {
++    vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
++    expect((await read(await reset({ password: "Nouveau-mot-de-passe-42" }))).status).toBe(403);
++    vi.mocked(getCurrentUser).mockResolvedValue(null);
++    expect((await read(await reset({ password: "Nouveau-mot-de-passe-42" }))).status).toBe(401);
++    expect(db.user.update).not.toHaveBeenCalled();
++  });
++});
+diff --git a/tests/api/transports-status.test.ts b/tests/api/transports-status.test.ts
+new file mode 100644
+index 0000000..4ca8bbd
+--- /dev/null
++++ b/tests/api/transports-status.test.ts
+@@ -0,0 +1,164 @@
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import { PATCH } from "@/app/api/transports/[id]/route";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import { auditEntries, resetFakePrisma, type FakePrisma } from "../helpers/fake-prisma";
++import { ADMIN, SUPERVISOR, jsonRequest, params, read } from "../helpers/http";
++
++vi.mock("@/lib/prisma", async () => {
++  const { createFakePrisma } = await import("../helpers/fake-prisma");
++  return { prisma: createFakePrisma() };
++});
++vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn() }));
++
++const db = prisma as unknown as FakePrisma;
++
++function patch(body: unknown) {
++  return PATCH(jsonRequest("/api/transports/t1", "PATCH", body), params("t1"));
++}
++
++function givenTransport(status: string, extra: Record<string, unknown> = {}) {
++  db.transportAssignment.findFirst.mockResolvedValue({
++    id: "t1",
++    status,
++    amountDue: "40000.00",
++    payment: null,
++    ...extra,
++  });
++}
++
++beforeEach(() => {
++  resetFakePrisma(db);
++  vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
++  db.supervisor.findUnique.mockResolvedValue({ id: "sup-1", locationId: "loc-1" });
++  db.transportAssignment.update.mockImplementation(
++    async ({ data }: { data: Record<string, unknown> }) => ({ id: "t1", ...data }),
++  );
++});
++
++describe("accès", () => {
++  it("refuse un utilisateur non connecté", async () => {
++    vi.mocked(getCurrentUser).mockResolvedValue(null);
++    expect((await read(await patch({ status: "IN_PROGRESS" }))).status).toBe(401);
++  });
++
++  it("refuse l'administrateur", async () => {
++    vi.mocked(getCurrentUser).mockResolvedValue(ADMIN);
++    expect((await read(await patch({ status: "IN_PROGRESS" }))).status).toBe(403);
++    expect(db.transportAssignment.update).not.toHaveBeenCalled();
++  });
++
++  it("ne trouve pas un transport d'un autre lieu", async () => {
++    db.transportAssignment.findFirst.mockResolvedValue(null);
++    expect((await read(await patch({ status: "IN_PROGRESS" }))).status).toBe(404);
++    expect(db.transportAssignment.findFirst.mock.calls[0][0].where).toMatchObject({
++      id: "t1",
++      locationId: "loc-1",
++    });
++  });
++});
++
++describe("transitions autorisées", () => {
++  it.each([
++    ["PLANNED", "IN_PROGRESS"],
++    ["PLANNED", "CANCELLED"],
++    ["IN_PROGRESS", "COMPLETED"],
++    ["IN_PROGRESS", "CANCELLED"],
++  ])("%s → %s est accepté et journalisé", async (from, to) => {
++    givenTransport(from);
++    const { status } = await read(await patch({ status: to }));
++
++    expect(status).toBe(200);
++    expect(db.transportAssignment.update.mock.calls[0][0].data).toEqual({ status: to });
++    expect(auditEntries(db)[0]).toMatchObject({
++      action: "CHANGE_TRANSPORT_STATUS",
++      entityType: "TransportAssignment",
++      details: { previousStatus: from, newStatus: to },
++    });
++  });
++});
++
++describe("transitions interdites", () => {
++  it.each([
++    ["PLANNED", "COMPLETED"],
++    ["PLANNED", "PLANNED"],
++    ["IN_PROGRESS", "PLANNED"],
++    ["COMPLETED", "IN_PROGRESS"],
++    ["COMPLETED", "CANCELLED"],
++    ["CANCELLED", "PLANNED"],
++    ["CANCELLED", "IN_PROGRESS"],
++  ])("%s → %s est refusé", async (from, to) => {
++    givenTransport(from);
++    const { status } = await read(await patch({ status: to }));
++
++    expect(status).toBe(409);
++    expect(db.transportAssignment.update).not.toHaveBeenCalled();
++    expect(db.auditLog.create).not.toHaveBeenCalled();
++  });
++
++  it("refuse un statut inconnu", async () => {
++    givenTransport("PLANNED");
++    expect((await read(await patch({ status: "EXPLODED" }))).status).toBe(400);
++  });
++});
++
++describe("transport déjà payé", () => {
++  it.each(["PLANNED", "IN_PROGRESS"])(
++    "l'annulation ordinaire d'un transport %s payé est refusée",
++    async (from) => {
++      givenTransport(from, { payment: { id: "pay-1" } });
++      const { status, body } = await read(await patch({ status: "CANCELLED" }));
++
++      expect(status).toBe(409);
++      expect(String(body.message)).toMatch(/déjà payé/);
++      expect(db.transportAssignment.update).not.toHaveBeenCalled();
++    },
++  );
++
++  it("un transport payé peut quand même être terminé", async () => {
++    givenTransport("IN_PROGRESS", { payment: { id: "pay-1" } });
++    expect((await read(await patch({ status: "COMPLETED" }))).status).toBe(200);
++  });
++
++  it("verrouille la ligne avant de décider (course paiement / annulation)", async () => {
++    givenTransport("PLANNED");
++    await patch({ status: "CANCELLED" });
++    expect(db.$queryRaw).toHaveBeenCalledTimes(1);
++  });
++});
++
++describe("montant officiel", () => {
++  it("accepte de fixer un montant manquant, une seule fois", async () => {
++    givenTransport("PLANNED", { amountDue: null });
++    const { status } = await read(await patch({ amountDue: "25000.50" }));
++
++    expect(status).toBe(200);
++    expect(db.transportAssignment.update.mock.calls[0][0].data).toEqual({ amountDue: "25000.50" });
++    expect(auditEntries(db)[0]).toMatchObject({ action: "SET_TRANSPORT_AMOUNT" });
++  });
++
++  it("refuse de modifier un montant déjà fixé", async () => {
++    givenTransport("PLANNED");
++    expect((await read(await patch({ amountDue: "1000" }))).status).toBe(409);
++  });
++
++  it("refuse de modifier le montant après un paiement", async () => {
++    givenTransport("PLANNED", { amountDue: null, payment: { id: "pay-1" } });
++    expect((await read(await patch({ amountDue: "1000" }))).status).toBe(409);
++  });
++
++  it("refuse de fixer le montant d'un transport annulé", async () => {
++    givenTransport("CANCELLED", { amountDue: null });
++    expect((await read(await patch({ amountDue: "1000" }))).status).toBe(409);
++  });
++
++  it.each(["-1", "0", "abc", "10.999", ""])("refuse le montant invalide %j", async (amount) => {
++    givenTransport("PLANNED", { amountDue: null });
++    expect((await read(await patch({ amountDue: amount }))).status).toBe(400);
++  });
++
++  it("refuse d'envoyer un montant et un statut dans la même requête", async () => {
++    givenTransport("PLANNED", { amountDue: null });
++    expect((await read(await patch({ amountDue: "1000", status: "IN_PROGRESS" }))).status).toBe(400);
++  });
++});
+diff --git a/tests/api/vehicles-driver.test.ts b/tests/api/vehicles-driver.test.ts
+new file mode 100644
+index 0000000..38a1b96
+--- /dev/null
++++ b/tests/api/vehicles-driver.test.ts
+@@ -0,0 +1,160 @@
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import { PUT } from "@/app/api/vehicles/[id]/route";
++import { POST as createTransport } from "@/app/api/transports/route";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import { auditEntries, resetFakePrisma, type FakePrisma } from "../helpers/fake-prisma";
++import { ADMIN, SUPERVISOR, jsonRequest, params, read } from "../helpers/http";
++
++vi.mock("@/lib/prisma", async () => {
++  const { createFakePrisma } = await import("../helpers/fake-prisma");
++  return { prisma: createFakePrisma() };
++});
++vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn() }));
++
++const db = prisma as unknown as FakePrisma;
++
++const base = { vehicleType: "Camion", licensePlate: "1234 taa" };
++
++function put(body: Record<string, unknown>) {
++  return PUT(jsonRequest("/api/vehicles/v1", "PUT", { ...base, ...body }), params("v1"));
++}
++
++beforeEach(() => {
++  resetFakePrisma(db);
++  vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
++  db.supervisor.findUnique.mockResolvedValue({ id: "sup-1", locationId: "loc-1" });
++  db.vehicle.findFirst.mockResolvedValue({
++    id: "v1",
++    driverId: "d-old",
++    driver: { firstName: "Jean", lastName: "Rakoto" },
++  });
++  db.vehicle.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
++    id: "v1",
++    ...data,
++    driver: { firstName: "X", lastName: "Y" },
++  }));
++});
++
++describe("changement de chauffeur d'un véhicule", () => {
++  it("affecte un chauffeur actif du même lieu et journalise l'ancien et le nouveau", async () => {
++    db.driver.findFirst.mockResolvedValue({ id: "d-new", firstName: "Paul", lastName: "Rabe" });
++    const { status } = await read(await put({ driverId: "d-new" }));
++
++    expect(status).toBe(200);
++    expect(db.driver.findFirst.mock.calls[0][0].where).toEqual({
++      id: "d-new",
++      locationId: "loc-1",
++      isActive: true,
++    });
++    expect(db.vehicle.update.mock.calls[0][0].data).toMatchObject({
++      licensePlate: "1234 TAA",
++      driverId: "d-new",
++    });
++
++    const actions = auditEntries(db).map((entry) => entry.action);
++    expect(actions).toEqual(["UPDATE", "CHANGE_DRIVER"]);
++    expect(auditEntries(db)[1].details).toMatchObject({
++      previousDriverId: "d-old",
++      previousDriverName: "Jean Rakoto",
++      newDriverId: "d-new",
++      newDriverName: "Paul Rabe",
++      historyPreserved: true,
++    });
++  });
++
++  it("refuse un chauffeur inactif ou d'un autre lieu", async () => {
++    db.driver.findFirst.mockResolvedValue(null);
++    const { status } = await read(await put({ driverId: "d-inactif" }));
++
++    expect(status).toBe(403);
++    expect(db.vehicle.update).not.toHaveBeenCalled();
++    expect(db.auditLog.create).not.toHaveBeenCalled();
++  });
++
++  it("ne change rien quand on renvoie le chauffeur actuel (même s'il est devenu inactif)", async () => {
++    const { status } = await read(await put({ driverId: "d-old" }));
++
++    expect(status).toBe(200);
++    expect(db.driver.findFirst).not.toHaveBeenCalled();
++    expect(db.vehicle.update.mock.calls[0][0].data).not.toHaveProperty("driverId");
++    expect(auditEntries(db).map((entry) => entry.action)).toEqual(["UPDATE"]);
++  });
++
++  it("garde le chauffeur quand driverId est absent", async () => {
++    const { status } = await read(await put({}));
++
++    expect(status).toBe(200);
++    expect(db.vehicle.update.mock.calls[0][0].data).not.toHaveProperty("driverId");
++  });
++
++  it("ne trouve pas un véhicule d'un autre lieu", async () => {
++    db.vehicle.findFirst.mockResolvedValue(null);
++    expect((await read(await put({ driverId: "d-new" }))).status).toBe(404);
++    expect(db.vehicle.findFirst.mock.calls[0][0].where).toEqual({ id: "v1", locationId: "loc-1" });
++  });
++
++  it("garde le contrôle des immatriculations en double", async () => {
++    db.vehicle.update.mockRejectedValue(Object.assign(new Error("unique"), { code: "P2002" }));
++    expect((await read(await put({}))).status).toBe(409);
++  });
++
++  it("verrouille le véhicule pendant le changement", async () => {
++    await put({});
++    expect(db.$queryRaw).toHaveBeenCalledTimes(1);
++  });
++
++  it("refuse l'administrateur et l'utilisateur non connecté", async () => {
++    vi.mocked(getCurrentUser).mockResolvedValue(ADMIN);
++    expect((await read(await put({ driverId: "d-new" }))).status).toBe(403);
++    vi.mocked(getCurrentUser).mockResolvedValue(null);
++    expect((await read(await put({ driverId: "d-new" }))).status).toBe(401);
++    expect(db.vehicle.update).not.toHaveBeenCalled();
++  });
++});
++
++describe("historique des transports après un changement de chauffeur", () => {
++  const transportBody = {
++    productName: "Riz",
++    productType: "Céréale",
++    tonnage: "2.5",
++    amountDue: "40000",
++    vehicleId: "v1",
++  };
++
++  beforeEach(() => {
++    db.product.create.mockResolvedValue({ id: "p1" });
++  });
++
++  it("un nouveau transport mémorise le chauffeur du véhicule à cet instant", async () => {
++    db.vehicle.findFirst.mockResolvedValue({ id: "v1", driverId: "d-current" });
++    db.transportAssignment.create.mockResolvedValue({
++      id: "t1",
++      assignedAt: new Date(),
++      status: "PLANNED",
++      amountDue: "40000.00",
++      product: { name: "Riz", type: "Céréale", tonnage: "2.50" },
++      vehicle: { licensePlate: "1234 TAA" },
++    });
++
++    const { status } = await read(await createTransport(jsonRequest("/api/transports", "POST", transportBody)));
++
++    expect(status).toBe(201);
++    expect(db.transportAssignment.create.mock.calls[0][0].data).toMatchObject({
++      vehicleId: "v1",
++      driverId: "d-current",
++    });
++  });
++
++  it("refuse un véhicule inactif ou dont le chauffeur est inactif", async () => {
++    db.vehicle.findFirst.mockResolvedValue(null);
++    const { status } = await read(await createTransport(jsonRequest("/api/transports", "POST", transportBody)));
++
++    expect(status).toBe(403);
++    expect(db.vehicle.findFirst.mock.calls[0][0].where).toMatchObject({
++      isActive: true,
++      driver: { isActive: true },
++    });
++    expect(db.transportAssignment.create).not.toHaveBeenCalled();
++  });
++});
+diff --git a/tests/helpers/fake-prisma.ts b/tests/helpers/fake-prisma.ts
+new file mode 100644
+index 0000000..a3bdd69
+--- /dev/null
++++ b/tests/helpers/fake-prisma.ts
+@@ -0,0 +1,74 @@
++import { vi, type Mock } from "vitest";
++
++// Faux client Prisma pour tester les routes API sans base de données.
++// Les tests décrivent ce que la base « répond » ; on vérifie ensuite ce que la route a décidé.
++
++const MODELS = [
++  "user",
++  "supervisor",
++  "driver",
++  "vehicle",
++  "location",
++  "product",
++  "transportAssignment",
++  "payment",
++  "auditLog",
++  "loginFailure",
++] as const;
++
++const METHODS = [
++  "findUnique",
++  "findFirst",
++  "findMany",
++  "create",
++  "update",
++  "deleteMany",
++  "count",
++] as const;
++
++type ModelMock = Record<(typeof METHODS)[number], Mock>;
++
++export type FakePrisma = Record<(typeof MODELS)[number], ModelMock> & {
++  $transaction: Mock;
++  $queryRaw: Mock;
++};
++
++export function createFakePrisma(): FakePrisma {
++  const db = {} as FakePrisma;
++
++  for (const model of MODELS) {
++    db[model] = Object.fromEntries(
++      METHODS.map((method) => [method, vi.fn()]),
++    ) as ModelMock;
++  }
++
++  db.$queryRaw = vi.fn();
++  db.$transaction = vi.fn();
++  resetFakePrisma(db);
++  return db;
++}
++
++// Remet tous les mocks à zéro (appels et réponses) et réinstalle le comportement par défaut :
++// une transaction exécute simplement sa fonction avec le même faux client.
++export function resetFakePrisma(db: FakePrisma) {
++  for (const model of MODELS) {
++    for (const method of METHODS) db[model][method].mockReset();
++  }
++  db.$queryRaw.mockReset().mockResolvedValue([]);
++  db.$transaction
++    .mockReset()
++    .mockImplementation(async (callback: (tx: FakePrisma) => unknown) => callback(db));
++}
++
++// Les enregistrements d'audit créés pendant le test.
++export function auditEntries(db: FakePrisma): Array<{
++  userId: string;
++  action: string;
++  entityType: string;
++  entityId?: string;
++  details?: Record<string, unknown>;
++}> {
++  return db.auditLog.create.mock.calls.map(
++    (call) => (call[0] as { data: never }).data,
++  );
++}
+diff --git a/tests/helpers/http.ts b/tests/helpers/http.ts
+new file mode 100644
+index 0000000..28cf0a1
+--- /dev/null
++++ b/tests/helpers/http.ts
+@@ -0,0 +1,37 @@
++// Petits utilitaires pour appeler directement les handlers de route.
++
++export function jsonRequest(url: string, method: string, body?: unknown): Request {
++  return new Request(`http://localhost${url}`, {
++    method,
++    headers: { "Content-Type": "application/json" },
++    body: body === undefined ? undefined : JSON.stringify(body),
++  });
++}
++
++export function params(id = "id-1") {
++  return { params: Promise.resolve({ id }) };
++}
++
++export async function read(response: Response) {
++  return { status: response.status, body: (await response.json()) as Record<string, unknown> };
++}
++
++export const ADMIN = {
++  id: "admin-1",
++  firstName: "Ada",
++  lastName: "Admin",
++  email: "admin@test.mg",
++  role: "ADMIN" as const,
++  designation: null,
++  isActive: true,
++};
++
++export const SUPERVISOR = {
++  id: "user-sup-1",
++  firstName: "Rina",
++  lastName: "Regisseur",
++  email: "rina@test.mg",
++  role: "SUPERVISOR" as const,
++  designation: "Régisseur",
++  isActive: true,
++};
+diff --git a/tests/integration/setup.ts b/tests/integration/setup.ts
+new file mode 100644
+index 0000000..5feca28
+--- /dev/null
++++ b/tests/integration/setup.ts
+@@ -0,0 +1,98 @@
++import { prisma } from "@/lib/prisma";
++
++// Garde-fou : ces tests VIDENT les tables. Ils refusent de tourner hors d'une base « *_test ».
++export function assertTestDatabase() {
++  const url = process.env.TEST_DATABASE_URL;
++  if (!url) {
++    throw new Error(
++      "TEST_DATABASE_URL est obligatoire pour les tests d'intégration (base dédiée, nom finissant par _test).",
++    );
++  }
++  const name = new URL(url).pathname.replace(/^\//, "");
++  if (!name.endsWith("_test")) {
++    throw new Error(`Base « ${name} » refusée : le nom doit finir par _test pour éviter d'effacer de vraies données.`);
++  }
++}
++
++export async function resetDatabase() {
++  assertTestDatabase();
++  await prisma.$executeRawUnsafe(
++    `TRUNCATE "AuditLog","Payment","TransportAssignment","Product","Vehicle","Driver","Supervisor","LoginFailure","User","Location" RESTART IDENTITY CASCADE`,
++  );
++}
++
++// Jeu de données : deux lieux, un admin, deux régisseurs dans le lieu A, un dans le lieu B.
++export async function seed() {
++  const [locA, locB] = await Promise.all([
++    prisma.location.create({ data: { name: "Tana", normalizedName: "tana" } }),
++    prisma.location.create({ data: { name: "Tamatave", normalizedName: "tamatave" } }),
++  ]);
++
++  const admin = await prisma.user.create({
++    data: { firstName: "Ada", lastName: "Admin", email: "admin@test.mg", passwordHash: "x", role: "ADMIN" },
++  });
++
++  async function supervisor(email: string, nationalId: string, locationId: string, locationName: string) {
++    const user = await prisma.user.create({
++      data: { firstName: email.split("@")[0], lastName: "Test", email, passwordHash: "x", role: "SUPERVISOR" },
++    });
++    const profile = await prisma.supervisor.create({
++      data: { userId: user.id, nationalId, locationId, location: locationName },
++    });
++    return {
++      profile,
++      user: {
++        id: user.id,
++        firstName: user.firstName,
++        lastName: user.lastName,
++        email: user.email,
++        role: "SUPERVISOR" as const,
++        designation: null,
++        isActive: true,
++      },
++    };
++  }
++
++  const supA1 = await supervisor("a1@test.mg", "CIN-A1", locA.id, locA.name);
++  const supA2 = await supervisor("a2@test.mg", "CIN-A2", locA.id, locA.name);
++  const supB = await supervisor("b1@test.mg", "CIN-B1", locB.id, locB.name);
++
++  const driver = (n: number, locationId: string, supervisorId: string, isActive = true) =>
++    prisma.driver.create({
++      data: {
++        firstName: `Chauffeur${n}`,
++        lastName: "Test",
++        nationalId: `DRV-${n}`,
++        licenseNumber: `LIC-${n}`,
++        isActive,
++        locationId,
++        supervisorId,
++      },
++    });
++
++  const driver1 = await driver(1, locA.id, supA1.profile.id);
++  const driver2 = await driver(2, locA.id, supA1.profile.id);
++  const driverInactive = await driver(3, locA.id, supA1.profile.id, false);
++  const driverB = await driver(4, locB.id, supB.profile.id);
++
++  const vehicle = await prisma.vehicle.create({
++    data: {
++      vehicleType: "Camion",
++      licensePlate: "1000 AAA",
++      driverId: driver1.id,
++      locationId: locA.id,
++      supervisorId: supA1.profile.id,
++    },
++  });
++
++  return {
++    locA, locB,
++    admin: {
++      id: admin.id, firstName: admin.firstName, lastName: admin.lastName, email: admin.email,
++      role: "ADMIN" as const, designation: null, isActive: true,
++    },
++    supA1, supA2, supB,
++    driver1, driver2, driverInactive, driverB,
++    vehicle,
++  };
++}
+diff --git a/tests/integration/workflows.test.ts b/tests/integration/workflows.test.ts
+new file mode 100644
+index 0000000..53b95d4
+--- /dev/null
++++ b/tests/integration/workflows.test.ts
+@@ -0,0 +1,271 @@
++import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import { buildAuditWhere } from "@/lib/audit";
++import { POST as createTransport } from "@/app/api/transports/route";
++import { PATCH as patchTransport } from "@/app/api/transports/[id]/route";
++import { POST as createPayment } from "@/app/api/payments/route";
++import { PUT as updateVehicle } from "@/app/api/vehicles/[id]/route";
++import { PATCH as patchSupervisor } from "@/app/api/supervisors/[id]/route";
++import { POST as resetPassword } from "@/app/api/supervisors/[id]/password/route";
++import { assertTestDatabase, resetDatabase, seed } from "./setup";
++import { jsonRequest, params } from "../helpers/http";
++
++vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn() }));
++
++type World = Awaited<ReturnType<typeof seed>>;
++let w: World;
++
++const as = (user: Awaited<ReturnType<typeof getCurrentUser>>) =>
++  vi.mocked(getCurrentUser).mockResolvedValue(user);
++
++async function newTransport(user: World["supA1"]["user"], vehicleId: string, amountDue = "40000") {
++  as(user);
++  const response = await createTransport(
++    jsonRequest("/api/transports", "POST", {
++      productName: "Riz",
++      productType: "Céréale",
++      tonnage: "2.5",
++      amountDue,
++      vehicleId,
++    }),
++  );
++  expect(response.status).toBe(201);
++  return ((await response.json()) as { transport: { id: string } }).transport.id;
++}
++
++const pay = (assignmentId: string, body: Record<string, unknown> = {}) =>
++  createPayment(
++    jsonRequest("/api/payments", "POST", {
++      assignmentId,
++      paymentMethod: "CASH",
++      amountReceived: "40000",
++      ...body,
++    }),
++  );
++
++const setStatus = (id: string, status: string) =>
++  patchTransport(jsonRequest(`/api/transports/${id}`, "PATCH", { status }), params(id));
++
++beforeAll(() => assertTestDatabase());
++afterAll(() => prisma.$disconnect());
++
++beforeEach(async () => {
++  await resetDatabase();
++  w = await seed();
++});
++
++describe("historique après changement de chauffeur", () => {
++  it("les anciens transports gardent leur chauffeur, les nouveaux prennent le nouveau", async () => {
++    const oldTransport = await newTransport(w.supA1.user, w.vehicle.id);
++
++    as(w.supA1.user);
++    const response = await updateVehicle(
++      jsonRequest(`/api/vehicles/${w.vehicle.id}`, "PUT", {
++        vehicleType: "Camion",
++        licensePlate: "1000 AAA",
++        driverId: w.driver2.id,
++      }),
++      params(w.vehicle.id),
++    );
++    expect(response.status).toBe(200);
++
++    const newTransportId = await newTransport(w.supA1.user, w.vehicle.id);
++
++    const [oldRow, newRow, vehicle] = await Promise.all([
++      prisma.transportAssignment.findUniqueOrThrow({ where: { id: oldTransport } }),
++      prisma.transportAssignment.findUniqueOrThrow({ where: { id: newTransportId } }),
++      prisma.vehicle.findUniqueOrThrow({ where: { id: w.vehicle.id } }),
++    ]);
++
++    expect(vehicle.driverId).toBe(w.driver2.id);
++    expect(oldRow.driverId).toBe(w.driver1.id);
++    expect(newRow.driverId).toBe(w.driver2.id);
++
++    const log = await prisma.auditLog.findFirstOrThrow({ where: { action: "CHANGE_DRIVER" } });
++    expect(log.details).toMatchObject({ previousDriverId: w.driver1.id, newDriverId: w.driver2.id });
++  });
++
++  it("refuse un chauffeur inactif ou d'un autre lieu et ne change rien", async () => {
++    as(w.supA1.user);
++
++    for (const driverId of [w.driverInactive.id, w.driverB.id]) {
++      const response = await updateVehicle(
++        jsonRequest(`/api/vehicles/${w.vehicle.id}`, "PUT", {
++          vehicleType: "Camion",
++          licensePlate: "1000 AAA",
++          driverId,
++        }),
++        params(w.vehicle.id),
++      );
++      expect(response.status).toBe(403);
++    }
++
++    const vehicle = await prisma.vehicle.findUniqueOrThrow({ where: { id: w.vehicle.id } });
++    expect(vehicle.driverId).toBe(w.driver1.id);
++  });
++});
++
++describe("isolation des lieux", () => {
++  it("deux régisseurs du même lieu partagent les transports", async () => {
++    const id = await newTransport(w.supA1.user, w.vehicle.id);
++    as(w.supA2.user);
++    expect((await setStatus(id, "IN_PROGRESS")).status).toBe(200);
++  });
++
++  it("un régisseur d'un autre lieu ne peut ni modifier, ni payer, ni changer le véhicule", async () => {
++    const id = await newTransport(w.supA1.user, w.vehicle.id);
++    as(w.supB.user);
++
++    expect((await setStatus(id, "IN_PROGRESS")).status).toBe(404);
++    expect((await pay(id)).status).toBe(404);
++
++    const response = await updateVehicle(
++      jsonRequest(`/api/vehicles/${w.vehicle.id}`, "PUT", { vehicleType: "Pirate", licensePlate: "HACK" }),
++      params(w.vehicle.id),
++    );
++    expect(response.status).toBe(404);
++    expect((await prisma.vehicle.findUniqueOrThrow({ where: { id: w.vehicle.id } })).vehicleType).toBe("Camion");
++  });
++});
++
++describe("paiements et concurrence", () => {
++  it("deux paiements simultanés du même transport : un seul est enregistré", async () => {
++    const id = await newTransport(w.supA1.user, w.vehicle.id);
++    as(w.supA1.user);
++
++    const results = await Promise.all([pay(id), pay(id), pay(id)]);
++    const statuses = results.map((response) => response.status).sort();
++
++    expect(statuses).toEqual([201, 409, 409]);
++    expect(await prisma.payment.count({ where: { assignmentId: id } })).toBe(1);
++  });
++
++  it("paiement espèces avec monnaie rendue, audit complet", async () => {
++    const id = await newTransport(w.supA1.user, w.vehicle.id);
++    as(w.supA1.user);
++
++    const response = await pay(id, { amountReceived: "50000" });
++    expect(response.status).toBe(201);
++
++    const payment = await prisma.payment.findUniqueOrThrow({ where: { assignmentId: id } });
++    expect(String(payment.amountDue)).toBe("40000");
++    expect(String(payment.changeReturned)).toBe("10000");
++
++    const log = await prisma.auditLog.findFirstOrThrow({ where: { entityType: "Payment" } });
++    expect(log.details).toMatchObject({
++      paymentMethod: "CASH",
++      amountDue: "40000",
++      amountReceived: "50000",
++      changeReturned: "10000",
++    });
++  });
++
++  it("paiement et annulation simultanés : jamais un transport à la fois payé et annulé", async () => {
++    for (let round = 0; round < 8; round += 1) {
++      const id = await newTransport(w.supA1.user, w.vehicle.id);
++      as(w.supA1.user);
++
++      await Promise.all([pay(id), setStatus(id, "CANCELLED")]);
++
++      const row = await prisma.transportAssignment.findUniqueOrThrow({
++        where: { id },
++        include: { payment: true },
++      });
++      expect(row.status === "CANCELLED" && row.payment !== null).toBe(false);
++    }
++  });
++
++  it("un transport annulé ne peut plus être payé ; un transport payé ne peut plus être annulé", async () => {
++    const cancelled = await newTransport(w.supA1.user, w.vehicle.id);
++    const paid = await newTransport(w.supA1.user, w.vehicle.id);
++    as(w.supA1.user);
++
++    expect((await setStatus(cancelled, "CANCELLED")).status).toBe(200);
++    expect((await pay(cancelled)).status).toBe(404);
++
++    expect((await pay(paid)).status).toBe(201);
++    expect((await setStatus(paid, "CANCELLED")).status).toBe(409);
++    expect((await pay(paid)).status).toBe(409);
++  });
++
++  it("un paiement non liquide incomplet est refusé", async () => {
++    const id = await newTransport(w.supA1.user, w.vehicle.id);
++    as(w.supA1.user);
++
++    const response = await pay(id, {
++      paymentMethod: "BANK_TRANSFER",
++      reference: "VIR-1",
++      amountReceived: "39999.99",
++    });
++    expect(response.status).toBe(400);
++    expect(await prisma.payment.count()).toBe(0);
++  });
++});
++
++describe("comptes régisseurs", () => {
++  it("désactivation : compte inactif et sessions invalidées", async () => {
++    as(w.admin);
++    const before = await prisma.user.findUniqueOrThrow({ where: { id: w.supA1.user.id } });
++
++    const response = await patchSupervisor(
++      jsonRequest(`/api/supervisors/${w.supA1.profile.id}`, "PATCH", { isActive: false }),
++      params(w.supA1.profile.id),
++    );
++    expect(response.status).toBe(200);
++
++    const after = await prisma.user.findUniqueOrThrow({ where: { id: w.supA1.user.id } });
++    expect(after.isActive).toBe(false);
++    expect(after.sessionVersion).toBe(before.sessionVersion + 1);
++    expect(await prisma.auditLog.count({ where: { action: "DEACTIVATE", entityId: w.supA1.profile.id } })).toBe(1);
++  });
++
++  it("réinitialisation : nouveau hash, sessions fermées, blocage de connexion levé, rien de secret dans l'audit", async () => {
++    await prisma.loginFailure.create({ data: { email: "a1@test.mg", ipAddress: "1.2.3.4" } });
++    as(w.admin);
++    const before = await prisma.user.findUniqueOrThrow({ where: { id: w.supA1.user.id } });
++    const newPassword = "Nouveau-mot-de-passe-42";
++
++    const response = await resetPassword(
++      jsonRequest(`/api/supervisors/${w.supA1.profile.id}/password`, "POST", { password: newPassword }),
++      params(w.supA1.profile.id),
++    );
++    expect(response.status).toBe(200);
++
++    const after = await prisma.user.findUniqueOrThrow({ where: { id: w.supA1.user.id } });
++    expect(after.passwordHash).not.toBe(before.passwordHash);
++    expect(after.passwordHash.startsWith("$2")).toBe(true);
++    expect(after.sessionVersion).toBe(before.sessionVersion + 1);
++    expect(await prisma.loginFailure.count({ where: { email: "a1@test.mg" } })).toBe(0);
++
++    const logs = await prisma.auditLog.findMany({ where: { action: "RESET_PASSWORD" } });
++    expect(logs).toHaveLength(1);
++    expect(JSON.stringify(logs[0])).not.toContain(newPassword);
++  });
++});
++
++describe("requêtes du journal d'audit", () => {
++  it("les filtres de buildAuditWhere sont acceptés par la vraie base", async () => {
++    const id = await newTransport(w.supA1.user, w.vehicle.id);
++    as(w.supA1.user);
++    await pay(id, { amountReceived: "50000" });
++
++    const filters = [
++      { q: "", entityType: "", action: "", period: "" },
++      { q: "", entityType: "Payment", action: "CREATE", period: "today" },
++      { q: "A1 test", entityType: "", action: "", period: "30d" },
++      { q: "a1@TEST.mg", entityType: "", action: "", period: "7d" },
++    ];
++
++    const counts = [];
++    for (const filter of filters) {
++      counts.push(await prisma.auditLog.count({ where: buildAuditWhere(filter) }));
++    }
++
++    expect(counts[0]).toBeGreaterThanOrEqual(2);
++    expect(counts[1]).toBe(1);
++    expect(counts[2]).toBeGreaterThanOrEqual(2);
++    expect(counts[3]).toBeGreaterThanOrEqual(2);
++    expect(await prisma.auditLog.count({ where: buildAuditWhere({ q: "personne-inconnue", entityType: "", action: "", period: "" }) })).toBe(0);
++  });
++});
+diff --git a/tests/lib/audit.test.ts b/tests/lib/audit.test.ts
+new file mode 100644
+index 0000000..edea438
+--- /dev/null
++++ b/tests/lib/audit.test.ts
+@@ -0,0 +1,147 @@
++import { describe, expect, it } from "vitest";
++import {
++  actionLabel,
++  buildAuditWhere,
++  describeAudit,
++  entityLabel,
++  formatMGA,
++  periodStart,
++} from "@/lib/audit";
++
++describe("describeAudit", () => {
++  it("affiche montant dû, montant reçu, monnaie, mode et référence d'un paiement", () => {
++    const lines = describeAudit("Payment", "CREATE", {
++      amountDue: "40000.00",
++      amountReceived: "50000.00",
++      changeReturned: "10000.00",
++      paymentMethod: "BANK_TRANSFER",
++      reference: "VIR-2026-001",
++    });
++
++    expect(lines).toHaveLength(5);
++    expect(lines[0]).toMatch(/^Montant dû : .*40.*000,00 MGA$/);
++    expect(lines[1]).toMatch(/^Montant reçu : .*50.*000,00 MGA$/);
++    expect(lines[2]).toMatch(/^Monnaie rendue : .*10.*000,00 MGA$/);
++    expect(lines).toContain("Mode : Virement bancaire");
++    expect(lines).toContain("Référence : VIR-2026-001");
++  });
++
++  it("n'affiche pas de référence vide pour un paiement en espèces", () => {
++    const lines = describeAudit("Payment", "CREATE", {
++      amountDue: "1000.00",
++      amountReceived: "1000.00",
++      changeReturned: "0.00",
++      paymentMethod: "CASH",
++      reference: null,
++    });
++
++    expect(lines).toContain("Mode : Espèces");
++    expect(lines.some((line) => line.startsWith("Référence"))).toBe(false);
++  });
++
++  it("décrit un changement de statut avec les libellés français", () => {
++    expect(
++      describeAudit("TransportAssignment", "CHANGE_TRANSPORT_STATUS", {
++        previousStatus: "PLANNED",
++        newStatus: "IN_PROGRESS",
++      }),
++    ).toEqual(["Statut : Planifié → En cours"]);
++  });
++
++  it("décrit un changement de chauffeur", () => {
++    expect(
++      describeAudit("Vehicle", "CHANGE_DRIVER", {
++        previousDriverName: "Jean Rakoto",
++        newDriverName: "Paul Rabe",
++      }),
++    ).toEqual(["Chauffeur : Jean Rakoto → Paul Rabe"]);
++  });
++
++  it("ne contient jamais de mot de passe pour une réinitialisation", () => {
++    const lines = describeAudit("Supervisor", "RESET_PASSWORD", {
++      email: "rina@test.mg",
++      password: "ne-doit-pas-apparaitre",
++    });
++
++    expect(lines.join(" ")).not.toContain("ne-doit-pas-apparaitre");
++    expect(lines).toContain("Compte : rina@test.mg");
++  });
++
++  it("remplace un identifiant de lieu par son nom quand il est connu", () => {
++    const lines = describeAudit(
++      "Driver",
++      "CREATE",
++      { locationId: "loc-1" },
++      { locations: { "loc-1": "Tamatave" } },
++    );
++
++    expect(lines).toContain("Lieu : Tamatave");
++  });
++
++  it("supporte des détails absents ou invalides sans planter", () => {
++    expect(describeAudit("Driver", "CREATE", null)).toEqual([]);
++    expect(describeAudit("Driver", "CREATE", "texte")).toEqual([]);
++    expect(describeAudit("Driver", "CREATE", [1, 2])).toEqual([]);
++  });
++});
++
++describe("libellés", () => {
++  it("traduit les actions et types connus et garde les inconnus tels quels", () => {
++    expect(actionLabel("DEACTIVATE")).toBe("Désactivation");
++    expect(actionLabel("AUTRE")).toBe("AUTRE");
++    expect(entityLabel("TransportAssignment")).toBe("Transport");
++    expect(entityLabel("Inconnu")).toBe("Inconnu");
++  });
++
++  it("formate les montants en MGA", () => {
++    expect(formatMGA("1234.5")).toMatch(/^1.234,50 MGA$/);
++    expect(formatMGA("abc")).toBe("abc");
++  });
++});
++
++describe("filtres du journal", () => {
++  const now = new Date("2026-10-28T10:30:00.000Z");
++
++  it("calcule le début de chaque période", () => {
++    expect(periodStart("today", now)?.toISOString()).toBe("2026-10-28T00:00:00.000Z");
++    expect(periodStart("7d", now)?.toISOString()).toBe("2026-10-21T10:30:00.000Z");
++    expect(periodStart("30d", now)?.toISOString()).toBe("2026-09-28T10:30:00.000Z");
++    expect(periodStart("", now)).toBeNull();
++  });
++
++  it("sans filtre, aucune condition n'est ajoutée", () => {
++    expect(buildAuditWhere({ q: "", entityType: "", action: "", period: "" }, now)).toEqual({});
++  });
++
++  it("combine type, action et période", () => {
++    const where = buildAuditWhere(
++      { q: "", entityType: "Payment", action: "CREATE", period: "today" },
++      now,
++    );
++
++    expect(where).toMatchObject({
++      entityType: "Payment",
++      action: "CREATE",
++      createdAt: { gte: new Date("2026-10-28T00:00:00.000Z") },
++    });
++  });
++
++  it("chaque mot de la recherche doit être trouvé (nom, email ou identifiant)", () => {
++    const where = buildAuditWhere(
++      { q: "rina rakoto", entityType: "", action: "", period: "" },
++      now,
++    ) as { AND: Array<{ OR: unknown[] }> };
++
++    expect(where.AND).toHaveLength(2);
++    expect(where.AND[0].OR).toHaveLength(4);
++  });
++
++  it("limite la recherche à 5 mots", () => {
++    const where = buildAuditWhere(
++      { q: "a b c d e f g", entityType: "", action: "", period: "" },
++      now,
++    ) as { AND: unknown[] };
++
++    expect(where.AND).toHaveLength(5);
++  });
++});
+diff --git a/tests/lib/password-policy.test.ts b/tests/lib/password-policy.test.ts
+new file mode 100644
+index 0000000..472ac21
+--- /dev/null
++++ b/tests/lib/password-policy.test.ts
+@@ -0,0 +1,20 @@
++import { describe, expect, it } from "vitest";
++import { validatePassword } from "@/lib/password-policy";
++
++describe("validatePassword", () => {
++  it("accepte un mot de passe de 12 à 200 caractères", () => {
++    expect(validatePassword("a".repeat(12))).toBeNull();
++    expect(validatePassword("a".repeat(200))).toBeNull();
++  });
++
++  it("refuse un mot de passe trop court ou trop long", () => {
++    expect(validatePassword("a".repeat(11))).toMatch(/entre 12 et 200/);
++    expect(validatePassword("a".repeat(201))).toMatch(/entre 12 et 200/);
++  });
++
++  it("refuse une valeur qui n'est pas du texte", () => {
++    expect(validatePassword(undefined)).not.toBeNull();
++    expect(validatePassword(123456789012)).not.toBeNull();
++    expect(validatePassword(null)).not.toBeNull();
++  });
++});
+diff --git a/vitest.config.mts b/vitest.config.mts
+new file mode 100644
+index 0000000..e64527a
+--- /dev/null
++++ b/vitest.config.mts
+@@ -0,0 +1,14 @@
++import { defineConfig } from "vitest/config";
++import { fileURLToPath } from "node:url";
++
++export default defineConfig({
++  resolve: {
++    alias: { "@": fileURLToPath(new URL(".", import.meta.url)) },
++  },
++  test: {
++    environment: "node",
++    include: ["tests/**/*.test.ts"],
++    // Les tests d'intégration (vraie base) se lancent à part : npm run test:integration
++    exclude: ["tests/integration/**", "node_modules/**"],
++  },
++});
+diff --git a/vitest.integration.config.mts b/vitest.integration.config.mts
+new file mode 100644
+index 0000000..7062344
+--- /dev/null
++++ b/vitest.integration.config.mts
+@@ -0,0 +1,18 @@
++import { defineConfig } from "vitest/config";
++import { fileURLToPath } from "node:url";
++
++// Tests d'intégration : vraie base PostgreSQL, vrai client Prisma.
++// Lancer avec : npm run test:integration   (variable TEST_DATABASE_URL obligatoire)
++export default defineConfig({
++  resolve: {
++    alias: { "@": fileURLToPath(new URL(".", import.meta.url)) },
++  },
++  test: {
++    environment: "node",
++    include: ["tests/integration/**/*.test.ts"],
++    // Le client Prisma de l'application lit DATABASE_URL : on la fait pointer vers la base de test.
++    env: { DATABASE_URL: process.env.TEST_DATABASE_URL ?? "" },
++    fileParallelism: false,
++    testTimeout: 30_000,
++  },
++});

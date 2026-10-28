@@ -114,7 +114,15 @@ export async function POST(request: Request) {
           action: "CREATE",
           entityType: "Payment",
           entityId: payment.id,
-          details: { assignmentId, locationId: profile.locationId },
+          details: {
+            assignmentId,
+            locationId: profile.locationId,
+            paymentMethod: payment.paymentMethod,
+            reference: payment.reference,
+            amountDue: String(payment.amountDue),
+            amountReceived: String(payment.amountReceived),
+            changeReturned: String(payment.changeReturned),
+          },
         },
       });
 

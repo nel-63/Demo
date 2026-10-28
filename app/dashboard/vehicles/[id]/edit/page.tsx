@@ -40,11 +40,30 @@ async function EditVehicleContent({ params }: PageProps) {
       id: true,
       vehicleType: true,
       licensePlate: true,
-      driver: { select: { firstName: true, lastName: true } },
+      driverId: true,
+      driver: { select: { firstName: true, lastName: true, isActive: true } },
     },
   });
 
   if (!vehicle) notFound();
+
+  const activeDrivers = await prisma.driver.findMany({
+    where: { locationId: profile.locationId, isActive: true },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    select: { id: true, firstName: true, lastName: true },
+  });
+
+  // Le chauffeur actuel reste dans la liste même s'il a été désactivé depuis.
+  const drivers = activeDrivers.some((driver) => driver.id === vehicle.driverId)
+    ? activeDrivers
+    : [
+        {
+          id: vehicle.driverId,
+          firstName: vehicle.driver.firstName,
+          lastName: `${vehicle.driver.lastName} (inactif)`,
+        },
+        ...activeDrivers,
+      ];
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
@@ -53,7 +72,15 @@ async function EditVehicleContent({ params }: PageProps) {
           &larr; Retour aux véhicules
         </Link>
         <h1 className="mb-6 mt-4 text-2xl font-bold text-slate-900">Modifier le véhicule</h1>
-        <VehicleEditForm vehicle={vehicle} />
+        <VehicleEditForm
+          vehicle={{
+            id: vehicle.id,
+            vehicleType: vehicle.vehicleType,
+            licensePlate: vehicle.licensePlate,
+            driverId: vehicle.driverId,
+          }}
+          drivers={drivers}
+        />
       </section>
     </main>
   );

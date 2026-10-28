@@ -82,6 +82,9 @@ export async function POST(request: Request) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      // Verrou : empêche un changement de chauffeur pendant la création du transport.
+      await tx.$queryRaw`SELECT "id" FROM "Vehicle" WHERE "id" = ${vehicleId} FOR UPDATE`;
+
       const vehicle = await tx.vehicle.findFirst({
         where: {
           id: vehicleId,
@@ -89,7 +92,7 @@ export async function POST(request: Request) {
           isActive: true,
           driver: { isActive: true, locationId: profile.locationId },
         },
-        select: { id: true },
+        select: { id: true, driverId: true },
       });
 
       if (!vehicle) return null;
@@ -110,6 +113,8 @@ export async function POST(request: Request) {
           supervisorId: profile.id,
           locationId: profile.locationId!,
           vehicleId: vehicle.id,
+          // Chauffeur au moment du transport : conservé même si le véhicule change de chauffeur.
+          driverId: vehicle.driverId,
           amountDue: amountDueText,
           ...(assignedAt ? { assignedAt } : {}),
           notes: notes || null,

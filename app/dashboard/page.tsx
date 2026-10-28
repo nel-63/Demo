@@ -130,6 +130,9 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
         <Link href="/dashboard/locations" className="rounded-lg border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-100">
           Gérer les lieux
         </Link>
+        <Link href="/dashboard/audit" className="rounded-lg border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-100">
+          Journal d&apos;audit
+        </Link>
       
         <LogoutButton />
       </header>

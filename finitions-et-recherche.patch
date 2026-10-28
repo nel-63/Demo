@@ -1,0 +1,2170 @@
+diff --git a/app/api/db-test/route.ts b/app/api/db-test/route.ts
+index 77c2c8f..33cf66f 100644
+--- a/app/api/db-test/route.ts
++++ b/app/api/db-test/route.ts
+@@ -10,7 +10,7 @@ export async function GET() {
+   }
+ 
+   if (user.role !== "ADMIN") {
+-    return NextResponse.json({ message: "Acces reserve a l'administrateur." }, { status: 403 });
++    return NextResponse.json({ message: "Accès réservé à l'administrateur." }, { status: 403 });
+   }
+ 
+   try {
+diff --git a/app/api/drivers/[id]/route.ts b/app/api/drivers/[id]/route.ts
+index bb937f3..f34bfdd 100644
+--- a/app/api/drivers/[id]/route.ts
++++ b/app/api/drivers/[id]/route.ts
+@@ -18,14 +18,14 @@ export async function PUT(
+     return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
+   }
+   if (user.role !== "SUPERVISOR") {
+-    return NextResponse.json({ message: "Acces reserve aux regisseurs." }, { status: 403 });
++    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
+   }
+ 
+   try {
+     const { id } = await context.params;
+     const profile = await getLocation(user.id);
+     if (!profile?.locationId) {
+-      return NextResponse.json({ message: "Lieu non affecte." }, { status: 403 });
++      return NextResponse.json({ message: "Lieu non affecté." }, { status: 403 });
+     }
+ 
+     const body: unknown = await request.json().catch(() => null);
+@@ -43,7 +43,7 @@ export async function PUT(
+ 
+     if (!firstName || !lastName || !nationalId || !licenseNumber) {
+       return NextResponse.json(
+-        { message: "Prenom, nom, CIN et permis obligatoires." },
++        { message: "Prénom, nom, CIN et permis obligatoires." },
+         { status: 400 }
+       );
+     }
+@@ -98,7 +98,7 @@ export async function PUT(
+       ? (error as { code?: string }).code : undefined;
+ 
+     if (code === "P2002") {
+-      return NextResponse.json({ message: "Cette CIN ou ce permis est deja utilise." }, { status: 409 });
++      return NextResponse.json({ message: "Cette CIN ou ce permis est déjà utilisé." }, { status: 409 });
+     }
+ 
+     console.error("Driver update failed:", error);
+@@ -115,7 +115,7 @@ export async function PATCH(
+     return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
+   }
+   if (user.role !== "SUPERVISOR") {
+-    return NextResponse.json({ message: "Acces reserve aux regisseurs." }, { status: 403 });
++    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
+   }
+ 
+   try {
+@@ -129,7 +129,7 @@ export async function PATCH(
+ 
+     const profile = await getLocation(user.id);
+     if (!profile?.locationId) {
+-      return NextResponse.json({ message: "Lieu non affecte." }, { status: 403 });
++      return NextResponse.json({ message: "Lieu non affecté." }, { status: 403 });
+     }
+ 
+     const isActive = (body as { isActive: boolean }).isActive;
+diff --git a/app/api/drivers/route.ts b/app/api/drivers/route.ts
+index 67d11be..b850e1f 100644
+--- a/app/api/drivers/route.ts
++++ b/app/api/drivers/route.ts
+@@ -10,7 +10,7 @@ export async function POST(request: Request) {
+   }
+ 
+   if (user.role !== "SUPERVISOR") {
+-    return NextResponse.json({ message: "Acces reserve aux regisseurs." }, { status: 403 });
++    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
+   }
+ 
+   try {
+@@ -21,7 +21,7 @@ export async function POST(request: Request) {
+ 
+     if (!profile?.locationId) {
+       return NextResponse.json(
+-        { message: "Votre compte doit etre affecte a un lieu." },
++        { message: "Votre compte doit être affecté à un lieu." },
+         { status: 403 }
+       );
+     }
+@@ -42,7 +42,7 @@ export async function POST(request: Request) {
+ 
+     if (!firstName || !lastName || !nationalId || !licenseNumber) {
+       return NextResponse.json(
+-        { message: "Prenom, nom, CIN et permis sont obligatoires." },
++        { message: "Prénom, nom, CIN et permis sont obligatoires." },
+         { status: 400 }
+       );
+     }
+@@ -103,12 +103,12 @@ export async function POST(request: Request) {
+ 
+     if (code === "P2002") {
+       return NextResponse.json(
+-        { message: "Cette CIN ou ce numero de permis existe deja." },
++        { message: "Cette CIN ou ce numéro de permis existe déjà." },
+         { status: 409 }
+       );
+     }
+ 
+     console.error("Driver creation failed:", error);
+-    return NextResponse.json({ message: "Impossible de creer le chauffeur." }, { status: 500 });
++    return NextResponse.json({ message: "Impossible de créer le chauffeur." }, { status: 500 });
+   }
+ }
+\ No newline at end of file
+diff --git a/app/api/locations/route.ts b/app/api/locations/route.ts
+index d2a45b0..38df4aa 100644
+--- a/app/api/locations/route.ts
++++ b/app/api/locations/route.ts
+@@ -10,7 +10,7 @@ export async function POST(request: Request) {
+   }
+ 
+   if (user.role !== "ADMIN") {
+-    return NextResponse.json({ message: "Acces reserve a l'administrateur." }, { status: 403 });
++    return NextResponse.json({ message: "Accès réservé à l'administrateur." }, { status: 403 });
+   }
+ 
+   try {
+@@ -26,7 +26,7 @@ export async function POST(request: Request) {
+ 
+     if (name.length < 2 || name.length > 100) {
+       return NextResponse.json(
+-        { message: "Le nom du lieu doit contenir entre 2 et 100 caracteres." },
++        { message: "Le nom du lieu doit contenir entre 2 et 100 caractères." },
+         { status: 400 }
+       );
+     }
+@@ -65,7 +65,7 @@ export async function POST(request: Request) {
+ 
+     if (code === "P2002") {
+       return NextResponse.json(
+-        { message: "Ce lieu existe deja." },
++        { message: "Ce lieu existe déjà." },
+         { status: 409 }
+       );
+     }
+@@ -73,7 +73,7 @@ export async function POST(request: Request) {
+     console.error("Location creation failed:", error);
+ 
+     return NextResponse.json(
+-      { message: "Impossible de creer le lieu." },
++      { message: "Impossible de créer le lieu." },
+       { status: 500 }
+     );
+   }
+diff --git a/app/api/payments/route.ts b/app/api/payments/route.ts
+index a10ed24..73d5ea0 100644
+--- a/app/api/payments/route.ts
++++ b/app/api/payments/route.ts
+@@ -18,7 +18,7 @@ export async function POST(request: Request) {
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
+   if (user.role !== "SUPERVISOR") {
+-    return NextResponse.json({ message: "Acces reserve aux regisseurs." }, { status: 403 });
++    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
+   }
+ 
+   try {
+@@ -27,7 +27,7 @@ export async function POST(request: Request) {
+       select: { id: true, locationId: true },
+     });
+     if (!profile?.locationId) {
+-      return NextResponse.json({ message: "Aucun lieu affecte." }, { status: 403 });
++      return NextResponse.json({ message: "Aucun lieu affecté." }, { status: 403 });
+     }
+ 
+     const body: unknown = await request.json().catch(() => null);
+@@ -40,18 +40,18 @@ export async function POST(request: Request) {
+     const receivedText = text("amountReceived");
+ 
+     if (!assignmentId || !receivedText) {
+-      return NextResponse.json({ message: "Transport et montant recu obligatoires." }, { status: 400 });
++      return NextResponse.json({ message: "Transport et montant reçu obligatoires." }, { status: 400 });
+     }
+     if (!METHODS.some((item) => item === method)) {
+       return NextResponse.json({ message: "Mode de paiement invalide." }, { status: 400 });
+     }
+     if (reference.length > 150) {
+-      return NextResponse.json({ message: "Reference trop longue." }, { status: 400 });
++      return NextResponse.json({ message: "Référence trop longue." }, { status: 400 });
+     }
+ 
+     const receivedCents = parseCents(receivedText);
+     if (receivedCents === null || receivedCents <= 0) {
+-      return NextResponse.json({ message: "Montant recu invalide." }, { status: 400 });
++      return NextResponse.json({ message: "Montant reçu invalide." }, { status: 400 });
+     }
+ 
+     const outcome = await prisma.$transaction(async (tx) => {
+@@ -123,12 +123,12 @@ export async function POST(request: Request) {
+ 
+     if ("error" in outcome) {
+       const messages: Record<string, string> = {
+-        NOT_FOUND: "Transport introuvable ou non rattache a votre lieu.",
+-        NO_AMOUNT: "Le montant officiel de ce transport n'est pas encore defini.",
+-        ALREADY_PAID: "Ce transport a deja ete paye integralement.",
++        NOT_FOUND: "Transport introuvable ou non rattaché à votre lieu.",
++        NO_AMOUNT: "Le montant officiel de ce transport n'est pas encore défini.",
++        ALREADY_PAID: "Ce transport a déjà été payé intégralement.",
+         INVALID_AMOUNT: "Le montant officiel du transport est invalide.",
+-        INSUFFICIENT: "Paiement refuse : le montant recu est inferieur au montant du.",
+-        EXACT_REQUIRED: "Le paiement doit etre integral et une reference est obligatoire pour ce mode.",
++        INSUFFICIENT: "Paiement refusé : le montant reçu est inférieur au montant dû.",
++        EXACT_REQUIRED: "Le paiement doit être intégral et une référence est obligatoire pour ce mode.",
+       };
+       const status = outcome.error === "NOT_FOUND" ? 404 :
+         outcome.error === "ALREADY_PAID" ? 409 : 400;
+@@ -137,7 +137,7 @@ export async function POST(request: Request) {
+ 
+     return NextResponse.json({
+       ok: true,
+-      message: "Paiement integral enregistre.",
++      message: "Paiement intégral enregistré.",
+       payment: {
+         ...outcome.payment,
+         amountDue: String(outcome.payment.amountDue),
+@@ -150,7 +150,7 @@ export async function POST(request: Request) {
+       ? (error as { code?: string }).code : undefined;
+ 
+     if (code === "P2002") {
+-      return NextResponse.json({ message: "Ce transport a deja ete paye." }, { status: 409 });
++      return NextResponse.json({ message: "Ce transport a déjà été payé." }, { status: 409 });
+     }
+ 
+     console.error("Payment creation failed:", error);
+diff --git a/app/api/supervisors/[id]/route.ts b/app/api/supervisors/[id]/route.ts
+index 87ad5ce..83a200d 100644
+--- a/app/api/supervisors/[id]/route.ts
++++ b/app/api/supervisors/[id]/route.ts
+@@ -28,7 +28,7 @@ export async function PATCH(
+ 
+     if (!body || typeof body !== "object") {
+       return NextResponse.json(
+-        { message: "Requete invalide." },
++        { message: "Requête invalide." },
+         { status: 400 }
+       );
+     }
+@@ -39,7 +39,7 @@ export async function PATCH(
+ 
+     if (!locationId) {
+       return NextResponse.json(
+-        { message: "Selectionnez un lieu." },
++        { message: "Sélectionnez un lieu." },
+         { status: 400 }
+       );
+     }
+@@ -125,14 +125,14 @@ export async function PATCH(
+     if ("error" in result) {
+       if (result.error === "SUPERVISOR_NOT_FOUND") {
+         return NextResponse.json(
+-          { message: "Regisseur introuvable." },
++          { message: "Régisseur introuvable." },
+           { status: 404 }
+         );
+       }
+ 
+       if (result.error === "LOCATION_NOT_FOUND") {
+         return NextResponse.json(
+-          { message: "Le lieu selectionne n'existe pas." },
++          { message: "Le lieu sélectionné n'existe pas." },
+           { status: 404 }
+         );
+       }
+@@ -140,7 +140,7 @@ export async function PATCH(
+       if (result.error === "ALREADY_ASSIGNED") {
+         return NextResponse.json(
+           {
+-            message: `Ce regisseur est deja affecte a ${result.locationName}.`,
++            message: `Ce régisseur est déjà affecté à ${result.locationName}.`,
+           },
+           { status: 409 }
+         );
+@@ -149,7 +149,7 @@ export async function PATCH(
+ 
+     return NextResponse.json({
+       ok: true,
+-      message: "Affectation modifiee. L'historique des anciennes operations est conserve.",
++      message: "Affectation modifiée. L'historique des anciennes opérations est conservé.",
+       supervisor: result.supervisor,
+     });
+   } catch (error) {
+diff --git a/app/api/supervisors/route.ts b/app/api/supervisors/route.ts
+index 572ffa6..fd5e64d 100644
+--- a/app/api/supervisors/route.ts
++++ b/app/api/supervisors/route.ts
+@@ -12,7 +12,7 @@ export async function POST(request: Request) {
+ 
+   if (admin.role !== "ADMIN") {
+     return NextResponse.json(
+-      { message: "Seul un administrateur peut enregistrer un regisseur." },
++      { message: "Seul un administrateur peut enregistrer un régisseur." },
+       { status: 403 }
+     );
+   }
+@@ -39,14 +39,14 @@ export async function POST(request: Request) {
+         !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+         !nationalId || !locationId) {
+       return NextResponse.json(
+-        { message: "Prenom, nom, email, CIN et lieu sont obligatoires." },
++        { message: "Prénom, nom, email, CIN et lieu sont obligatoires." },
+         { status: 400 }
+       );
+     }
+ 
+     if (password.length < 12 || password.length > 200) {
+       return NextResponse.json(
+-        { message: "Le mot de passe doit contenir entre 12 et 200 caracteres." },
++        { message: "Le mot de passe doit contenir entre 12 et 200 caractères." },
+         { status: 400 }
+       );
+     }
+@@ -58,7 +58,7 @@ export async function POST(request: Request) {
+ 
+     if (!location) {
+       return NextResponse.json(
+-        { message: "Le lieu selectionne n'existe pas." },
++        { message: "Le lieu sélectionné n'existe pas." },
+         { status: 400 }
+       );
+     }
+@@ -74,7 +74,7 @@ export async function POST(request: Request) {
+           phoneNumber: phoneNumber || null,
+           passwordHash,
+           role: "SUPERVISOR",
+-          designation: "Regisseur",
++          designation: "Régisseur",
+         },
+         select: { id: true },
+       });
+@@ -128,14 +128,14 @@ export async function POST(request: Request) {
+ 
+     if (code === "P2002") {
+       return NextResponse.json(
+-        { message: "Cet email ou cette CIN existe deja." },
++        { message: "Cet email ou cette CIN existe déjà." },
+         { status: 409 }
+       );
+     }
+ 
+     console.error("Supervisor creation failed:", error);
+     return NextResponse.json(
+-      { message: "Impossible de creer le regisseur." },
++      { message: "Impossible de créer le régisseur." },
+       { status: 500 }
+     );
+   }
+diff --git a/app/api/transports/[id]/route.ts b/app/api/transports/[id]/route.ts
+index 1032a72..4cad7e7 100644
+--- a/app/api/transports/[id]/route.ts
++++ b/app/api/transports/[id]/route.ts
+@@ -24,14 +24,14 @@ export async function PATCH(
+ 
+     if (!currentUser) {
+       return NextResponse.json(
+-        { error: "Authentification requise." },
++        { message: "Authentification requise." },
+         { status: 401 },
+       );
+     }
+ 
+     if (currentUser.role !== "SUPERVISOR") {
+       return NextResponse.json(
+-        { error: "Accès réservé aux superviseurs." },
++        { message: "Accès réservé aux superviseurs." },
+         { status: 403 },
+       );
+     }
+@@ -43,14 +43,14 @@ export async function PATCH(
+       body = await request.json();
+     } catch {
+       return NextResponse.json(
+-        { error: "Données JSON invalides." },
++        { message: "Données JSON invalides." },
+         { status: 400 },
+       );
+     }
+ 
+     if (body === null || typeof body !== "object" || Array.isArray(body)) {
+       return NextResponse.json(
+-        { error: "Données invalides." },
++        { message: "Données invalides." },
+         { status: 400 },
+       );
+     }
+@@ -61,7 +61,7 @@ export async function PATCH(
+ 
+     if (hasAmountDue === hasStatus) {
+       return NextResponse.json(
+-        { error: "Indiquez soit un montant, soit un nouveau statut." },
++        { message: "Indiquez soit un montant, soit un nouveau statut." },
+         { status: 400 },
+       );
+     }
+@@ -73,7 +73,7 @@ export async function PATCH(
+ 
+     if (!profile || !profile.locationId) {
+       return NextResponse.json(
+-        { error: "Aucun emplacement n'est affecté à ce superviseur." },
++        { message: "Aucun emplacement n'est affecté à ce superviseur." },
+         { status: 403 },
+       );
+     }
+@@ -88,7 +88,7 @@ export async function PATCH(
+         Number(amountText) <= 0
+       ) {
+         return NextResponse.json(
+-          { error: "Le montant doit être positif, avec au maximum deux décimales." },
++          { message: "Le montant doit être positif, avec au maximum deux décimales." },
+           { status: 400 },
+         );
+       }
+@@ -104,28 +104,28 @@ export async function PATCH(
+ 
+         if (!transport) {
+           return NextResponse.json(
+-            { error: "Transport introuvable dans votre emplacement." },
++            { message: "Transport introuvable dans votre emplacement." },
+             { status: 404 },
+           );
+         }
+ 
+         if (transport.status === "CANCELLED") {
+           return NextResponse.json(
+-            { error: "Un transport annulé ne peut pas être modifié." },
++            { message: "Un transport annulé ne peut pas être modifié." },
+             { status: 409 },
+           );
+         }
+ 
+         if (transport.payment) {
+           return NextResponse.json(
+-            { error: "Le montant ne peut pas être changé après un paiement." },
++            { message: "Le montant ne peut pas être changé après un paiement." },
+             { status: 409 },
+           );
+         }
+ 
+         if (transport.amountDue !== null) {
+           return NextResponse.json(
+-            { error: "Le montant officiel est déjà fixé." },
++            { message: "Le montant officiel est déjà fixé." },
+             { status: 409 },
+           );
+         }
+@@ -160,7 +160,7 @@ export async function PATCH(
+       !VALID_STATUSES.includes(requestedStatus as TransportStatusValue)
+     ) {
+       return NextResponse.json(
+-        { error: "Statut de transport invalide." },
++        { message: "Statut de transport invalide." },
+         { status: 400 },
+       );
+     }
+@@ -178,7 +178,7 @@ export async function PATCH(
+ 
+       if (!transport) {
+         return NextResponse.json(
+-          { error: "Transport introuvable dans votre emplacement." },
++          { message: "Transport introuvable dans votre emplacement." },
+           { status: 404 },
+         );
+       }
+@@ -194,7 +194,7 @@ export async function PATCH(
+       if (!allowed) {
+         return NextResponse.json(
+           {
+-            error:
++            message:
+               "Transition impossible : un transport planifié peut démarrer ou être annulé ; un transport en cours peut être terminé ou annulé.",
+           },
+           { status: 409 },
+@@ -204,7 +204,7 @@ export async function PATCH(
+       if (nextStatus === "CANCELLED" && transport.payment) {
+         return NextResponse.json(
+           {
+-            error:
++            message:
+               "Ce transport est déjà payé. Son annulation est interdite sans procédure comptable adaptée.",
+           },
+           { status: 409 },
+@@ -236,7 +236,7 @@ export async function PATCH(
+     console.error("Erreur PATCH transport :", error);
+ 
+     return NextResponse.json(
+-      { error: "Une erreur est survenue lors de la modification du transport." },
++      { message: "Une erreur est survenue lors de la modification du transport." },
+       { status: 500 },
+     );
+   }
+diff --git a/app/api/transports/route.ts b/app/api/transports/route.ts
+index 3961254..668702e 100644
+--- a/app/api/transports/route.ts
++++ b/app/api/transports/route.ts
+@@ -10,7 +10,7 @@ export async function POST(request: Request) {
+   }
+ 
+   if (user.role !== "SUPERVISOR") {
+-    return NextResponse.json({ message: "Acces reserve aux regisseurs." }, { status: 403 });
++    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
+   }
+ 
+   try {
+@@ -20,7 +20,7 @@ export async function POST(request: Request) {
+     });
+ 
+     if (!profile?.locationId) {
+-      return NextResponse.json({ message: "Votre compte doit etre affecte a un lieu." }, { status: 403 });
++      return NextResponse.json({ message: "Votre compte doit être affecté à un lieu." }, { status: 403 });
+     }
+ 
+     const body: unknown = await request.json().catch(() => null)
+@@ -43,7 +43,7 @@ export async function POST(request: Request) {
+     if (!productName || !productType || !vehicleId ||
+         !tonnageText || !amountDueText) {
+       return NextResponse.json(
+-        { message: "Nom, type, tonnage, montant a regler et vehicule obligatoires." },
++        { message: "Nom, type, tonnage, montant à régler et véhicule obligatoires." },
+         { status: 400 }
+       );
+     }
+@@ -61,7 +61,7 @@ export async function POST(request: Request) {
+     if (!/^\d{1,12}(?:\.\d{1,2})?$/.test(amountDueText) ||
+         !Number.isFinite(Number(amountDueText)) || Number(amountDueText) <= 0) {
+       return NextResponse.json(
+-        { message: "Le montant a regler doit etre positif et comporter au maximum deux decimales." },
++        { message: "Le montant à régler doit être positif et comporter au maximum deux décimales." },
+         { status: 400 }
+       );
+     }
+@@ -142,7 +142,7 @@ export async function POST(request: Request) {
+ 
+     if (!result) {
+       return NextResponse.json(
+-        { message: "Le vehicule est inactif ou n'appartient pas a votre lieu." },
++        { message: "Le véhicule est inactif ou n'appartient pas à votre lieu." },
+         { status: 403 }
+       );
+     }
+@@ -157,6 +157,6 @@ export async function POST(request: Request) {
+     }, { status: 201 });
+   } catch (error) {
+     console.error("Transport creation failed:", error);
+-    return NextResponse.json({ message: "Impossible de creer le transport." }, { status: 500 });
++    return NextResponse.json({ message: "Impossible de créer le transport." }, { status: 500 });
+   }
+ }
+\ No newline at end of file
+diff --git a/app/api/vehicles/[id]/route.ts b/app/api/vehicles/[id]/route.ts
+index 43c2b05..3c3ea4f 100644
+--- a/app/api/vehicles/[id]/route.ts
++++ b/app/api/vehicles/[id]/route.ts
+@@ -11,7 +11,7 @@ export async function PUT(
+     return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
+   }
+   if (user.role !== "SUPERVISOR") {
+-    return NextResponse.json({ message: "Acces reserve aux regisseurs." }, { status: 403 });
++    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
+   }
+ 
+   try {
+@@ -22,7 +22,7 @@ export async function PUT(
+     });
+ 
+     if (!profile?.locationId) {
+-      return NextResponse.json({ message: "Lieu non affecte." }, { status: 403 });
++      return NextResponse.json({ message: "Lieu non affecté." }, { status: 403 });
+     }
+ 
+     const body: unknown = await request.json().catch(() => null);
+@@ -71,7 +71,7 @@ export async function PUT(
+     });
+ 
+     if (!vehicle) {
+-      return NextResponse.json({ message: "Vehicule introuvable dans ce lieu." }, { status: 404 });
++      return NextResponse.json({ message: "Véhicule introuvable dans ce lieu." }, { status: 404 });
+     }
+ 
+     return NextResponse.json({ ok: true, vehicle });
+@@ -80,11 +80,11 @@ export async function PUT(
+       ? (error as { code?: string }).code : undefined;
+ 
+     if (code === "P2002") {
+-      return NextResponse.json({ message: "Cette immatriculation existe deja." }, { status: 409 });
++      return NextResponse.json({ message: "Cette immatriculation existe déjà." }, { status: 409 });
+     }
+ 
+     console.error("Vehicle update failed:", error);
+-    return NextResponse.json({ message: "Modification du vehicule impossible." }, { status: 500 });
++    return NextResponse.json({ message: "Modification du véhicule impossible." }, { status: 500 });
+   }
+ }
+ 
+@@ -97,7 +97,7 @@ export async function PATCH(
+     return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
+   }
+   if (user.role !== "SUPERVISOR") {
+-    return NextResponse.json({ message: "Acces reserve aux regisseurs." }, { status: 403 });
++    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
+   }
+ 
+   try {
+@@ -116,7 +116,7 @@ export async function PATCH(
+     });
+ 
+     if (!profile?.locationId) {
+-      return NextResponse.json({ message: "Lieu non affecte." }, { status: 403 });
++      return NextResponse.json({ message: "Lieu non affecté." }, { status: 403 });
+     }
+ 
+     const updated = await prisma.$transaction(async (tx) => {
+@@ -146,7 +146,7 @@ export async function PATCH(
+     });
+ 
+     if (!updated) {
+-      return NextResponse.json({ message: "Vehicule introuvable dans ce lieu." }, { status: 404 });
++      return NextResponse.json({ message: "Véhicule introuvable dans ce lieu." }, { status: 404 });
+     }
+ 
+     return NextResponse.json({ ok: true, vehicle: updated });
+diff --git a/app/api/vehicles/route.ts b/app/api/vehicles/route.ts
+index 6df4b5e..2483056 100644
+--- a/app/api/vehicles/route.ts
++++ b/app/api/vehicles/route.ts
+@@ -9,7 +9,7 @@ export async function POST(request: Request) {
+     return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
+   }
+   if (user.role !== "SUPERVISOR") {
+-    return NextResponse.json({ message: "Acces reserve aux regisseurs." }, { status: 403 });
++    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
+   }
+ 
+   try {
+@@ -19,7 +19,7 @@ export async function POST(request: Request) {
+     });
+ 
+     if (!profile?.locationId) {
+-      return NextResponse.json({ message: "Votre compte doit etre affecte a un lieu." }, { status: 403 });
++      return NextResponse.json({ message: "Votre compte doit être affecté à un lieu." }, { status: 403 });
+     }
+ 
+     const body: unknown = await request.json().catch(() => null);
+@@ -48,7 +48,7 @@ export async function POST(request: Request) {
+ 
+     if (!driver) {
+       return NextResponse.json(
+-        { message: "Le chauffeur doit etre actif et appartenir a votre lieu." },
++        { message: "Le chauffeur doit être actif et appartenir à votre lieu." },
+         { status: 403 }
+       );
+     }
+@@ -89,9 +89,9 @@ export async function POST(request: Request) {
+     const code = typeof error === "object" && error !== null && "code" in error
+       ? (error as { code?: string }).code : undefined;
+     if (code === "P2002") {
+-      return NextResponse.json({ message: "Cette immatriculation existe deja." }, { status: 409 });
++      return NextResponse.json({ message: "Cette immatriculation existe déjà." }, { status: 409 });
+     }
+     console.error("Vehicle creation failed:", error);
+-    return NextResponse.json({ message: "Impossible de creer le vehicule." }, { status: 500 });
++    return NextResponse.json({ message: "Impossible de créer le véhicule." }, { status: 500 });
+   }
+ }
+\ No newline at end of file
+diff --git a/app/dashboard/drivers/[id]/edit/driver-edit-form.tsx b/app/dashboard/drivers/[id]/edit/driver-edit-form.tsx
+index 5a8e77b..d6a6be4 100644
+--- a/app/dashboard/drivers/[id]/edit/driver-edit-form.tsx
++++ b/app/dashboard/drivers/[id]/edit/driver-edit-form.tsx
+@@ -49,11 +49,11 @@ export default function DriverEditForm({ driver }: { driver: DriverData }) {
+   }
+ 
+   const fields = [
+-    { name: "firstName", label: "Prenom", value: driver.firstName },
++    { name: "firstName", label: "Prénom", value: driver.firstName },
+     { name: "lastName", label: "Nom", value: driver.lastName },
+     { name: "nationalId", label: "CIN", value: driver.nationalId },
+-    { name: "phoneNumber", label: "Telephone", value: driver.phoneNumber ?? "" },
+-    { name: "licenseNumber", label: "Numero de permis", value: driver.licenseNumber },
++    { name: "phoneNumber", label: "Téléphone", value: driver.phoneNumber ?? "" },
++    { name: "licenseNumber", label: "Numéro de permis", value: driver.licenseNumber },
+   ];
+ 
+   return (
+diff --git a/app/dashboard/drivers/driver-form.tsx b/app/dashboard/drivers/driver-form.tsx
+index c21b8df..e103c5b 100644
+--- a/app/dashboard/drivers/driver-form.tsx
++++ b/app/dashboard/drivers/driver-form.tsx
+@@ -9,11 +9,11 @@ const fields: {
+   type: "text" | "tel";
+   required: boolean;
+ }[] = [
+-  { name: "firstName", label: "Prenom", type: "text", required: true },
++  { name: "firstName", label: "Prénom", type: "text", required: true },
+   { name: "lastName", label: "Nom", type: "text", required: true },
+-  { name: "nationalId", label: "Numero CIN", type: "text", required: true },
+-  { name: "phoneNumber", label: "Telephone", type: "tel", required: false },
+-  { name: "licenseNumber", label: "Numero de permis", type: "text", required: true },
++  { name: "nationalId", label: "Numéro CIN", type: "text", required: true },
++  { name: "phoneNumber", label: "Téléphone", type: "tel", required: false },
++  { name: "licenseNumber", label: "Numéro de permis", type: "text", required: true },
+ ];
+ 
+ export default function DriverForm() {
+@@ -41,12 +41,12 @@ export default function DriverForm() {
+       const result = await response.json();
+ 
+       if (!response.ok) {
+-        setError(result.message ?? "La creation a echoue.");
++        setError(result.message ?? "La création a échoué.");
+         return;
+       }
+ 
+       form.reset();
+-      setSuccess("Le chauffeur a ete enregistre.");
++      setSuccess("Le chauffeur a été enregistré.");
+       router.refresh();
+     } catch {
+       setError("Impossible de contacter le serveur.");
+diff --git a/app/dashboard/drivers/page.tsx b/app/dashboard/drivers/page.tsx
+index 8c1bda4..bba7e60 100644
+--- a/app/dashboard/drivers/page.tsx
++++ b/app/dashboard/drivers/page.tsx
+@@ -5,18 +5,28 @@ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
+ import DriverForm from "./driver-form";
+ import StatusToggleButton from "../status-toggle-button";
++import ListFilters from "../list-filters";
++import { readChoice, readParam, searchWords, type SearchParams } from "../search-params";
+ 
+-export default function DriversPage() {
++export default function DriversPage({
++  searchParams,
++}: {
++  searchParams: Promise<SearchParams>;
++}) {
+   return (
+     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+       <Suspense fallback={<p>Chargement...</p>}>
+-        <DriversContent />
++        <DriversContent searchParams={searchParams} />
+       </Suspense>
+     </main>
+   );
+ }
+ 
+-async function DriversContent() {
++async function DriversContent({
++  searchParams,
++}: {
++  searchParams: Promise<SearchParams>;
++}) {
+   const user = await getCurrentUser();
+   if (!user) redirect("/login");
+   if (user.role !== "SUPERVISOR") redirect("/dashboard");
+@@ -28,8 +38,25 @@ async function DriversContent() {
+ 
+   if (!profile?.locationId) redirect("/dashboard");
+ 
++  const params = await searchParams;
++  const q = readParam(params, "q");
++  const status = readChoice(params, "statut", ["actif", "inactif"] as const);
++  const filtered = q !== "" || status !== "";
++
+   const drivers = await prisma.driver.findMany({
+-    where: { locationId: profile.locationId },
++    where: {
++      locationId: profile.locationId,
++      ...(status ? { isActive: status === "actif" } : {}),
++      AND: searchWords(q).map((word) => ({
++        OR: [
++          { firstName: { contains: word, mode: "insensitive" as const } },
++          { lastName: { contains: word, mode: "insensitive" as const } },
++          { nationalId: { contains: word, mode: "insensitive" as const } },
++          { licenseNumber: { contains: word, mode: "insensitive" as const } },
++          { phoneNumber: { contains: word, mode: "insensitive" as const } },
++        ],
++      })),
++    },
+     orderBy: { createdAt: "desc" },
+     select: {
+       id: true,
+@@ -50,7 +77,7 @@ async function DriversContent() {
+       <header className="my-6">
+         <h1 className="text-3xl font-bold text-slate-900">Chauffeurs du lieu</h1>
+         <p className="mt-2 text-slate-600">
+-          Lieu partage : {profile.assignedLocation?.name ?? "Non renseigne"}
++          Lieu partagé : {profile.assignedLocation?.name ?? "Non renseigné"}
+         </p>
+       </header>
+ 
+@@ -62,8 +89,26 @@ async function DriversContent() {
+ 
+         <section className="rounded-2xl bg-white p-6 shadow-sm">
+           <h2 className="mb-5 text-xl font-semibold">Chauffeurs du lieu ({drivers.length})</h2>
++          <ListFilters
++            action="/dashboard/drivers"
++            q={q}
++            placeholder="Nom, CIN, permis ou téléphone"
++            filters={[
++              {
++                name: "statut",
++                label: "Statut",
++                value: status,
++                options: [
++            { value: "actif", label: "Actif" },
++            { value: "inactif", label: "Inactif" },
++          ],
++              },
++            ]}
++          />
+           {drivers.length === 0 ? (
+-            <p className="text-slate-500">Aucun chauffeur enregistre pour ce lieu.</p>
++            <p className="text-slate-500">
++              {filtered ? "Aucun chauffeur ne correspond à ces critères." : "Aucun chauffeur enregistré pour ce lieu."}
++            </p>
+           ) : (
+             <div className="overflow-x-auto">
+               <table className="w-full text-left text-sm">
+@@ -71,7 +116,7 @@ async function DriversContent() {
+                   <tr>
+                     <th className="px-3 py-3">Nom</th>
+                     <th className="px-3 py-3">CIN</th>
+-                    <th className="px-3 py-3">Telephone</th>
++                    <th className="px-3 py-3">Téléphone</th>
+                     <th className="px-3 py-3">Permis</th>
+                     <th className="px-3 py-3">Statut</th>
+                     <th className="px-3 py-3">Action</th>
+diff --git a/app/dashboard/list-filters.tsx b/app/dashboard/list-filters.tsx
+new file mode 100644
+index 0000000..1a6753b
+--- /dev/null
++++ b/app/dashboard/list-filters.tsx
+@@ -0,0 +1,86 @@
++import Form from "next/form";
++import Link from "next/link";
++
++type Option = { value: string; label: string };
++
++type Filter = {
++  name: string;
++  label: string;
++  value: string;
++  options: Option[];
++};
++
++export default function ListFilters({
++  action,
++  q,
++  placeholder,
++  filters,
++}: {
++  action: string;
++  q: string;
++  placeholder: string;
++  filters: Filter[];
++}) {
++  const active = q !== "" || filters.some((filter) => filter.value !== "");
++  // La clé recrée le formulaire quand les critères changent (utile après « Réinitialiser »).
++  const formKey = [q, ...filters.map((filter) => filter.value)].join("|");
++
++  return (
++    <Form
++      key={formKey}
++      action={action}
++      className="mb-5 flex flex-wrap items-end gap-3 rounded-xl bg-slate-50 p-4"
++    >
++      <div className="min-w-[200px] flex-1">
++        <label htmlFor="q" className="mb-1 block text-xs font-medium text-slate-500">
++          Recherche
++        </label>
++        <input
++          id="q"
++          name="q"
++          type="search"
++          defaultValue={q}
++          maxLength={100}
++          placeholder={placeholder}
++          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
++        />
++      </div>
++
++      {filters.map((filter) => (
++        <div key={filter.name}>
++          <label htmlFor={filter.name} className="mb-1 block text-xs font-medium text-slate-500">
++            {filter.label}
++          </label>
++          <select
++            id={filter.name}
++            name={filter.name}
++            defaultValue={filter.value}
++            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
++          >
++            <option value="">Tous</option>
++            {filter.options.map((option) => (
++              <option key={option.value} value={option.value}>
++                {option.label}
++              </option>
++            ))}
++          </select>
++        </div>
++      ))}
++
++      <button
++        type="submit"
++        className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800"
++      >
++        Filtrer
++      </button>
++      {active && (
++        <Link
++          href={action}
++          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
++        >
++          Réinitialiser
++        </Link>
++      )}
++    </Form>
++  );
++}
+diff --git a/app/dashboard/loading.tsx b/app/dashboard/loading.tsx
+new file mode 100644
+index 0000000..ba699b6
+--- /dev/null
++++ b/app/dashboard/loading.tsx
+@@ -0,0 +1,16 @@
++export default function Loading() {
++  return (
++    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
++      <div className="mx-auto max-w-7xl animate-pulse" role="status" aria-live="polite">
++        <div className="h-4 w-48 rounded bg-slate-200" />
++        <div className="mt-6 h-9 w-72 rounded bg-slate-200" />
++        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
++          <div className="h-28 rounded-xl bg-slate-200" />
++          <div className="h-28 rounded-xl bg-slate-200" />
++          <div className="h-28 rounded-xl bg-slate-200" />
++        </div>
++        <span className="sr-only">Chargement...</span>
++      </div>
++    </main>
++  );
++}
+diff --git a/app/dashboard/location-stats.tsx b/app/dashboard/location-stats.tsx
+index 45a84b3..25ff897 100644
+--- a/app/dashboard/location-stats.tsx
++++ b/app/dashboard/location-stats.tsx
+@@ -52,19 +52,19 @@ export default async function LocationStats() {
+       </p>
+ 
+       {rows.length === 0 ? (
+-        <p className="text-slate-500">Aucun lieu enregistre.</p>
++        <p className="text-slate-500">Aucun lieu enregistré.</p>
+       ) : (
+         <div className="overflow-x-auto">
+           <table className="w-full text-left text-sm">
+             <thead className="border-b border-slate-200 text-slate-500">
+               <tr>
+                 <th className="px-3 py-3 font-medium">Lieu</th>
+-                <th className="px-3 py-3 font-medium">Regisseurs</th>
++                <th className="px-3 py-3 font-medium">Régisseurs</th>
+                 <th className="px-3 py-3 font-medium">Chauffeurs</th>
+-                <th className="px-3 py-3 font-medium">Vehicules</th>
++                <th className="px-3 py-3 font-medium">Véhicules</th>
+                 <th className="px-3 py-3 font-medium">Transports</th>
+                 <th className="px-3 py-3 font-medium">Paiements</th>
+-                <th className="px-3 py-3 font-medium">Montant recu</th>
++                <th className="px-3 py-3 font-medium">Montant reçu</th>
+               </tr>
+             </thead>
+             <tbody className="divide-y divide-slate-100">
+diff --git a/app/dashboard/locations/location-form.tsx b/app/dashboard/locations/location-form.tsx
+index ca26d6c..41881a6 100644
+--- a/app/dashboard/locations/location-form.tsx
++++ b/app/dashboard/locations/location-form.tsx
+@@ -28,12 +28,12 @@ export default function LocationForm() {
+       const result = await response.json();
+ 
+       if (!response.ok) {
+-        setError(result.message ?? "Creation impossible.");
++        setError(result.message ?? "Création impossible.");
+         return;
+       }
+ 
+       form.reset();
+-      setSuccess("Le lieu a ete cree. Il est maintenant disponible pour affecter des regisseurs.");
++      setSuccess("Le lieu a été créé. Il est maintenant disponible pour affecter des régisseurs.");
+       router.refresh();
+     } catch {
+       setError("Impossible de contacter le serveur.");
+@@ -76,7 +76,7 @@ export default function LocationForm() {
+         disabled={loading}
+         className="w-full rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
+       >
+-        {loading ? "Creation..." : "Creer le lieu"}
++        {loading ? "Création..." : "Créer le lieu"}
+       </button>
+     </form>
+   );
+diff --git a/app/dashboard/locations/page.tsx b/app/dashboard/locations/page.tsx
+index e78b7e6..9f7d317 100644
+--- a/app/dashboard/locations/page.tsx
++++ b/app/dashboard/locations/page.tsx
+@@ -52,7 +52,7 @@ async function LocationsContent() {
+         <header className="my-6">
+           <h1 className="text-3xl font-bold text-slate-900">Gestion des lieux</h1>
+           <p className="mt-2 text-slate-600">
+-            Chaque lieu constitue un espace de donnees partage entre les regisseurs qui y sont affectes.
++            Chaque lieu constitue un espace de données partagé entre les régisseurs qui y sont affectés.
+           </p>
+         </header>
+ 
+@@ -64,12 +64,12 @@ async function LocationsContent() {
+ 
+           <section className="rounded-2xl bg-white p-6 shadow-sm">
+             <h2 className="mb-5 text-xl font-semibold">
+-              Lieux enregistres ({locations.length})
++              Lieux enregistrés ({locations.length})
+             </h2>
+ 
+             {locations.length === 0 ? (
+               <p className="text-slate-500">
+-                Cree d&apos;abord un lieu avant d&apos;enregistrer un regisseur.
++                Crée d&apos;abord un lieu avant d&apos;enregistrer un régisseur.
+               </p>
+             ) : (
+               <div className="overflow-x-auto">
+@@ -77,9 +77,9 @@ async function LocationsContent() {
+                   <thead className="border-b border-slate-200 text-slate-500">
+                     <tr>
+                       <th className="px-3 py-3">Lieu</th>
+-                      <th className="px-3 py-3">Regisseurs</th>
++                      <th className="px-3 py-3">Régisseurs</th>
+                       <th className="px-3 py-3">Chauffeurs</th>
+-                      <th className="px-3 py-3">Vehicules</th>
++                      <th className="px-3 py-3">Véhicules</th>
+                       <th className="px-3 py-3">Transports</th>
+                     </tr>
+                   </thead>
+@@ -104,7 +104,7 @@ async function LocationsContent() {
+               href="/dashboard/supervisors"
+               className="mt-6 inline-flex rounded-lg border border-slate-300 px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-100"
+             >
+-              Affecter un regisseur a un lieu
++              Affecter un régisseur à un lieu
+             </Link>
+           </section>
+         </div>
+diff --git a/app/dashboard/page.tsx b/app/dashboard/page.tsx
+index f6a52d4..d839243 100644
+--- a/app/dashboard/page.tsx
++++ b/app/dashboard/page.tsx
+@@ -7,10 +7,10 @@ import LocationStats from "./location-stats";
+ import LogoutButton from "./logout-button";
+ 
+ const statusLabels: Record<string, string> = {
+-  PLANNED: "Planifie",
++  PLANNED: "Planifié",
+   IN_PROGRESS: "En cours",
+-  COMPLETED: "Termine",
+-  CANCELLED: "Annule",
++  COMPLETED: "Terminé",
++  CANCELLED: "Annulé",
+ };
+ 
+ function money(value: unknown) {
+@@ -78,8 +78,8 @@ async function DashboardContent() {
+ 
+   return (
+     <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
+-      <h1 className="text-2xl font-bold">Acces non autorise</h1>
+-      <p className="mt-3 text-slate-600">Contacte l&apos;administrateur pour obtenir les droits necessaires.</p>
++      <h1 className="text-2xl font-bold">Accès non autorisé</h1>
++      <p className="mt-3 text-slate-600">Contacte l&apos;administrateur pour obtenir les droits nécessaires.</p>
+     </section>
+   );
+ }
+@@ -126,9 +126,9 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
+           <p className="mt-2 text-slate-600">Bienvenue, {firstName} {lastName}.</p>
+         </div>
+         <Link href="/dashboard/supervisors" className="rounded-lg bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800">
+-          Enregistrer un regisseur</Link>
++          Enregistrer un régisseur</Link>
+         <Link href="/dashboard/locations" className="rounded-lg border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-100">
+-          Gerer les lieux
++          Gérer les lieux
+         </Link>
+       
+         <LogoutButton />
+@@ -136,21 +136,21 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
+ 
+       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+         <StatCard label="Lieux" value={locations} description="Emplacements enregistrés" />
+-        <StatCard label="Regisseurs" value={supervisors} description="Dans toute l'entreprise" />
++        <StatCard label="Régisseurs" value={supervisors} description="Dans toute l'entreprise" />
+         <StatCard label="Chauffeurs" value={drivers} description="Tous les lieux" />
+-        <StatCard label="Vehicules" value={vehicles} description="Tous les lieux" />
+-        <StatCard label="Transports" value={transports} description="Tous les transports enregistres" />
+-        <StatCard label="Produits" value={products} description="Fiches produits enregistrees" />
+-        <StatCard label="Paiements" value={payments._count._all} description="Operations de paiement enregistrees" />
++        <StatCard label="Véhicules" value={vehicles} description="Tous les lieux" />
++        <StatCard label="Transports" value={transports} description="Tous les transports enregistrés" />
++        <StatCard label="Produits" value={products} description="Fiches produits enregistrées" />
++        <StatCard label="Paiements" value={payments._count._all} description="Opérations de paiement enregistrées" />
+         <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés" />
+-        <StatCard label="Montant recu" value={money(payments._sum.amountReceived)} description="Total enregistre" />
+-        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistre" />
++        <StatCard label="Montant reçu" value={money(payments._sum.amountReceived)} description="Total enregistré" />
++        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistré" />
+       </div>
+ 
+             <LocationStats />
+ 
+       <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+-        <h2 className="mb-4 text-xl font-semibold">Etat global des transports</h2>
++        <h2 className="mb-4 text-xl font-semibold">État global des transports</h2>
+         <div className="flex flex-wrap gap-3">
+           {statuses.map((item) => (
+             <div key={item.status} className="rounded-lg bg-slate-100 px-4 py-3">
+@@ -184,8 +184,8 @@ async function SupervisorDashboard({
+   if (!profile?.locationId) {
+     return (
+       <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
+-        <h1 className="text-2xl font-bold">Aucun lieu affecte</h1>
+-        <p className="mt-3 text-slate-600">Contacte l&apos;administrateur pour associer ton compte a un lieu.</p>
++        <h1 className="text-2xl font-bold">Aucun lieu affecté</h1>
++        <p className="mt-3 text-slate-600">Contacte l&apos;administrateur pour associer ton compte à un lieu.</p>
+       </section>
+     );
+   }
+@@ -247,32 +247,32 @@ async function SupervisorDashboard({
+   return (
+     <div className="mx-auto max-w-7xl">
+       <header className="mb-8">
+-        <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Espace regisseur</p>
++        <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Espace régisseur</p>
+         <h1 className="mt-2 text-3xl font-bold text-slate-900">Statistiques du lieu</h1>
+         <p className="mt-2 text-slate-600">
+-          Bienvenue, {firstName} {lastName}. Lieu partage : {profile.assignedLocation?.name ?? "Non renseigne"}.
++          Bienvenue, {firstName} {lastName}. Lieu partagé : {profile.assignedLocation?.name ?? "Non renseigné"}.
+         </p>
+         <p className="mt-1 text-sm text-slate-500">
+-          Les statistiques et les listes comprennent les donnees partagees par tous les regisseurs affectes a ce lieu.
++          Les statistiques et les listes comprennent les données partagées par tous les régisseurs affectés à ce lieu.
+         </p>
+       
+         <div className="mt-4"><LogoutButton /></div>
+       </header>
+ 
+       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+-        <StatCard label="Chauffeurs du lieu" value={drivers} description="Tous les chauffeurs affectes a ce lieu" />
+-        <StatCard label="Vehicules du lieu" value={vehicles} description="Tous les vehicules de ce lieu" />
++        <StatCard label="Chauffeurs du lieu" value={drivers} description="Tous les chauffeurs affectés à ce lieu" />
++        <StatCard label="Véhicules du lieu" value={vehicles} description="Tous les véhicules de ce lieu" />
+         <StatCard label="Transports du lieu" value={transports} description="Tous les transports de ce lieu" />
+-        <StatCard label="Produits" value={products._count._all} description="Produits lies aux transports du lieu" />
++        <StatCard label="Produits" value={products._count._all} description="Produits liés aux transports du lieu" />
+         <StatCard label="Tonnage cumulé" value={`${Number(tonnage._sum.tonnage ?? 0).toLocaleString("fr-FR")} t`} description="Transports non annulés de ce lieu" />
+         <StatCard label="Paiements" value={payments._count._all} description="Paiements de tous les transports du lieu" />
+         <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés du lieu" />
+-        <StatCard label="Montant recu" value={money(payments._sum.amountReceived)} description="Total enregistre pour le lieu" />
+-        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistre pour le lieu" />
++        <StatCard label="Montant reçu" value={money(payments._sum.amountReceived)} description="Total enregistré pour le lieu" />
++        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistré pour le lieu" />
+       </div>
+ 
+       <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+-        <h2 className="mb-4 text-xl font-semibold">Etat des transports du lieu</h2>
++        <h2 className="mb-4 text-xl font-semibold">État des transports du lieu</h2>
+         <div className="flex flex-wrap gap-3">
+           {statuses.map((item) => (
+             <div key={item.status} className="rounded-lg bg-slate-100 px-4 py-3">
+@@ -284,19 +284,19 @@ async function SupervisorDashboard({
+       </section>
+ 
+       <section className="mt-8">
+-        <h2 className="mb-4 text-xl font-semibold">Modules operationnels</h2>
++        <h2 className="mb-4 text-xl font-semibold">Modules opérationnels</h2>
+         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+           <ModuleLink href="/dashboard/drivers" title="Chauffeurs" description="Consulter et ajouter les chauffeurs du lieu." />
+-          <ModuleLink href="/dashboard/vehicles" title="Vehicules" description="Consulter et ajouter les vehicules du lieu." />
+-          <ModuleLink href="/dashboard/transports" title="Transports" description="Creer et consulter les transports du lieu." />
++          <ModuleLink href="/dashboard/vehicles" title="Véhicules" description="Consulter et ajouter les véhicules du lieu." />
++          <ModuleLink href="/dashboard/transports" title="Transports" description="Créer et consulter les transports du lieu." />
+           <ModuleLink href="/dashboard/payments" title="Paiements" description="Enregistrer et consulter les paiements du lieu." />
+         </div>
+       </section>
+ 
+       <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+-        <h2 className="mb-4 text-xl font-semibold">Transports recents du lieu</h2>
++        <h2 className="mb-4 text-xl font-semibold">Transports récents du lieu</h2>
+         {recentTransports.length === 0 ? (
+-          <p className="text-slate-500">Aucun transport enregistre.</p>
++          <p className="text-slate-500">Aucun transport enregistré.</p>
+         ) : (
+           <div className="overflow-x-auto">
+             <table className="w-full text-left text-sm">
+@@ -305,7 +305,7 @@ async function SupervisorDashboard({
+                   <th className="px-3 py-3">Date</th>
+                   <th className="px-3 py-3">Produit</th>
+                   <th className="px-3 py-3">Tonnage</th>
+-                  <th className="px-3 py-3">Vehicule</th>
++                  <th className="px-3 py-3">Véhicule</th>
+                   <th className="px-3 py-3">Statut</th>
+                 </tr>
+               </thead>
+diff --git a/app/dashboard/payments/page.tsx b/app/dashboard/payments/page.tsx
+index 777aef9..5999c2f 100644
+--- a/app/dashboard/payments/page.tsx
++++ b/app/dashboard/payments/page.tsx
+@@ -6,9 +6,9 @@ import { getCurrentUser } from "@/lib/auth";
+ import PaymentForm from "./payment-form";
+ 
+ const labels: Record<string, string> = {
+-  CASH: "Especes",
++  CASH: "Espèces",
+   BANK_TRANSFER: "Virement bancaire",
+-  CHECK: "Cheque",
++  CHECK: "Chèque",
+   MOBILE_MONEY: "Mobile money",
+   OTHER: "Autre",
+ };
+@@ -93,13 +93,13 @@ async function PaymentsContent() {
+       <header className="my-6">
+         <h1 className="text-3xl font-bold text-slate-900">Paiements du lieu</h1>
+         <p className="mt-2 text-slate-600">
+-          Lieu partage : {profile.assignedLocation?.name ?? "Non renseigne"}
++          Lieu partagé : {profile.assignedLocation?.name ?? "Non renseigné"}
+         </p>
+       </header>
+ 
+       <div className="grid grid-cols-1 gap-8 xl:grid-cols-[380px_1fr]">
+         <section className="h-fit rounded-2xl bg-white p-6 shadow-sm">
+-          <h2 className="mb-5 text-xl font-semibold">Paiement integral</h2>
++          <h2 className="mb-5 text-xl font-semibold">Paiement intégral</h2>
+           <PaymentForm
+             transports={transports.map((item) => ({
+               ...item,
+@@ -111,22 +111,22 @@ async function PaymentsContent() {
+ 
+         <section className="rounded-2xl bg-white p-6 shadow-sm">
+           <h2 className="mb-5 text-xl font-semibold">
+-            Historique partage ({payments.length} paiements recents)
++            Historique partagé ({payments.length} paiements récents)
+           </h2>
+ 
+           {payments.length === 0 ? (
+-            <p className="text-slate-500">Aucun paiement enregistre pour ce lieu.</p>
++            <p className="text-slate-500">Aucun paiement enregistré pour ce lieu.</p>
+           ) : (
+             <div className="overflow-x-auto">
+               <table className="w-full text-left text-sm">
+                 <thead className="border-b text-slate-500">
+                   <tr>
+                     <th className="px-3 py-3">Date / produit</th>
+-                    <th className="px-3 py-3">Mode / reference</th>
++                    <th className="px-3 py-3">Mode / référence</th>
+                     <th className="px-3 py-3">Montant du</th>
+-                    <th className="px-3 py-3">Recu</th>
++                    <th className="px-3 py-3">Reçu</th>
+                     <th className="px-3 py-3">Rendu</th>
+-                    <th className="px-3 py-3">Enregistre par</th>
++                    <th className="px-3 py-3">Enregistré par</th>
+                   </tr>
+                 </thead>
+                 <tbody className="divide-y">
+diff --git a/app/dashboard/payments/payment-form.tsx b/app/dashboard/payments/payment-form.tsx
+index c06cff7..0478dde 100644
+--- a/app/dashboard/payments/payment-form.tsx
++++ b/app/dashboard/payments/payment-form.tsx
+@@ -13,9 +13,9 @@ type TransportOption = {
+ };
+ 
+ const methods = [
+-  { value: "CASH", label: "Especes" },
++  { value: "CASH", label: "Espèces" },
+   { value: "BANK_TRANSFER", label: "Virement bancaire" },
+-  { value: "CHECK", label: "Cheque" },
++  { value: "CHECK", label: "Chèque" },
+   { value: "MOBILE_MONEY", label: "Mobile money" },
+   { value: "OTHER", label: "Autre" },
+ ];
+@@ -49,7 +49,7 @@ export default function PaymentForm({
+     setChange(null);
+ 
+     if (!selectedTransport) {
+-      setError("Selectionnez un transport a payer.");
++      setError("Sélectionnez un transport à payer.");
+       return;
+     }
+ 
+@@ -71,7 +71,7 @@ export default function PaymentForm({
+       }
+ 
+       setChange(result.payment.changeReturned);
+-      setSuccess("Paiement integral enregistre.");
++      setSuccess("Paiement intégral enregistré.");
+       form.reset();
+       setAssignmentId("");
+       setMethod("CASH");
+@@ -89,7 +89,7 @@ export default function PaymentForm({
+     <form onSubmit={handleSubmit} className="space-y-4">
+       <div>
+         <label htmlFor="assignmentId" className="mb-1 block text-sm font-medium text-slate-700">
+-          Transport a payer
++          Transport à payer
+         </label>
+         <select
+           id="assignmentId"
+@@ -100,7 +100,7 @@ export default function PaymentForm({
+           disabled={transports.length === 0}
+           className={inputClass}
+         >
+-          <option value="" disabled>Selectionner un transport</option>
++          <option value="" disabled>Sélectionner un transport</option>
+           {transports.map((item) => (
+             <option key={item.id} value={item.id}>
+               {item.product.name} — {item.vehicle.licensePlate} — {money(item.amountDue)}
+@@ -109,19 +109,19 @@ export default function PaymentForm({
+         </select>
+         {transports.length === 0 && (
+           <p className="mt-1 text-sm text-amber-700">
+-            Aucun transport eligible au paiement integral. Verifiez les montants des transports.
++            Aucun transport éligible au paiement intégral. Vérifiez les montants des transports.
+           </p>
+         )}
+       </div>
+ 
+       {selectedTransport && (
+         <div className="rounded-lg bg-blue-50 p-4">
+-          <p className="text-sm text-blue-800">Montant officiel a regler</p>
++          <p className="text-sm text-blue-800">Montant officiel à régler</p>
+           <p className="mt-1 text-xl font-bold text-blue-900">
+             {money(selectedTransport.amountDue)}
+           </p>
+           <p className="mt-1 text-xs text-blue-800">
+-            Le montant est fixe dans le transport et ne peut pas etre change depuis la caisse.
++            Le montant est fixé dans le transport et ne peut pas être changé depuis la caisse.
+           </p>
+         </div>
+       )}
+@@ -138,21 +138,21 @@ export default function PaymentForm({
+ 
+       <div>
+         <label htmlFor="reference" className="mb-1 block text-sm font-medium text-slate-700">
+-          Reference {method === "CASH" ? "(facultative)" : "(obligatoire)"}
++          Référence {method === "CASH" ? "(facultative)" : "(obligatoire)"}
+         </label>
+         <input id="reference" name="reference" type="text" maxLength={150}
+           required={method !== "CASH"} className={inputClass}
+-          placeholder={method === "CASH" ? "Reference facultative" : "Numero de transaction ou de cheque"} />
++          placeholder={method === "CASH" ? "Référence facultative" : "Numéro de transaction ou de chèque"} />
+       </div>
+ 
+       <div>
+-        <label htmlFor="amountReceived" className="mb-1 block text-sm font-medium text-slate-700">Montant recu (MGA)</label>
++        <label htmlFor="amountReceived" className="mb-1 block text-sm font-medium text-slate-700">Montant reçu (MGA)</label>
+         <input id="amountReceived" name="amountReceived" type="number" min="0.01"
+           max="999999999999.99" step="0.01" required className={inputClass} />
+       </div>
+ 
+       <p className="text-xs text-slate-500">
+-        Aucun paiement partiel. En especes, la monnaie rendue est calculee automatiquement.
++        Aucun paiement partiel. En espèces, la monnaie rendue est calculée automatiquement.
+       </p>
+ 
+       {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+@@ -165,7 +165,7 @@ export default function PaymentForm({
+ 
+       <button type="submit" disabled={loading || !selectedTransport}
+         className="w-full rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60">
+-        {loading ? "Enregistrement..." : "Enregistrer le paiement integral"}
++        {loading ? "Enregistrement..." : "Enregistrer le paiement intégral"}
+       </button>
+     </form>
+   );
+diff --git a/app/dashboard/search-params.ts b/app/dashboard/search-params.ts
+new file mode 100644
+index 0000000..bedc301
+--- /dev/null
++++ b/app/dashboard/search-params.ts
+@@ -0,0 +1,23 @@
++export type SearchParams = { [key: string]: string | string[] | undefined };
++
++// Lit un paramètre d'URL texte : nettoyé et limité en longueur.
++export function readParam(params: SearchParams, key: string, max = 100): string {
++  const raw = params[key];
++  const value = Array.isArray(raw) ? raw[0] : raw;
++  return typeof value === "string" ? value.trim().slice(0, max) : "";
++}
++
++// Lit un paramètre d'URL qui doit appartenir à une liste de valeurs autorisées.
++export function readChoice<T extends string>(
++  params: SearchParams,
++  key: string,
++  allowed: readonly T[],
++): T | "" {
++  const value = readParam(params, key, 40);
++  return (allowed as readonly string[]).includes(value) ? (value as T) : "";
++}
++
++// Découpe la recherche en mots : chaque mot doit être trouvé quelque part.
++export function searchWords(q: string): string[] {
++  return q.split(/\s+/).filter(Boolean).slice(0, 5);
++}
+diff --git a/app/dashboard/status-toggle-button.tsx b/app/dashboard/status-toggle-button.tsx
+index 3d9da62..152feb7 100644
+--- a/app/dashboard/status-toggle-button.tsx
++++ b/app/dashboard/status-toggle-button.tsx
+@@ -19,8 +19,8 @@ export default function StatusToggleButton({
+   async function toggleStatus() {
+     const nextStatus = !isActive;
+     const question = nextStatus
+-      ? "Reactiver cet element ?"
+-      : "Desactiver cet element ?";
++      ? "Réactiver cet élément ?"
++      : "Désactiver cet élément ?";
+ 
+     if (!window.confirm(question)) return;
+ 
+@@ -37,7 +37,7 @@ export default function StatusToggleButton({
+       const result = await response.json().catch(() => ({}));
+ 
+       if (!response.ok) {
+-        setError(result.message ?? "La modification a echoue.");
++        setError(result.message ?? "La modification a échoué.");
+         return;
+       }
+ 
+@@ -55,7 +55,7 @@ export default function StatusToggleButton({
+         type="button"
+         onClick={toggleStatus}
+         disabled={loading}
+-        aria-label={`${isActive ? "Desactiver" : "Reactiver"} ${itemLabel}`}
++        aria-label={`${isActive ? "Désactiver" : "Réactiver"} ${itemLabel}`}
+         className={isActive
+           ? "rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+           : "rounded-lg border border-green-200 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-50 disabled:opacity-50"
+@@ -64,8 +64,8 @@ export default function StatusToggleButton({
+         {loading
+           ? "En cours..."
+           : isActive
+-            ? "Desactiver"
+-            : "Reactiver"}
++            ? "Désactiver"
++            : "Réactiver"}
+       </button>
+       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
+     </div>
+diff --git a/app/dashboard/supervisors/location-assignment-form.tsx b/app/dashboard/supervisors/location-assignment-form.tsx
+index ff97335..3fc211c 100644
+--- a/app/dashboard/supervisors/location-assignment-form.tsx
++++ b/app/dashboard/supervisors/location-assignment-form.tsx
+@@ -31,18 +31,18 @@ export default function LocationAssignmentForm({
+     setError("");
+ 
+     if (!locationId) {
+-      setError("Selectionnez un lieu.");
++      setError("Sélectionnez un lieu.");
+       return;
+     }
+ 
+     if (locationId === currentLocationId) {
+-      setError("Choisissez un lieu different de l'affectation actuelle.");
++      setError("Choisissez un lieu différent de l'affectation actuelle.");
+       return;
+     }
+ 
+     const confirmed = window.confirm(
+-      `Affecter ${supervisorName} a ce nouveau lieu ? ` +
+-      "Les anciennes donnees resteront dans leur lieu d'origine."
++      `Affecter ${supervisorName} à ce nouveau lieu ? ` +
++      "Les anciennes données resteront dans leur lieu d'origine."
+     );
+ 
+     if (!confirmed) return;
+@@ -63,7 +63,7 @@ export default function LocationAssignmentForm({
+         return;
+       }
+ 
+-      setMessage(result.message ?? "Affectation modifiee.");
++      setMessage(result.message ?? "Affectation modifiée.");
+       router.refresh();
+     } catch {
+       setError("Impossible de contacter le serveur.");
+diff --git a/app/dashboard/supervisors/page.tsx b/app/dashboard/supervisors/page.tsx
+index 5aa0e03..3373717 100644
+--- a/app/dashboard/supervisors/page.tsx
++++ b/app/dashboard/supervisors/page.tsx
+@@ -60,36 +60,36 @@ async function SupervisorsContent() {
+         </Link>
+ 
+         <header className="my-6">
+-          <h1 className="text-3xl font-bold text-slate-900">Gestion des regisseurs</h1>
++          <h1 className="text-3xl font-bold text-slate-900">Gestion des régisseurs</h1>
+           <p className="mt-2 text-slate-600">
+-            Les regisseurs affectes au meme lieu partagent les donnees operationnelles de ce lieu.
++            Les régisseurs affectés au même lieu partagent les données opérationnelles de ce lieu.
+           </p>
+         </header>
+ 
+         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[400px_1fr]">
+           <section className="h-fit rounded-2xl bg-white p-6 shadow-sm">
+-            <h2 className="mb-5 text-xl font-semibold">Nouveau regisseur</h2>
++            <h2 className="mb-5 text-xl font-semibold">Nouveau régisseur</h2>
+             <SupervisorForm locations={locations} />
+           </section>
+ 
+           <section className="rounded-2xl bg-white p-6 shadow-sm">
+             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+               <h2 className="text-xl font-semibold">
+-                Regisseurs enregistres ({supervisors.length})
++                Régisseurs enregistrés ({supervisors.length})
+               </h2>
+               <Link href="/dashboard/locations" className="text-sm font-semibold text-blue-700 hover:underline">
+-                Gerer les lieux
++                Gérer les lieux
+               </Link>
+             </div>
+ 
+             {supervisors.length === 0 ? (
+-              <p className="text-slate-500">Aucun regisseur enregistre.</p>
++              <p className="text-slate-500">Aucun régisseur enregistré.</p>
+             ) : (
+               <div className="overflow-x-auto">
+                 <table className="w-full text-left text-sm">
+                   <thead className="border-b border-slate-200 text-slate-500">
+                     <tr>
+-                      <th className="px-3 py-3">Regisseur</th>
++                      <th className="px-3 py-3">Régisseur</th>
+                       <th className="px-3 py-3">Email</th>
+                       <th className="px-3 py-3">CIN</th>
+                       <th className="px-3 py-3">Lieu actuel</th>
+@@ -106,7 +106,7 @@ async function SupervisorsContent() {
+                         <td className="px-3 py-4">{item.user.email}</td>
+                         <td className="px-3 py-4">{item.nationalId}</td>
+                         <td className="px-3 py-4">
+-                          {item.assignedLocation?.name ?? "Non affecte"}
++                          {item.assignedLocation?.name ?? "Non affecté"}
+                         </td>
+                         <td className="px-3 py-4">
+                           <LocationAssignmentForm
+diff --git a/app/dashboard/supervisors/supervisor-form.tsx b/app/dashboard/supervisors/supervisor-form.tsx
+index 7d882fa..ef78892 100644
+--- a/app/dashboard/supervisors/supervisor-form.tsx
++++ b/app/dashboard/supervisors/supervisor-form.tsx
+@@ -38,12 +38,12 @@ export default function SupervisorForm({
+       const result = await response.json();
+ 
+       if (!response.ok) {
+-        setError(result.message ?? "Creation impossible.");
++        setError(result.message ?? "Création impossible.");
+         return;
+       }
+ 
+       form.reset();
+-      setSuccess("Le compte du regisseur a ete cree et affecte au lieu choisi.");
++      setSuccess("Le compte du régisseur a été créé et affecté au lieu choisi.");
+       router.refresh();
+     } catch {
+       setError("Impossible de contacter le serveur.");
+@@ -53,11 +53,11 @@ export default function SupervisorForm({
+   }
+ 
+   const fields = [
+-    { name: "firstName", label: "Prenom", required: true },
++    { name: "firstName", label: "Prénom", required: true },
+     { name: "lastName", label: "Nom", required: true },
+     { name: "email", label: "Adresse email", type: "email", required: true },
+-    { name: "phoneNumber", label: "Telephone", type: "tel", required: false },
+-    { name: "nationalId", label: "Numero CIN", required: true },
++    { name: "phoneNumber", label: "Téléphone", type: "tel", required: false },
++    { name: "nationalId", label: "Numéro CIN", required: true },
+     { name: "address", label: "Adresse personnelle", required: false },
+   ];
+ 
+@@ -93,7 +93,7 @@ export default function SupervisorForm({
+           className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5"
+         >
+           <option value="" disabled>
+-            Selectionner un lieu
++            Sélectionner un lieu
+           </option>
+           {locations.map((location) => (
+             <option key={location.id} value={location.id}>
+@@ -104,11 +104,11 @@ export default function SupervisorForm({
+ 
+         {locations.length === 0 && (
+           <p className="mt-2 text-sm text-amber-700">
+-            Aucun lieu n&apos;est disponible. Cree d&apos;abord un lieu.
++            Aucun lieu n&apos;est disponible. Crée d&apos;abord un lieu.
+           </p>
+         )}
+         <Link href="/dashboard/locations" className="mt-2 inline-block text-sm text-blue-700 hover:underline">
+-          Creer ou consulter les lieux
++          Créer ou consulter les lieux
+         </Link>
+       </div>
+ 
+@@ -127,7 +127,7 @@ export default function SupervisorForm({
+           className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+         />
+         <p className="mt-1 text-xs text-slate-500">
+-          Au moins 12 caracteres.
++          Au moins 12 caractères.
+         </p>
+       </div>
+ 
+@@ -148,7 +148,7 @@ export default function SupervisorForm({
+         disabled={loading || locations.length === 0}
+         className="w-full rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
+       >
+-        {loading ? "Creation..." : "Creer le regisseur"}
++        {loading ? "Création..." : "Créer le régisseur"}
+       </button>
+     </form>
+   );
+diff --git a/app/dashboard/transports/page.tsx b/app/dashboard/transports/page.tsx
+index c908295..9819861 100644
+--- a/app/dashboard/transports/page.tsx
++++ b/app/dashboard/transports/page.tsx
+@@ -6,18 +6,28 @@ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
+ import TransportForm from "./transport-form";
+ import TransportAmountForm from "./transport-amount-form";
++import ListFilters from "../list-filters";
++import { readChoice, readParam, searchWords, type SearchParams } from "../search-params";
+ 
+-export default function TransportsPage() {
++export default function TransportsPage({
++  searchParams,
++}: {
++  searchParams: Promise<SearchParams>;
++}) {
+   return (
+     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+       <Suspense fallback={<p>Chargement...</p>}>
+-        <TransportsContent />
++        <TransportsContent searchParams={searchParams} />
+       </Suspense>
+     </main>
+   );
+ }
+ 
+-async function TransportsContent() {
++async function TransportsContent({
++  searchParams,
++}: {
++  searchParams: Promise<SearchParams>;
++}) {
+   const user = await getCurrentUser();
+   if (!user) redirect("/login");
+   if (user.role !== "SUPERVISOR") redirect("/dashboard");
+@@ -28,9 +38,38 @@ async function TransportsContent() {
+   });
+   if (!profile?.locationId) redirect("/dashboard");
+ 
++  const params = await searchParams;
++  const q = readParam(params, "q");
++  const status = readChoice(params, "statut", [
++    "PLANNED",
++    "IN_PROGRESS",
++    "COMPLETED",
++    "CANCELLED",
++  ] as const);
++  const payment = readChoice(params, "paiement", ["paye", "impaye"] as const);
++  const filtered = q !== "" || status !== "" || payment !== "";
++
+   const [transports, vehicles] = await Promise.all([
+     prisma.transportAssignment.findMany({
+-      where: { locationId: profile.locationId },
++      where: {
++        locationId: profile.locationId,
++        ...(status ? { status } : {}),
++        ...(payment === "paye"
++          ? { payment: { isNot: null } }
++          : payment === "impaye"
++            ? { payment: { is: null } }
++            : {}),
++        AND: searchWords(q).map((word) => ({
++          OR: [
++            { product: { name: { contains: word, mode: "insensitive" as const } } },
++            { product: { type: { contains: word, mode: "insensitive" as const } } },
++            { vehicle: { licensePlate: { contains: word, mode: "insensitive" as const } } },
++            { vehicle: { vehicleType: { contains: word, mode: "insensitive" as const } } },
++            { vehicle: { driver: { firstName: { contains: word, mode: "insensitive" as const } } } },
++            { vehicle: { driver: { lastName: { contains: word, mode: "insensitive" as const } } } },
++          ],
++        })),
++      },
+       orderBy: { assignedAt: "desc" },
+       select: {
+         id: true,
+@@ -73,7 +112,7 @@ async function TransportsContent() {
+       <header className="my-6">
+         <h1 className="text-3xl font-bold text-slate-900">Transports du lieu</h1>
+         <p className="mt-2 text-slate-600">
+-          Lieu partage : {profile.assignedLocation?.name ?? "Non renseigne"}
++          Lieu partagé : {profile.assignedLocation?.name ?? "Non renseigné"}
+         </p>
+       </header>
+ 
+@@ -87,9 +126,38 @@ async function TransportsContent() {
+           <h2 className="mb-5 text-xl font-semibold">
+             Transports du lieu ({transports.length})
+           </h2>
++          <ListFilters
++            action="/dashboard/transports"
++            q={q}
++            placeholder="Produit, véhicule ou chauffeur"
++            filters={[
++              {
++                name: "statut",
++                label: "Statut",
++                value: status,
++                options: [
++                  { value: "PLANNED", label: "Planifié" },
++                  { value: "IN_PROGRESS", label: "En cours" },
++                  { value: "COMPLETED", label: "Terminé" },
++                  { value: "CANCELLED", label: "Annulé" },
++                ],
++              },
++              {
++                name: "paiement",
++                label: "Paiement",
++                value: payment,
++                options: [
++                  { value: "paye", label: "Payé" },
++                  { value: "impaye", label: "Non payé" },
++                ],
++              },
++            ]}
++          />
+ 
+           {transports.length === 0 ? (
+-            <p className="text-slate-500">Aucun transport pour ce lieu.</p>
++            <p className="text-slate-500">
++              {filtered ? "Aucun transport ne correspond à ces critères." : "Aucun transport pour ce lieu."}
++            </p>
+           ) : (
+             <div className="overflow-x-auto">
+               <table className="w-full text-left text-sm">
+@@ -97,7 +165,7 @@ async function TransportsContent() {
+                   <tr>
+                     <th className="px-3 py-3">Date / produit</th>
+                     <th className="px-3 py-3">Tonnage</th>
+-                    <th className="px-3 py-3">Vehicule</th>
++                    <th className="px-3 py-3">Véhicule</th>
+                     <th className="px-3 py-3">Montant du</th>
+                     <th className="px-3 py-3">Statut</th>
+                   </tr>
+@@ -122,12 +190,12 @@ async function TransportsContent() {
+                         {item.amountDue !== null ? (
+                           <div>
+                             <p className="font-semibold">{String(item.amountDue)} MGA</p>
+-                            {item.payment && <p className="text-xs text-green-700">Paye</p>}
++                            {item.payment && <p className="text-xs text-green-700">Payé</p>}
+                           </div>
+                         ) : item.payment ? (
+-                          <span className="text-xs text-amber-700">Paiement existant : a verifier</span>
++                          <span className="text-xs text-amber-700">Paiement existant : à vérifier</span>
+                         ) : item.status === "CANCELLED" ? (
+-                          <span className="text-xs text-slate-500">Transport annule</span>
++                          <span className="text-xs text-slate-500">Transport annulé</span>
+                         ) : (
+                           <TransportAmountForm id={item.id} />
+                         )}
+diff --git a/app/dashboard/transports/transport-amount-form.tsx b/app/dashboard/transports/transport-amount-form.tsx
+index 7894ad6..d5f90a7 100644
+--- a/app/dashboard/transports/transport-amount-form.tsx
++++ b/app/dashboard/transports/transport-amount-form.tsx
+@@ -25,7 +25,7 @@ export default function TransportAmountForm({ id }: { id: string }) {
+       const result = await response.json();
+ 
+       if (!response.ok) {
+-        setError(result.error ?? result.message ?? "Modification impossible.");
++        setError(result.message ?? "Modification impossible.");
+         return;
+       }
+ 
+@@ -46,7 +46,7 @@ export default function TransportAmountForm({ id }: { id: string }) {
+         max="999999999999.99"
+         step="0.01"
+         required
+-        aria-label="Montant total a regler"
++        aria-label="Montant total à régler"
+         placeholder="Montant MGA"
+         className="w-full rounded-lg border border-slate-300 px-2 py-2"
+       />
+diff --git a/app/dashboard/transports/transport-form.tsx b/app/dashboard/transports/transport-form.tsx
+index 4916352..89646e9 100644
+--- a/app/dashboard/transports/transport-form.tsx
++++ b/app/dashboard/transports/transport-form.tsx
+@@ -34,12 +34,12 @@ export default function TransportForm({ vehicles }: { vehicles: VehicleOption[]
+       const result = await response.json();
+ 
+       if (!response.ok) {
+-        setError(result.message ?? "Creation impossible.");
++        setError(result.message ?? "Création impossible.");
+         return;
+       }
+ 
+       form.reset();
+-      setSuccess("Le transport et son montant officiel ont ete enregistres.");
++      setSuccess("Le transport et son montant officiel ont été enregistrés.");
+       router.refresh();
+     } catch {
+       setError("Impossible de contacter le serveur.");
+@@ -77,22 +77,22 @@ export default function TransportForm({ vehicles }: { vehicles: VehicleOption[]
+       <h3 className="border-b border-slate-200 pb-2 pt-3 font-semibold">Informations du transport</h3>
+ 
+       <div>
+-        <label htmlFor="amountDue" className="mb-1 block text-sm font-medium">Montant total a regler (MGA)</label>
++        <label htmlFor="amountDue" className="mb-1 block text-sm font-medium">Montant total à régler (MGA)</label>
+         <input id="amountDue" name="amountDue" type="number" min="0.01" max="999999999999.99" step="0.01" required className={inputClass} />
+-        <p className="mt-1 text-xs text-slate-500">Ce montant sera utilise par la caisse pour exiger un paiement integral.</p>
++        <p className="mt-1 text-xs text-slate-500">Ce montant sera utilisé par la caisse pour exiger un paiement intégral.</p>
+       </div>
+ 
+       <div>
+-        <label htmlFor="vehicleId" className="mb-1 block text-sm font-medium">Vehicule et chauffeur</label>
++        <label htmlFor="vehicleId" className="mb-1 block text-sm font-medium">Véhicule et chauffeur</label>
+         <select id="vehicleId" name="vehicleId" required defaultValue="" disabled={vehicles.length === 0} className={inputClass}>
+-          <option value="" disabled>Selectionner un vehicule</option>
++          <option value="" disabled>Sélectionner un véhicule</option>
+           {vehicles.map((vehicle) => (
+             <option key={vehicle.id} value={vehicle.id}>
+               {vehicle.licensePlate} — {vehicle.vehicleType} ({vehicle.driver.firstName} {vehicle.driver.lastName})
+             </option>
+           ))}
+         </select>
+-        {vehicles.length === 0 && <p className="mt-1 text-sm text-amber-700">Enregistrez d&apos;abord un vehicule actif pour ce lieu.</p>}
++        {vehicles.length === 0 && <p className="mt-1 text-sm text-amber-700">Enregistrez d&apos;abord un véhicule actif pour ce lieu.</p>}
+       </div>
+ 
+       <div>
+@@ -109,7 +109,7 @@ export default function TransportForm({ vehicles }: { vehicles: VehicleOption[]
+       {success && <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{success}</p>}
+ 
+       <button type="submit" disabled={loading || vehicles.length === 0} className="w-full rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60">
+-        {loading ? "Creation..." : "Creer le transport"}
++        {loading ? "Création..." : "Créer le transport"}
+       </button>
+     </form>
+   );
+diff --git a/app/dashboard/transports/transport-status-control.tsx b/app/dashboard/transports/transport-status-control.tsx
+index 5f6e84f..a6702b9 100644
+--- a/app/dashboard/transports/transport-status-control.tsx
++++ b/app/dashboard/transports/transport-status-control.tsx
+@@ -68,8 +68,8 @@ export default function TransportStatusControl({
+ 
+       if (!response.ok) {
+         setMessage(
+-          typeof result.error === "string"
+-            ? result.error
++          typeof result.message === "string"
++            ? result.message
+             : "La modification a échoué.",
+         );
+         return;
+diff --git a/app/dashboard/vehicles/[id]/edit/page.tsx b/app/dashboard/vehicles/[id]/edit/page.tsx
+index d5193a6..465e13c 100644
+--- a/app/dashboard/vehicles/[id]/edit/page.tsx
++++ b/app/dashboard/vehicles/[id]/edit/page.tsx
+@@ -50,9 +50,9 @@ async function EditVehicleContent({ params }: PageProps) {
+     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+       <section className="mx-auto max-w-xl rounded-2xl bg-white p-8 shadow-sm">
+         <Link href="/dashboard/vehicles" className="text-sm text-blue-700 hover:underline">
+-          &larr; Retour aux vehicules
++          &larr; Retour aux véhicules
+         </Link>
+-        <h1 className="mb-6 mt-4 text-2xl font-bold text-slate-900">Modifier le vehicule</h1>
++        <h1 className="mb-6 mt-4 text-2xl font-bold text-slate-900">Modifier le véhicule</h1>
+         <VehicleEditForm vehicle={vehicle} />
+       </section>
+     </main>
+diff --git a/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx b/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx
+index 9dee41b..07fbf6e 100644
+--- a/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx
++++ b/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx
+@@ -49,7 +49,7 @@ export default function VehicleEditForm({ vehicle }: { vehicle: VehicleData }) {
+   return (
+     <form onSubmit={handleSubmit} className="space-y-4">
+       <div>
+-        <label htmlFor="vehicleType" className="mb-1 block text-sm font-medium text-slate-700">Type de vehicule</label>
++        <label htmlFor="vehicleType" className="mb-1 block text-sm font-medium text-slate-700">Type de véhicule</label>
+         <input id="vehicleType" name="vehicleType" required maxLength={100}
+           defaultValue={vehicle.vehicleType}
+           className="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
+@@ -63,10 +63,10 @@ export default function VehicleEditForm({ vehicle }: { vehicle: VehicleData }) {
+       </div>
+ 
+       <div className="rounded-lg bg-slate-50 p-4">
+-        <p className="text-sm font-medium text-slate-700">Chauffeur actuellement associe</p>
++        <p className="text-sm font-medium text-slate-700">Chauffeur actuellement associé</p>
+         <p className="mt-1 text-slate-600">{vehicle.driver.firstName} {vehicle.driver.lastName}</p>
+         <p className="mt-2 text-xs text-slate-500">
+-          Le changement de chauffeur n&apos;est pas effectue depuis ce formulaire afin de preserver l&apos;historique des transports.
++          Le changement de chauffeur n&apos;est pas effectué depuis ce formulaire afin de préserver l&apos;historique des transports.
+         </p>
+       </div>
+ 
+diff --git a/app/dashboard/vehicles/page.tsx b/app/dashboard/vehicles/page.tsx
+index 3b3a03d..9c16c9c 100644
+--- a/app/dashboard/vehicles/page.tsx
++++ b/app/dashboard/vehicles/page.tsx
+@@ -5,18 +5,28 @@ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
+ import VehicleForm from "./vehicle-form";
+ import StatusToggleButton from "../status-toggle-button";
++import ListFilters from "../list-filters";
++import { readChoice, readParam, searchWords, type SearchParams } from "../search-params";
+ 
+-export default function VehiclesPage() {
++export default function VehiclesPage({
++  searchParams,
++}: {
++  searchParams: Promise<SearchParams>;
++}) {
+   return (
+     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+       <Suspense fallback={<p>Chargement...</p>}>
+-        <VehiclesContent />
++        <VehiclesContent searchParams={searchParams} />
+       </Suspense>
+     </main>
+   );
+ }
+ 
+-async function VehiclesContent() {
++async function VehiclesContent({
++  searchParams,
++}: {
++  searchParams: Promise<SearchParams>;
++}) {
+   const user = await getCurrentUser();
+   if (!user) redirect("/login");
+   if (user.role !== "SUPERVISOR") redirect("/dashboard");
+@@ -28,9 +38,26 @@ async function VehiclesContent() {
+ 
+   if (!profile?.locationId) redirect("/dashboard");
+ 
++  const params = await searchParams;
++  const q = readParam(params, "q");
++  const status = readChoice(params, "statut", ["actif", "inactif"] as const);
++  const filtered = q !== "" || status !== "";
++
+   const [vehicles, drivers] = await Promise.all([
+     prisma.vehicle.findMany({
+-      where: { locationId: profile.locationId },
++      where: {
++        locationId: profile.locationId,
++        ...(status ? { isActive: status === "actif" } : {}),
++        AND: searchWords(q).map((word) => ({
++          OR: [
++            { licensePlate: { contains: word, mode: "insensitive" as const } },
++            { vehicleType: { contains: word, mode: "insensitive" as const } },
++            { driver: { firstName: { contains: word, mode: "insensitive" as const } } },
++            { driver: { lastName: { contains: word, mode: "insensitive" as const } } },
++            { driver: { phoneNumber: { contains: word, mode: "insensitive" as const } } },
++          ],
++        })),
++      },
+       orderBy: { createdAt: "desc" },
+       select: {
+         id: true,
+@@ -53,21 +80,39 @@ async function VehiclesContent() {
+         &larr; Retour au tableau de bord
+       </Link>
+       <header className="my-6">
+-        <h1 className="text-3xl font-bold text-slate-900">Vehicules du lieu</h1>
++        <h1 className="text-3xl font-bold text-slate-900">Véhicules du lieu</h1>
+         <p className="mt-2 text-slate-600">
+-          Lieu partage : {profile.assignedLocation?.name ?? "Non renseigne"}
++          Lieu partagé : {profile.assignedLocation?.name ?? "Non renseigné"}
+         </p>
+       </header>
+ 
+       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[380px_1fr]">
+         <section className="h-fit rounded-2xl bg-white p-6 shadow-sm">
+-          <h2 className="mb-5 text-xl font-semibold">Ajouter un vehicule</h2>
++          <h2 className="mb-5 text-xl font-semibold">Ajouter un véhicule</h2>
+           <VehicleForm drivers={drivers} />
+         </section>
+         <section className="rounded-2xl bg-white p-6 shadow-sm">
+-          <h2 className="mb-5 text-xl font-semibold">Vehicules du lieu ({vehicles.length})</h2>
++          <h2 className="mb-5 text-xl font-semibold">Véhicules du lieu ({vehicles.length})</h2>
++          <ListFilters
++            action="/dashboard/vehicles"
++            q={q}
++            placeholder="Immatriculation, type ou chauffeur"
++            filters={[
++              {
++                name: "statut",
++                label: "Statut",
++                value: status,
++                options: [
++            { value: "actif", label: "Actif" },
++            { value: "inactif", label: "Inactif" },
++          ],
++              },
++            ]}
++          />
+           {vehicles.length === 0 ? (
+-            <p className="text-slate-500">Aucun vehicule enregistre pour ce lieu.</p>
++            <p className="text-slate-500">
++              {filtered ? "Aucun véhicule ne correspond à ces critères." : "Aucun véhicule enregistré pour ce lieu."}
++            </p>
+           ) : (
+             <div className="overflow-x-auto">
+               <table className="w-full text-left text-sm">
+@@ -76,7 +121,7 @@ async function VehiclesContent() {
+                     <th className="px-3 py-3">Immatriculation</th>
+                     <th className="px-3 py-3">Type</th>
+                     <th className="px-3 py-3">Chauffeur</th>
+-                    <th className="px-3 py-3">Telephone</th>
++                    <th className="px-3 py-3">Téléphone</th>
+                     <th className="px-3 py-3">Statut</th>
+                     <th className="px-3 py-3">Action</th>
+                   </tr>
+diff --git a/app/dashboard/vehicles/vehicle-form.tsx b/app/dashboard/vehicles/vehicle-form.tsx
+index 6cc5c2f..7b4f594 100644
+--- a/app/dashboard/vehicles/vehicle-form.tsx
++++ b/app/dashboard/vehicles/vehicle-form.tsx
+@@ -38,12 +38,12 @@ export default function VehicleForm({
+       const result = await response.json();
+ 
+       if (!response.ok) {
+-        setError(result.message ?? "L'enregistrement a echoue.");
++        setError(result.message ?? "L'enregistrement a échoué.");
+         return;
+       }
+ 
+       form.reset();
+-      setSuccess("Le vehicule a ete enregistre.");
++      setSuccess("Le véhicule a été enregistré.");
+       router.refresh();
+     } catch {
+       setError("Impossible de contacter le serveur.");
+@@ -56,7 +56,7 @@ export default function VehicleForm({
+     <form onSubmit={handleSubmit} className="space-y-4">
+       <div>
+         <label htmlFor="vehicleType" className="mb-1 block text-sm font-medium text-slate-700">
+-          Type de vehicule
++          Type de véhicule
+         </label>
+         <input
+           id="vehicleType"
+@@ -71,7 +71,7 @@ export default function VehicleForm({
+ 
+       <div>
+         <label htmlFor="licensePlate" className="mb-1 block text-sm font-medium text-slate-700">
+-          Numero d&apos;immatriculation
++          Numéro d&apos;immatriculation
+         </label>
+         <input
+           id="licensePlate"
+@@ -86,7 +86,7 @@ export default function VehicleForm({
+ 
+       <div>
+         <label htmlFor="driverId" className="mb-1 block text-sm font-medium text-slate-700">
+-          Chauffeur associe
++          Chauffeur associé
+         </label>
+         <select
+           id="driverId"
+@@ -97,7 +97,7 @@ export default function VehicleForm({
+           className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+         >
+           <option value="" disabled>
+-            Selectionner un chauffeur
++            Sélectionner un chauffeur
+           </option>
+           {drivers.map((driver) => (
+             <option key={driver.id} value={driver.id}>
+@@ -130,7 +130,7 @@ export default function VehicleForm({
+         disabled={loading || drivers.length === 0}
+         className="w-full rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+       >
+-        {loading ? "Enregistrement..." : "Ajouter le vehicule"}
++        {loading ? "Enregistrement..." : "Ajouter le véhicule"}
+       </button>
+     </form>
+   );
+diff --git a/app/error.tsx b/app/error.tsx
+new file mode 100644
+index 0000000..bf3f7a8
+--- /dev/null
++++ b/app/error.tsx
+@@ -0,0 +1,43 @@
++"use client";
++
++import { useEffect } from "react";
++import Link from "next/link";
++
++// Dans cette version de Next.js, la fonction de relance s'appelle `retry`.
++export default function ErrorPage({
++  error,
++  retry,
++}: {
++  error: unknown;
++  retry: () => void;
++}) {
++  useEffect(() => {
++    console.error(error);
++  }, [error]);
++
++  return (
++    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
++      <section className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-sm">
++        <h1 className="text-2xl font-bold text-slate-900">Une erreur est survenue</h1>
++        <p className="mt-3 text-slate-600">
++          La page n&apos;a pas pu s&apos;afficher. Réessayez ou retournez au tableau de bord.
++        </p>
++        <div className="mt-6 flex flex-wrap justify-center gap-3">
++          <button
++            type="button"
++            onClick={() => retry()}
++            className="rounded-lg bg-blue-700 px-5 py-2.5 font-semibold text-white hover:bg-blue-800"
++          >
++            Réessayer
++          </button>
++          <Link
++            href="/dashboard"
++            className="rounded-lg border border-slate-300 px-5 py-2.5 font-semibold text-slate-700 hover:bg-slate-100"
++          >
++            Tableau de bord
++          </Link>
++        </div>
++      </section>
++    </main>
++  );
++}
+diff --git a/app/not-found.tsx b/app/not-found.tsx
+new file mode 100644
+index 0000000..9720370
+--- /dev/null
++++ b/app/not-found.tsx
+@@ -0,0 +1,21 @@
++import Link from "next/link";
++
++export default function NotFound() {
++  return (
++    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
++      <section className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-sm">
++        <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Erreur 404</p>
++        <h1 className="mt-2 text-2xl font-bold text-slate-900">Page introuvable</h1>
++        <p className="mt-3 text-slate-600">
++          Cette page n&apos;existe pas, ou elle n&apos;appartient pas à votre lieu.
++        </p>
++        <Link
++          href="/dashboard"
++          className="mt-6 inline-flex rounded-lg bg-blue-700 px-5 py-2.5 font-semibold text-white hover:bg-blue-800"
++        >
++          Retour au tableau de bord
++        </Link>
++      </section>
++    </main>
++  );
++}

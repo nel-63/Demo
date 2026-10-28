@@ -28,12 +28,12 @@ export default function LocationForm() {
       const result = await response.json();
 
       if (!response.ok) {
-        setError(result.message ?? "Creation impossible.");
+        setError(result.message ?? "Création impossible.");
         return;
       }
 
       form.reset();
-      setSuccess("Le lieu a ete cree. Il est maintenant disponible pour affecter des regisseurs.");
+      setSuccess("Le lieu a été créé. Il est maintenant disponible pour affecter des régisseurs.");
       router.refresh();
     } catch {
       setError("Impossible de contacter le serveur.");
@@ -76,7 +76,7 @@ export default function LocationForm() {
         disabled={loading}
         className="w-full rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
       >
-        {loading ? "Creation..." : "Creer le lieu"}
+        {loading ? "Création..." : "Créer le lieu"}
       </button>
     </form>
   );

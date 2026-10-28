@@ -1,0 +1,96 @@
+diff --git a/app/dashboard/page.tsx b/app/dashboard/page.tsx
+index 6382c6e..f6a52d4 100644
+--- a/app/dashboard/page.tsx
++++ b/app/dashboard/page.tsx
+@@ -87,14 +87,17 @@ async function DashboardContent() {
+ async function AdminDashboard({ firstName, lastName }: { firstName: string; lastName: string }) {
+   const [
+     supervisors,
++    locations,
+     drivers,
+     vehicles,
+     transports,
+     products,
+     payments,
+     statuses,
++    outstanding,
+   ] = await Promise.all([
+     prisma.supervisor.count(),
++    prisma.location.count(),
+     prisma.driver.count(),
+     prisma.vehicle.count(),
+     prisma.transportAssignment.count(),
+@@ -107,6 +110,11 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
+       by: ["status"],
+       _count: { _all: true },
+     }),
++    // Reste à encaisser : transports non annulés et sans paiement.
++    prisma.transportAssignment.aggregate({
++      where: { status: { not: "CANCELLED" }, payment: { is: null } },
++      _sum: { amountDue: true },
++    }),
+   ]);
+ 
+   return (
+@@ -127,13 +135,14 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
+       </header>
+ 
+       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
++        <StatCard label="Lieux" value={locations} description="Emplacements enregistrés" />
+         <StatCard label="Regisseurs" value={supervisors} description="Dans toute l'entreprise" />
+         <StatCard label="Chauffeurs" value={drivers} description="Tous les lieux" />
+         <StatCard label="Vehicules" value={vehicles} description="Tous les lieux" />
+         <StatCard label="Transports" value={transports} description="Tous les transports enregistres" />
+         <StatCard label="Produits" value={products} description="Fiches produits enregistrees" />
+         <StatCard label="Paiements" value={payments._count._all} description="Operations de paiement enregistrees" />
+-        <StatCard label="Montant a regler" value={money(payments._sum.amountDue)} description="Total enregistre" />
++        <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés" />
+         <StatCard label="Montant recu" value={money(payments._sum.amountReceived)} description="Total enregistre" />
+         <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistre" />
+       </div>
+@@ -191,6 +200,8 @@ async function SupervisorDashboard({
+     payments,
+     statuses,
+     recentTransports,
++    tonnage,
++    outstanding,
+   ] = await Promise.all([
+     prisma.driver.count({ where: { locationId } }),
+     prisma.vehicle.count({ where: { locationId } }),
+@@ -198,7 +209,6 @@ async function SupervisorDashboard({
+     prisma.product.aggregate({
+       where: { assignment: { is: { locationId } } },
+       _count: { _all: true },
+-      _sum: { tonnage: true },
+     }),
+     prisma.payment.aggregate({
+       where: { assignment: { is: { locationId } } },
+@@ -222,6 +232,16 @@ async function SupervisorDashboard({
+         vehicle: { select: { licensePlate: true } },
+       },
+     }),
++    // Tonnage cumulé : les transports annulés ne comptent pas.
++    prisma.product.aggregate({
++      where: { assignment: { is: { locationId, status: { not: "CANCELLED" } } } },
++      _sum: { tonnage: true },
++    }),
++    // Reste à encaisser : transports non annulés et sans paiement.
++    prisma.transportAssignment.aggregate({
++      where: { locationId, status: { not: "CANCELLED" }, payment: { is: null } },
++      _sum: { amountDue: true },
++    }),
+   ]);
+ 
+   return (
+@@ -244,9 +264,9 @@ async function SupervisorDashboard({
+         <StatCard label="Vehicules du lieu" value={vehicles} description="Tous les vehicules de ce lieu" />
+         <StatCard label="Transports du lieu" value={transports} description="Tous les transports de ce lieu" />
+         <StatCard label="Produits" value={products._count._all} description="Produits lies aux transports du lieu" />
+-        <StatCard label="Tonnage cumule" value={`${Number(products._sum.tonnage ?? 0).toLocaleString("fr-FR")} t`} description="Pour les transports de ce lieu" />
++        <StatCard label="Tonnage cumulé" value={`${Number(tonnage._sum.tonnage ?? 0).toLocaleString("fr-FR")} t`} description="Transports non annulés de ce lieu" />
+         <StatCard label="Paiements" value={payments._count._all} description="Paiements de tous les transports du lieu" />
+-        <StatCard label="Montant a regler" value={money(payments._sum.amountDue)} description="Total enregistre pour le lieu" />
++        <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés du lieu" />
+         <StatCard label="Montant recu" value={money(payments._sum.amountReceived)} description="Total enregistre pour le lieu" />
+         <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistre pour le lieu" />
+       </div>

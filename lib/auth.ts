@@ -13,8 +13,10 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
-export async function createSession(user: { id: string }) {
-  const token = await new SignJWT({})
+// Le jeton contient la version de session de l'utilisateur (claim "sv").
+// Si la version en base change (deconnexion), tous les anciens jetons deviennent invalides.
+export async function createSession(user: { id: string; sessionVersion: number }) {
+  const token = await new SignJWT({ sv: user.sessionVersion })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(user.id)
     .setIssuedAt()
@@ -36,6 +38,21 @@ export async function clearSession() {
   cookieStore.delete(COOKIE_NAME);
 }
 
+// Deconnexion complete : invalide les jetons existants (meme copies) puis supprime le cookie.
+export async function endSession() {
+  try {
+    const user = await getCurrentUser();
+    if (user) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { sessionVersion: { increment: 1 } },
+      });
+    }
+  } finally {
+    await clearSession();
+  }
+}
+
 export async function getCurrentUser() {
   try {
     const cookieStore = await cookies();
@@ -47,6 +64,7 @@ export async function getCurrentUser() {
     });
 
     if (typeof payload.sub !== "string") return null;
+    if (typeof payload.sv !== "number") return null;
 
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
@@ -58,11 +76,16 @@ export async function getCurrentUser() {
         role: true,
         designation: true,
         isActive: true,
+        sessionVersion: true,
       },
     });
 
     if (!user || !user.isActive) return null;
-    return user;
+    if (user.sessionVersion !== payload.sv) return null;
+
+    const { sessionVersion: _sessionVersion, ...currentUser } = user;
+    void _sessionVersion;
+    return currentUser;
   } catch {
     return null;
   }

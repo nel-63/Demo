@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   }
 
   if (user.role !== "SUPERVISOR") {
-    return NextResponse.json({ message: "Acces reserve aux regisseurs." }, { status: 403 });
+    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
   }
 
   try {
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
 
     if (!profile?.locationId) {
       return NextResponse.json(
-        { message: "Votre compte doit etre affecte a un lieu." },
+        { message: "Votre compte doit être affecté à un lieu." },
         { status: 403 }
       );
     }
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
 
     if (!firstName || !lastName || !nationalId || !licenseNumber) {
       return NextResponse.json(
-        { message: "Prenom, nom, CIN et permis sont obligatoires." },
+        { message: "Prénom, nom, CIN et permis sont obligatoires." },
         { status: 400 }
       );
     }
@@ -103,12 +103,12 @@ export async function POST(request: Request) {
 
     if (code === "P2002") {
       return NextResponse.json(
-        { message: "Cette CIN ou ce numero de permis existe deja." },
+        { message: "Cette CIN ou ce numéro de permis existe déjà." },
         { status: 409 }
       );
     }
 
     console.error("Driver creation failed:", error);
-    return NextResponse.json({ message: "Impossible de creer le chauffeur." }, { status: 500 });
+    return NextResponse.json({ message: "Impossible de créer le chauffeur." }, { status: 500 });
   }
 }

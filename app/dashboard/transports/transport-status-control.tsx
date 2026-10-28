@@ -68,8 +68,8 @@ export default function TransportStatusControl({
 
       if (!response.ok) {
         setMessage(
-          typeof result.error === "string"
-            ? result.error
+          typeof result.message === "string"
+            ? result.message
             : "La modification a échoué.",
         );
         return;

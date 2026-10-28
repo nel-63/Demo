@@ -25,7 +25,7 @@ export default function TransportAmountForm({ id }: { id: string }) {
       const result = await response.json();
 
       if (!response.ok) {
-        setError(result.error ?? result.message ?? "Modification impossible.");
+        setError(result.message ?? "Modification impossible.");
         return;
       }
 
@@ -46,7 +46,7 @@ export default function TransportAmountForm({ id }: { id: string }) {
         max="999999999999.99"
         step="0.01"
         required
-        aria-label="Montant total a regler"
+        aria-label="Montant total à régler"
         placeholder="Montant MGA"
         className="w-full rounded-lg border border-slate-300 px-2 py-2"
       />

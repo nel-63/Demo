@@ -6,9 +6,9 @@ import { getCurrentUser } from "@/lib/auth";
 import PaymentForm from "./payment-form";
 
 const labels: Record<string, string> = {
-  CASH: "Especes",
+  CASH: "Espèces",
   BANK_TRANSFER: "Virement bancaire",
-  CHECK: "Cheque",
+  CHECK: "Chèque",
   MOBILE_MONEY: "Mobile money",
   OTHER: "Autre",
 };
@@ -93,13 +93,13 @@ async function PaymentsContent() {
       <header className="my-6">
         <h1 className="text-3xl font-bold text-slate-900">Paiements du lieu</h1>
         <p className="mt-2 text-slate-600">
-          Lieu partage : {profile.assignedLocation?.name ?? "Non renseigne"}
+          Lieu partagé : {profile.assignedLocation?.name ?? "Non renseigné"}
         </p>
       </header>
 
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-[380px_1fr]">
         <section className="h-fit rounded-2xl bg-white p-6 shadow-sm">
-          <h2 className="mb-5 text-xl font-semibold">Paiement integral</h2>
+          <h2 className="mb-5 text-xl font-semibold">Paiement intégral</h2>
           <PaymentForm
             transports={transports.map((item) => ({
               ...item,
@@ -111,22 +111,22 @@ async function PaymentsContent() {
 
         <section className="rounded-2xl bg-white p-6 shadow-sm">
           <h2 className="mb-5 text-xl font-semibold">
-            Historique partage ({payments.length} paiements recents)
+            Historique partagé ({payments.length} paiements récents)
           </h2>
 
           {payments.length === 0 ? (
-            <p className="text-slate-500">Aucun paiement enregistre pour ce lieu.</p>
+            <p className="text-slate-500">Aucun paiement enregistré pour ce lieu.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="border-b text-slate-500">
                   <tr>
                     <th className="px-3 py-3">Date / produit</th>
-                    <th className="px-3 py-3">Mode / reference</th>
+                    <th className="px-3 py-3">Mode / référence</th>
                     <th className="px-3 py-3">Montant du</th>
-                    <th className="px-3 py-3">Recu</th>
+                    <th className="px-3 py-3">Reçu</th>
                     <th className="px-3 py-3">Rendu</th>
-                    <th className="px-3 py-3">Enregistre par</th>
+                    <th className="px-3 py-3">Enregistré par</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">

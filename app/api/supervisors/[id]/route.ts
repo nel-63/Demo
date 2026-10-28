@@ -28,7 +28,7 @@ export async function PATCH(
 
     if (!body || typeof body !== "object") {
       return NextResponse.json(
-        { message: "Requete invalide." },
+        { message: "Requête invalide." },
         { status: 400 }
       );
     }
@@ -39,7 +39,7 @@ export async function PATCH(
 
     if (!locationId) {
       return NextResponse.json(
-        { message: "Selectionnez un lieu." },
+        { message: "Sélectionnez un lieu." },
         { status: 400 }
       );
     }
@@ -125,14 +125,14 @@ export async function PATCH(
     if ("error" in result) {
       if (result.error === "SUPERVISOR_NOT_FOUND") {
         return NextResponse.json(
-          { message: "Regisseur introuvable." },
+          { message: "Régisseur introuvable." },
           { status: 404 }
         );
       }
 
       if (result.error === "LOCATION_NOT_FOUND") {
         return NextResponse.json(
-          { message: "Le lieu selectionne n'existe pas." },
+          { message: "Le lieu sélectionné n'existe pas." },
           { status: 404 }
         );
       }
@@ -140,7 +140,7 @@ export async function PATCH(
       if (result.error === "ALREADY_ASSIGNED") {
         return NextResponse.json(
           {
-            message: `Ce regisseur est deja affecte a ${result.locationName}.`,
+            message: `Ce régisseur est déjà affecté à ${result.locationName}.`,
           },
           { status: 409 }
         );
@@ -149,7 +149,7 @@ export async function PATCH(
 
     return NextResponse.json({
       ok: true,
-      message: "Affectation modifiee. L'historique des anciennes operations est conserve.",
+      message: "Affectation modifiée. L'historique des anciennes opérations est conservé.",
       supervisor: result.supervisor,
     });
   } catch (error) {

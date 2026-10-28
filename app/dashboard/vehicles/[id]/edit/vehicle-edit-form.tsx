@@ -49,7 +49,7 @@ export default function VehicleEditForm({ vehicle }: { vehicle: VehicleData }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="vehicleType" className="mb-1 block text-sm font-medium text-slate-700">Type de vehicule</label>
+        <label htmlFor="vehicleType" className="mb-1 block text-sm font-medium text-slate-700">Type de véhicule</label>
         <input id="vehicleType" name="vehicleType" required maxLength={100}
           defaultValue={vehicle.vehicleType}
           className="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
@@ -63,10 +63,10 @@ export default function VehicleEditForm({ vehicle }: { vehicle: VehicleData }) {
       </div>
 
       <div className="rounded-lg bg-slate-50 p-4">
-        <p className="text-sm font-medium text-slate-700">Chauffeur actuellement associe</p>
+        <p className="text-sm font-medium text-slate-700">Chauffeur actuellement associé</p>
         <p className="mt-1 text-slate-600">{vehicle.driver.firstName} {vehicle.driver.lastName}</p>
         <p className="mt-2 text-xs text-slate-500">
-          Le changement de chauffeur n&apos;est pas effectue depuis ce formulaire afin de preserver l&apos;historique des transports.
+          Le changement de chauffeur n&apos;est pas effectué depuis ce formulaire afin de préserver l&apos;historique des transports.
         </p>
       </div>
 

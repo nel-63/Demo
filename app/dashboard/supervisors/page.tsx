@@ -60,36 +60,36 @@ async function SupervisorsContent() {
         </Link>
 
         <header className="my-6">
-          <h1 className="text-3xl font-bold text-slate-900">Gestion des regisseurs</h1>
+          <h1 className="text-3xl font-bold text-slate-900">Gestion des régisseurs</h1>
           <p className="mt-2 text-slate-600">
-            Les regisseurs affectes au meme lieu partagent les donnees operationnelles de ce lieu.
+            Les régisseurs affectés au même lieu partagent les données opérationnelles de ce lieu.
           </p>
         </header>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[400px_1fr]">
           <section className="h-fit rounded-2xl bg-white p-6 shadow-sm">
-            <h2 className="mb-5 text-xl font-semibold">Nouveau regisseur</h2>
+            <h2 className="mb-5 text-xl font-semibold">Nouveau régisseur</h2>
             <SupervisorForm locations={locations} />
           </section>
 
           <section className="rounded-2xl bg-white p-6 shadow-sm">
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-semibold">
-                Regisseurs enregistres ({supervisors.length})
+                Régisseurs enregistrés ({supervisors.length})
               </h2>
               <Link href="/dashboard/locations" className="text-sm font-semibold text-blue-700 hover:underline">
-                Gerer les lieux
+                Gérer les lieux
               </Link>
             </div>
 
             {supervisors.length === 0 ? (
-              <p className="text-slate-500">Aucun regisseur enregistre.</p>
+              <p className="text-slate-500">Aucun régisseur enregistré.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-slate-200 text-slate-500">
                     <tr>
-                      <th className="px-3 py-3">Regisseur</th>
+                      <th className="px-3 py-3">Régisseur</th>
                       <th className="px-3 py-3">Email</th>
                       <th className="px-3 py-3">CIN</th>
                       <th className="px-3 py-3">Lieu actuel</th>
@@ -106,7 +106,7 @@ async function SupervisorsContent() {
                         <td className="px-3 py-4">{item.user.email}</td>
                         <td className="px-3 py-4">{item.nationalId}</td>
                         <td className="px-3 py-4">
-                          {item.assignedLocation?.name ?? "Non affecte"}
+                          {item.assignedLocation?.name ?? "Non affecté"}
                         </td>
                         <td className="px-3 py-4">
                           <LocationAssignmentForm

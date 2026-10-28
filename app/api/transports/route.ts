@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   }
 
   if (user.role !== "SUPERVISOR") {
-    return NextResponse.json({ message: "Acces reserve aux regisseurs." }, { status: 403 });
+    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
   }
 
   try {
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     });
 
     if (!profile?.locationId) {
-      return NextResponse.json({ message: "Votre compte doit etre affecte a un lieu." }, { status: 403 });
+      return NextResponse.json({ message: "Votre compte doit être affecté à un lieu." }, { status: 403 });
     }
 
     const body: unknown = await request.json().catch(() => null)
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     if (!productName || !productType || !vehicleId ||
         !tonnageText || !amountDueText) {
       return NextResponse.json(
-        { message: "Nom, type, tonnage, montant a regler et vehicule obligatoires." },
+        { message: "Nom, type, tonnage, montant à régler et véhicule obligatoires." },
         { status: 400 }
       );
     }
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     if (!/^\d{1,12}(?:\.\d{1,2})?$/.test(amountDueText) ||
         !Number.isFinite(Number(amountDueText)) || Number(amountDueText) <= 0) {
       return NextResponse.json(
-        { message: "Le montant a regler doit etre positif et comporter au maximum deux decimales." },
+        { message: "Le montant à régler doit être positif et comporter au maximum deux décimales." },
         { status: 400 }
       );
     }
@@ -142,7 +142,7 @@ export async function POST(request: Request) {
 
     if (!result) {
       return NextResponse.json(
-        { message: "Le vehicule est inactif ou n'appartient pas a votre lieu." },
+        { message: "Le véhicule est inactif ou n'appartient pas à votre lieu." },
         { status: 403 }
       );
     }
@@ -157,6 +157,6 @@ export async function POST(request: Request) {
     }, { status: 201 });
   } catch (error) {
     console.error("Transport creation failed:", error);
-    return NextResponse.json({ message: "Impossible de creer le transport." }, { status: 500 });
+    return NextResponse.json({ message: "Impossible de créer le transport." }, { status: 500 });
   }
 }

@@ -9,11 +9,11 @@ const fields: {
   type: "text" | "tel";
   required: boolean;
 }[] = [
-  { name: "firstName", label: "Prenom", type: "text", required: true },
+  { name: "firstName", label: "Prénom", type: "text", required: true },
   { name: "lastName", label: "Nom", type: "text", required: true },
-  { name: "nationalId", label: "Numero CIN", type: "text", required: true },
-  { name: "phoneNumber", label: "Telephone", type: "tel", required: false },
-  { name: "licenseNumber", label: "Numero de permis", type: "text", required: true },
+  { name: "nationalId", label: "Numéro CIN", type: "text", required: true },
+  { name: "phoneNumber", label: "Téléphone", type: "tel", required: false },
+  { name: "licenseNumber", label: "Numéro de permis", type: "text", required: true },
 ];
 
 export default function DriverForm() {
@@ -41,12 +41,12 @@ export default function DriverForm() {
       const result = await response.json();
 
       if (!response.ok) {
-        setError(result.message ?? "La creation a echoue.");
+        setError(result.message ?? "La création a échoué.");
         return;
       }
 
       form.reset();
-      setSuccess("Le chauffeur a ete enregistre.");
+      setSuccess("Le chauffeur a été enregistré.");
       router.refresh();
     } catch {
       setError("Impossible de contacter le serveur.");

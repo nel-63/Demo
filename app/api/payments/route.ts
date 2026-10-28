@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
   if (user.role !== "SUPERVISOR") {
-    return NextResponse.json({ message: "Acces reserve aux regisseurs." }, { status: 403 });
+    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
   }
 
   try {
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       select: { id: true, locationId: true },
     });
     if (!profile?.locationId) {
-      return NextResponse.json({ message: "Aucun lieu affecte." }, { status: 403 });
+      return NextResponse.json({ message: "Aucun lieu affecté." }, { status: 403 });
     }
 
     const body: unknown = await request.json().catch(() => null);
@@ -40,18 +40,18 @@ export async function POST(request: Request) {
     const receivedText = text("amountReceived");
 
     if (!assignmentId || !receivedText) {
-      return NextResponse.json({ message: "Transport et montant recu obligatoires." }, { status: 400 });
+      return NextResponse.json({ message: "Transport et montant reçu obligatoires." }, { status: 400 });
     }
     if (!METHODS.some((item) => item === method)) {
       return NextResponse.json({ message: "Mode de paiement invalide." }, { status: 400 });
     }
     if (reference.length > 150) {
-      return NextResponse.json({ message: "Reference trop longue." }, { status: 400 });
+      return NextResponse.json({ message: "Référence trop longue." }, { status: 400 });
     }
 
     const receivedCents = parseCents(receivedText);
     if (receivedCents === null || receivedCents <= 0) {
-      return NextResponse.json({ message: "Montant recu invalide." }, { status: 400 });
+      return NextResponse.json({ message: "Montant reçu invalide." }, { status: 400 });
     }
 
     const outcome = await prisma.$transaction(async (tx) => {
@@ -123,12 +123,12 @@ export async function POST(request: Request) {
 
     if ("error" in outcome) {
       const messages: Record<string, string> = {
-        NOT_FOUND: "Transport introuvable ou non rattache a votre lieu.",
-        NO_AMOUNT: "Le montant officiel de ce transport n'est pas encore defini.",
-        ALREADY_PAID: "Ce transport a deja ete paye integralement.",
+        NOT_FOUND: "Transport introuvable ou non rattaché à votre lieu.",
+        NO_AMOUNT: "Le montant officiel de ce transport n'est pas encore défini.",
+        ALREADY_PAID: "Ce transport a déjà été payé intégralement.",
         INVALID_AMOUNT: "Le montant officiel du transport est invalide.",
-        INSUFFICIENT: "Paiement refuse : le montant recu est inferieur au montant du.",
-        EXACT_REQUIRED: "Le paiement doit etre integral et une reference est obligatoire pour ce mode.",
+        INSUFFICIENT: "Paiement refusé : le montant reçu est inférieur au montant dû.",
+        EXACT_REQUIRED: "Le paiement doit être intégral et une référence est obligatoire pour ce mode.",
       };
       const status = outcome.error === "NOT_FOUND" ? 404 :
         outcome.error === "ALREADY_PAID" ? 409 : 400;
@@ -137,7 +137,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      message: "Paiement integral enregistre.",
+      message: "Paiement intégral enregistré.",
       payment: {
         ...outcome.payment,
         amountDue: String(outcome.payment.amountDue),
@@ -150,7 +150,7 @@ export async function POST(request: Request) {
       ? (error as { code?: string }).code : undefined;
 
     if (code === "P2002") {
-      return NextResponse.json({ message: "Ce transport a deja ete paye." }, { status: 409 });
+      return NextResponse.json({ message: "Ce transport a déjà été payé." }, { status: 409 });
     }
 
     console.error("Payment creation failed:", error);

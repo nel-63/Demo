@@ -38,12 +38,12 @@ export default function SupervisorForm({
       const result = await response.json();
 
       if (!response.ok) {
-        setError(result.message ?? "Creation impossible.");
+        setError(result.message ?? "Création impossible.");
         return;
       }
 
       form.reset();
-      setSuccess("Le compte du regisseur a ete cree et affecte au lieu choisi.");
+      setSuccess("Le compte du régisseur a été créé et affecté au lieu choisi.");
       router.refresh();
     } catch {
       setError("Impossible de contacter le serveur.");
@@ -53,11 +53,11 @@ export default function SupervisorForm({
   }
 
   const fields = [
-    { name: "firstName", label: "Prenom", required: true },
+    { name: "firstName", label: "Prénom", required: true },
     { name: "lastName", label: "Nom", required: true },
     { name: "email", label: "Adresse email", type: "email", required: true },
-    { name: "phoneNumber", label: "Telephone", type: "tel", required: false },
-    { name: "nationalId", label: "Numero CIN", required: true },
+    { name: "phoneNumber", label: "Téléphone", type: "tel", required: false },
+    { name: "nationalId", label: "Numéro CIN", required: true },
     { name: "address", label: "Adresse personnelle", required: false },
   ];
 
@@ -93,7 +93,7 @@ export default function SupervisorForm({
           className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5"
         >
           <option value="" disabled>
-            Selectionner un lieu
+            Sélectionner un lieu
           </option>
           {locations.map((location) => (
             <option key={location.id} value={location.id}>
@@ -104,11 +104,11 @@ export default function SupervisorForm({
 
         {locations.length === 0 && (
           <p className="mt-2 text-sm text-amber-700">
-            Aucun lieu n&apos;est disponible. Cree d&apos;abord un lieu.
+            Aucun lieu n&apos;est disponible. Crée d&apos;abord un lieu.
           </p>
         )}
         <Link href="/dashboard/locations" className="mt-2 inline-block text-sm text-blue-700 hover:underline">
-          Creer ou consulter les lieux
+          Créer ou consulter les lieux
         </Link>
       </div>
 
@@ -127,7 +127,7 @@ export default function SupervisorForm({
           className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
         />
         <p className="mt-1 text-xs text-slate-500">
-          Au moins 12 caracteres.
+          Au moins 12 caractères.
         </p>
       </div>
 
@@ -148,7 +148,7 @@ export default function SupervisorForm({
         disabled={loading || locations.length === 0}
         className="w-full rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
       >
-        {loading ? "Creation..." : "Creer le regisseur"}
+        {loading ? "Création..." : "Créer le régisseur"}
       </button>
     </form>
   );

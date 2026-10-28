@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
-import { clearSession } from "@/lib/auth";
+import { endSession } from "@/lib/auth";
 
 export async function POST() {
-  await clearSession();
+  try {
+    await endSession();
+  } catch (error) {
+    // Le cookie est supprime meme si l'invalidation en base echoue.
+    console.error("Logout error:", error);
+  }
   return NextResponse.json({ ok: true });
 }

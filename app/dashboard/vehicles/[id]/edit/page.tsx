@@ -50,9 +50,9 @@ async function EditVehicleContent({ params }: PageProps) {
     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
       <section className="mx-auto max-w-xl rounded-2xl bg-white p-8 shadow-sm">
         <Link href="/dashboard/vehicles" className="text-sm text-blue-700 hover:underline">
-          &larr; Retour aux vehicules
+          &larr; Retour aux véhicules
         </Link>
-        <h1 className="mb-6 mt-4 text-2xl font-bold text-slate-900">Modifier le vehicule</h1>
+        <h1 className="mb-6 mt-4 text-2xl font-bold text-slate-900">Modifier le véhicule</h1>
         <VehicleEditForm vehicle={vehicle} />
       </section>
     </main>

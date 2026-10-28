@@ -31,18 +31,18 @@ export default function LocationAssignmentForm({
     setError("");
 
     if (!locationId) {
-      setError("Selectionnez un lieu.");
+      setError("Sélectionnez un lieu.");
       return;
     }
 
     if (locationId === currentLocationId) {
-      setError("Choisissez un lieu different de l'affectation actuelle.");
+      setError("Choisissez un lieu différent de l'affectation actuelle.");
       return;
     }
 
     const confirmed = window.confirm(
-      `Affecter ${supervisorName} a ce nouveau lieu ? ` +
-      "Les anciennes donnees resteront dans leur lieu d'origine."
+      `Affecter ${supervisorName} à ce nouveau lieu ? ` +
+      "Les anciennes données resteront dans leur lieu d'origine."
     );
 
     if (!confirmed) return;
@@ -63,7 +63,7 @@ export default function LocationAssignmentForm({
         return;
       }
 
-      setMessage(result.message ?? "Affectation modifiee.");
+      setMessage(result.message ?? "Affectation modifiée.");
       router.refresh();
     } catch {
       setError("Impossible de contacter le serveur.");

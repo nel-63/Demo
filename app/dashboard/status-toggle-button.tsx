@@ -19,8 +19,8 @@ export default function StatusToggleButton({
   async function toggleStatus() {
     const nextStatus = !isActive;
     const question = nextStatus
-      ? "Reactiver cet element ?"
-      : "Desactiver cet element ?";
+      ? "Réactiver cet élément ?"
+      : "Désactiver cet élément ?";
 
     if (!window.confirm(question)) return;
 
@@ -37,7 +37,7 @@ export default function StatusToggleButton({
       const result = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        setError(result.message ?? "La modification a echoue.");
+        setError(result.message ?? "La modification a échoué.");
         return;
       }
 
@@ -55,7 +55,7 @@ export default function StatusToggleButton({
         type="button"
         onClick={toggleStatus}
         disabled={loading}
-        aria-label={`${isActive ? "Desactiver" : "Reactiver"} ${itemLabel}`}
+        aria-label={`${isActive ? "Désactiver" : "Réactiver"} ${itemLabel}`}
         className={isActive
           ? "rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
           : "rounded-lg border border-green-200 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-50 disabled:opacity-50"
@@ -64,8 +64,8 @@ export default function StatusToggleButton({
         {loading
           ? "En cours..."
           : isActive
-            ? "Desactiver"
-            : "Reactiver"}
+            ? "Désactiver"
+            : "Réactiver"}
       </button>
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
     </div>

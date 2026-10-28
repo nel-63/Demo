@@ -34,12 +34,12 @@ export default function TransportForm({ vehicles }: { vehicles: VehicleOption[] 
       const result = await response.json();
 
       if (!response.ok) {
-        setError(result.message ?? "Creation impossible.");
+        setError(result.message ?? "Création impossible.");
         return;
       }
 
       form.reset();
-      setSuccess("Le transport et son montant officiel ont ete enregistres.");
+      setSuccess("Le transport et son montant officiel ont été enregistrés.");
       router.refresh();
     } catch {
       setError("Impossible de contacter le serveur.");
@@ -77,22 +77,22 @@ export default function TransportForm({ vehicles }: { vehicles: VehicleOption[] 
       <h3 className="border-b border-slate-200 pb-2 pt-3 font-semibold">Informations du transport</h3>
 
       <div>
-        <label htmlFor="amountDue" className="mb-1 block text-sm font-medium">Montant total a regler (MGA)</label>
+        <label htmlFor="amountDue" className="mb-1 block text-sm font-medium">Montant total à régler (MGA)</label>
         <input id="amountDue" name="amountDue" type="number" min="0.01" max="999999999999.99" step="0.01" required className={inputClass} />
-        <p className="mt-1 text-xs text-slate-500">Ce montant sera utilise par la caisse pour exiger un paiement integral.</p>
+        <p className="mt-1 text-xs text-slate-500">Ce montant sera utilisé par la caisse pour exiger un paiement intégral.</p>
       </div>
 
       <div>
-        <label htmlFor="vehicleId" className="mb-1 block text-sm font-medium">Vehicule et chauffeur</label>
+        <label htmlFor="vehicleId" className="mb-1 block text-sm font-medium">Véhicule et chauffeur</label>
         <select id="vehicleId" name="vehicleId" required defaultValue="" disabled={vehicles.length === 0} className={inputClass}>
-          <option value="" disabled>Selectionner un vehicule</option>
+          <option value="" disabled>Sélectionner un véhicule</option>
           {vehicles.map((vehicle) => (
             <option key={vehicle.id} value={vehicle.id}>
               {vehicle.licensePlate} — {vehicle.vehicleType} ({vehicle.driver.firstName} {vehicle.driver.lastName})
             </option>
           ))}
         </select>
-        {vehicles.length === 0 && <p className="mt-1 text-sm text-amber-700">Enregistrez d&apos;abord un vehicule actif pour ce lieu.</p>}
+        {vehicles.length === 0 && <p className="mt-1 text-sm text-amber-700">Enregistrez d&apos;abord un véhicule actif pour ce lieu.</p>}
       </div>
 
       <div>
@@ -109,7 +109,7 @@ export default function TransportForm({ vehicles }: { vehicles: VehicleOption[] 
       {success && <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{success}</p>}
 
       <button type="submit" disabled={loading || vehicles.length === 0} className="w-full rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60">
-        {loading ? "Creation..." : "Creer le transport"}
+        {loading ? "Création..." : "Créer le transport"}
       </button>
     </form>
   );

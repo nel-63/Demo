@@ -38,12 +38,12 @@ export default function VehicleForm({
       const result = await response.json();
 
       if (!response.ok) {
-        setError(result.message ?? "L'enregistrement a echoue.");
+        setError(result.message ?? "L'enregistrement a échoué.");
         return;
       }
 
       form.reset();
-      setSuccess("Le vehicule a ete enregistre.");
+      setSuccess("Le véhicule a été enregistré.");
       router.refresh();
     } catch {
       setError("Impossible de contacter le serveur.");
@@ -56,7 +56,7 @@ export default function VehicleForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label htmlFor="vehicleType" className="mb-1 block text-sm font-medium text-slate-700">
-          Type de vehicule
+          Type de véhicule
         </label>
         <input
           id="vehicleType"
@@ -71,7 +71,7 @@ export default function VehicleForm({
 
       <div>
         <label htmlFor="licensePlate" className="mb-1 block text-sm font-medium text-slate-700">
-          Numero d&apos;immatriculation
+          Numéro d&apos;immatriculation
         </label>
         <input
           id="licensePlate"
@@ -86,7 +86,7 @@ export default function VehicleForm({
 
       <div>
         <label htmlFor="driverId" className="mb-1 block text-sm font-medium text-slate-700">
-          Chauffeur associe
+          Chauffeur associé
         </label>
         <select
           id="driverId"
@@ -97,7 +97,7 @@ export default function VehicleForm({
           className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
         >
           <option value="" disabled>
-            Selectionner un chauffeur
+            Sélectionner un chauffeur
           </option>
           {drivers.map((driver) => (
             <option key={driver.id} value={driver.id}>
@@ -130,7 +130,7 @@ export default function VehicleForm({
         disabled={loading || drivers.length === 0}
         className="w-full rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {loading ? "Enregistrement..." : "Ajouter le vehicule"}
+        {loading ? "Enregistrement..." : "Ajouter le véhicule"}
       </button>
     </form>
   );

@@ -49,11 +49,11 @@ export default function DriverEditForm({ driver }: { driver: DriverData }) {
   }
 
   const fields = [
-    { name: "firstName", label: "Prenom", value: driver.firstName },
+    { name: "firstName", label: "Prénom", value: driver.firstName },
     { name: "lastName", label: "Nom", value: driver.lastName },
     { name: "nationalId", label: "CIN", value: driver.nationalId },
-    { name: "phoneNumber", label: "Telephone", value: driver.phoneNumber ?? "" },
-    { name: "licenseNumber", label: "Numero de permis", value: driver.licenseNumber },
+    { name: "phoneNumber", label: "Téléphone", value: driver.phoneNumber ?? "" },
+    { name: "licenseNumber", label: "Numéro de permis", value: driver.licenseNumber },
   ];
 
   return (

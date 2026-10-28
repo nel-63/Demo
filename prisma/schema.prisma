@@ -40,6 +40,7 @@ model User {
   role         UserRole @default(CASHIER)
   designation  String?
   isActive     Boolean  @default(true)
+  sessionVersion Int    @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -203,4 +204,14 @@ model Location {
   drivers     Driver[]
   vehicles    Vehicle[]
   assignments TransportAssignment[]
+}
+
+model LoginFailure {
+  id        String   @id @default(cuid())
+  email     String
+  ipAddress String
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
 }

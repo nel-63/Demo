@@ -7,10 +7,10 @@ import LocationStats from "./location-stats";
 import LogoutButton from "./logout-button";
 
 const statusLabels: Record<string, string> = {
-  PLANNED: "Planifie",
+  PLANNED: "Planifié",
   IN_PROGRESS: "En cours",
-  COMPLETED: "Termine",
-  CANCELLED: "Annule",
+  COMPLETED: "Terminé",
+  CANCELLED: "Annulé",
 };
 
 function money(value: unknown) {
@@ -78,8 +78,8 @@ async function DashboardContent() {
 
   return (
     <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
-      <h1 className="text-2xl font-bold">Acces non autorise</h1>
-      <p className="mt-3 text-slate-600">Contacte l&apos;administrateur pour obtenir les droits necessaires.</p>
+      <h1 className="text-2xl font-bold">Accès non autorisé</h1>
+      <p className="mt-3 text-slate-600">Contacte l&apos;administrateur pour obtenir les droits nécessaires.</p>
     </section>
   );
 }
@@ -87,14 +87,17 @@ async function DashboardContent() {
 async function AdminDashboard({ firstName, lastName }: { firstName: string; lastName: string }) {
   const [
     supervisors,
+    locations,
     drivers,
     vehicles,
     transports,
     products,
     payments,
     statuses,
+    outstanding,
   ] = await Promise.all([
     prisma.supervisor.count(),
+    prisma.location.count(),
     prisma.driver.count(),
     prisma.vehicle.count(),
     prisma.transportAssignment.count(),
@@ -107,6 +110,11 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
       by: ["status"],
       _count: { _all: true },
     }),
+    // Reste à encaisser : transports non annulés et sans paiement.
+    prisma.transportAssignment.aggregate({
+      where: { status: { not: "CANCELLED" }, payment: { is: null } },
+      _sum: { amountDue: true },
+    }),
   ]);
 
   return (
@@ -118,30 +126,31 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
           <p className="mt-2 text-slate-600">Bienvenue, {firstName} {lastName}.</p>
         </div>
         <Link href="/dashboard/supervisors" className="rounded-lg bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800">
-          Enregistrer un regisseur</Link>
+          Enregistrer un régisseur</Link>
         <Link href="/dashboard/locations" className="rounded-lg border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-100">
-          Gerer les lieux
+          Gérer les lieux
         </Link>
       
         <LogoutButton />
       </header>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <StatCard label="Regisseurs" value={supervisors} description="Dans toute l'entreprise" />
+        <StatCard label="Lieux" value={locations} description="Emplacements enregistrés" />
+        <StatCard label="Régisseurs" value={supervisors} description="Dans toute l'entreprise" />
         <StatCard label="Chauffeurs" value={drivers} description="Tous les lieux" />
-        <StatCard label="Vehicules" value={vehicles} description="Tous les lieux" />
-        <StatCard label="Transports" value={transports} description="Tous les transports enregistres" />
-        <StatCard label="Produits" value={products} description="Fiches produits enregistrees" />
-        <StatCard label="Paiements" value={payments._count._all} description="Operations de paiement enregistrees" />
-        <StatCard label="Montant a regler" value={money(payments._sum.amountDue)} description="Total enregistre" />
-        <StatCard label="Montant recu" value={money(payments._sum.amountReceived)} description="Total enregistre" />
-        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistre" />
+        <StatCard label="Véhicules" value={vehicles} description="Tous les lieux" />
+        <StatCard label="Transports" value={transports} description="Tous les transports enregistrés" />
+        <StatCard label="Produits" value={products} description="Fiches produits enregistrées" />
+        <StatCard label="Paiements" value={payments._count._all} description="Opérations de paiement enregistrées" />
+        <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés" />
+        <StatCard label="Montant reçu" value={money(payments._sum.amountReceived)} description="Total enregistré" />
+        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistré" />
       </div>
 
             <LocationStats />
 
       <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-xl font-semibold">Etat global des transports</h2>
+        <h2 className="mb-4 text-xl font-semibold">État global des transports</h2>
         <div className="flex flex-wrap gap-3">
           {statuses.map((item) => (
             <div key={item.status} className="rounded-lg bg-slate-100 px-4 py-3">
@@ -175,8 +184,8 @@ async function SupervisorDashboard({
   if (!profile?.locationId) {
     return (
       <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-bold">Aucun lieu affecte</h1>
-        <p className="mt-3 text-slate-600">Contacte l&apos;administrateur pour associer ton compte a un lieu.</p>
+        <h1 className="text-2xl font-bold">Aucun lieu affecté</h1>
+        <p className="mt-3 text-slate-600">Contacte l&apos;administrateur pour associer ton compte à un lieu.</p>
       </section>
     );
   }
@@ -191,6 +200,8 @@ async function SupervisorDashboard({
     payments,
     statuses,
     recentTransports,
+    tonnage,
+    outstanding,
   ] = await Promise.all([
     prisma.driver.count({ where: { locationId } }),
     prisma.vehicle.count({ where: { locationId } }),
@@ -198,7 +209,6 @@ async function SupervisorDashboard({
     prisma.product.aggregate({
       where: { assignment: { is: { locationId } } },
       _count: { _all: true },
-      _sum: { tonnage: true },
     }),
     prisma.payment.aggregate({
       where: { assignment: { is: { locationId } } },
@@ -222,37 +232,47 @@ async function SupervisorDashboard({
         vehicle: { select: { licensePlate: true } },
       },
     }),
+    // Tonnage cumulé : les transports annulés ne comptent pas.
+    prisma.product.aggregate({
+      where: { assignment: { is: { locationId, status: { not: "CANCELLED" } } } },
+      _sum: { tonnage: true },
+    }),
+    // Reste à encaisser : transports non annulés et sans paiement.
+    prisma.transportAssignment.aggregate({
+      where: { locationId, status: { not: "CANCELLED" }, payment: { is: null } },
+      _sum: { amountDue: true },
+    }),
   ]);
 
   return (
     <div className="mx-auto max-w-7xl">
       <header className="mb-8">
-        <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Espace regisseur</p>
+        <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Espace régisseur</p>
         <h1 className="mt-2 text-3xl font-bold text-slate-900">Statistiques du lieu</h1>
         <p className="mt-2 text-slate-600">
-          Bienvenue, {firstName} {lastName}. Lieu partage : {profile.assignedLocation?.name ?? "Non renseigne"}.
+          Bienvenue, {firstName} {lastName}. Lieu partagé : {profile.assignedLocation?.name ?? "Non renseigné"}.
         </p>
         <p className="mt-1 text-sm text-slate-500">
-          Les statistiques et les listes comprennent les donnees partagees par tous les regisseurs affectes a ce lieu.
+          Les statistiques et les listes comprennent les données partagées par tous les régisseurs affectés à ce lieu.
         </p>
       
         <div className="mt-4"><LogoutButton /></div>
       </header>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <StatCard label="Chauffeurs du lieu" value={drivers} description="Tous les chauffeurs affectes a ce lieu" />
-        <StatCard label="Vehicules du lieu" value={vehicles} description="Tous les vehicules de ce lieu" />
+        <StatCard label="Chauffeurs du lieu" value={drivers} description="Tous les chauffeurs affectés à ce lieu" />
+        <StatCard label="Véhicules du lieu" value={vehicles} description="Tous les véhicules de ce lieu" />
         <StatCard label="Transports du lieu" value={transports} description="Tous les transports de ce lieu" />
-        <StatCard label="Produits" value={products._count._all} description="Produits lies aux transports du lieu" />
-        <StatCard label="Tonnage cumule" value={`${Number(products._sum.tonnage ?? 0).toLocaleString("fr-FR")} t`} description="Pour les transports de ce lieu" />
+        <StatCard label="Produits" value={products._count._all} description="Produits liés aux transports du lieu" />
+        <StatCard label="Tonnage cumulé" value={`${Number(tonnage._sum.tonnage ?? 0).toLocaleString("fr-FR")} t`} description="Transports non annulés de ce lieu" />
         <StatCard label="Paiements" value={payments._count._all} description="Paiements de tous les transports du lieu" />
-        <StatCard label="Montant a regler" value={money(payments._sum.amountDue)} description="Total enregistre pour le lieu" />
-        <StatCard label="Montant recu" value={money(payments._sum.amountReceived)} description="Total enregistre pour le lieu" />
-        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistre pour le lieu" />
+        <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés du lieu" />
+        <StatCard label="Montant reçu" value={money(payments._sum.amountReceived)} description="Total enregistré pour le lieu" />
+        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistré pour le lieu" />
       </div>
 
       <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-xl font-semibold">Etat des transports du lieu</h2>
+        <h2 className="mb-4 text-xl font-semibold">État des transports du lieu</h2>
         <div className="flex flex-wrap gap-3">
           {statuses.map((item) => (
             <div key={item.status} className="rounded-lg bg-slate-100 px-4 py-3">
@@ -264,19 +284,19 @@ async function SupervisorDashboard({
       </section>
 
       <section className="mt-8">
-        <h2 className="mb-4 text-xl font-semibold">Modules operationnels</h2>
+        <h2 className="mb-4 text-xl font-semibold">Modules opérationnels</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <ModuleLink href="/dashboard/drivers" title="Chauffeurs" description="Consulter et ajouter les chauffeurs du lieu." />
-          <ModuleLink href="/dashboard/vehicles" title="Vehicules" description="Consulter et ajouter les vehicules du lieu." />
-          <ModuleLink href="/dashboard/transports" title="Transports" description="Creer et consulter les transports du lieu." />
+          <ModuleLink href="/dashboard/vehicles" title="Véhicules" description="Consulter et ajouter les véhicules du lieu." />
+          <ModuleLink href="/dashboard/transports" title="Transports" description="Créer et consulter les transports du lieu." />
           <ModuleLink href="/dashboard/payments" title="Paiements" description="Enregistrer et consulter les paiements du lieu." />
         </div>
       </section>
 
       <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-xl font-semibold">Transports recents du lieu</h2>
+        <h2 className="mb-4 text-xl font-semibold">Transports récents du lieu</h2>
         {recentTransports.length === 0 ? (
-          <p className="text-slate-500">Aucun transport enregistre.</p>
+          <p className="text-slate-500">Aucun transport enregistré.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -285,7 +305,7 @@ async function SupervisorDashboard({
                   <th className="px-3 py-3">Date</th>
                   <th className="px-3 py-3">Produit</th>
                   <th className="px-3 py-3">Tonnage</th>
-                  <th className="px-3 py-3">Vehicule</th>
+                  <th className="px-3 py-3">Véhicule</th>
                   <th className="px-3 py-3">Statut</th>
                 </tr>
               </thead>

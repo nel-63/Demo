@@ -10,7 +10,7 @@ export async function GET() {
   }
 
   if (user.role !== "ADMIN") {
-    return NextResponse.json({ message: "Acces reserve a l'administrateur." }, { status: 403 });
+    return NextResponse.json({ message: "Accès réservé à l'administrateur." }, { status: 403 });
   }
 
   try {

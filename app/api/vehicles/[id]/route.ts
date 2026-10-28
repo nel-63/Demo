@@ -11,7 +11,7 @@ export async function PUT(
     return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
   }
   if (user.role !== "SUPERVISOR") {
-    return NextResponse.json({ message: "Acces reserve aux regisseurs." }, { status: 403 });
+    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
   }
 
   try {
@@ -22,7 +22,7 @@ export async function PUT(
     });
 
     if (!profile?.locationId) {
-      return NextResponse.json({ message: "Lieu non affecte." }, { status: 403 });
+      return NextResponse.json({ message: "Lieu non affecté." }, { status: 403 });
     }
 
     const body: unknown = await request.json().catch(() => null);
@@ -71,7 +71,7 @@ export async function PUT(
     });
 
     if (!vehicle) {
-      return NextResponse.json({ message: "Vehicule introuvable dans ce lieu." }, { status: 404 });
+      return NextResponse.json({ message: "Véhicule introuvable dans ce lieu." }, { status: 404 });
     }
 
     return NextResponse.json({ ok: true, vehicle });
@@ -80,11 +80,11 @@ export async function PUT(
       ? (error as { code?: string }).code : undefined;
 
     if (code === "P2002") {
-      return NextResponse.json({ message: "Cette immatriculation existe deja." }, { status: 409 });
+      return NextResponse.json({ message: "Cette immatriculation existe déjà." }, { status: 409 });
     }
 
     console.error("Vehicle update failed:", error);
-    return NextResponse.json({ message: "Modification du vehicule impossible." }, { status: 500 });
+    return NextResponse.json({ message: "Modification du véhicule impossible." }, { status: 500 });
   }
 }
 
@@ -97,7 +97,7 @@ export async function PATCH(
     return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
   }
   if (user.role !== "SUPERVISOR") {
-    return NextResponse.json({ message: "Acces reserve aux regisseurs." }, { status: 403 });
+    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
   }
 
   try {
@@ -116,7 +116,7 @@ export async function PATCH(
     });
 
     if (!profile?.locationId) {
-      return NextResponse.json({ message: "Lieu non affecte." }, { status: 403 });
+      return NextResponse.json({ message: "Lieu non affecté." }, { status: 403 });
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -146,7 +146,7 @@ export async function PATCH(
     });
 
     if (!updated) {
-      return NextResponse.json({ message: "Vehicule introuvable dans ce lieu." }, { status: 404 });
+      return NextResponse.json({ message: "Véhicule introuvable dans ce lieu." }, { status: 404 });
     }
 
     return NextResponse.json({ ok: true, vehicle: updated });

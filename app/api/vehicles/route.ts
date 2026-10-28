@@ -9,7 +9,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
   }
   if (user.role !== "SUPERVISOR") {
-    return NextResponse.json({ message: "Acces reserve aux regisseurs." }, { status: 403 });
+    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
   }
 
   try {
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     });
 
     if (!profile?.locationId) {
-      return NextResponse.json({ message: "Votre compte doit etre affecte a un lieu." }, { status: 403 });
+      return NextResponse.json({ message: "Votre compte doit être affecté à un lieu." }, { status: 403 });
     }
 
     const body: unknown = await request.json().catch(() => null);
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
 
     if (!driver) {
       return NextResponse.json(
-        { message: "Le chauffeur doit etre actif et appartenir a votre lieu." },
+        { message: "Le chauffeur doit être actif et appartenir à votre lieu." },
         { status: 403 }
       );
     }
@@ -89,9 +89,9 @@ export async function POST(request: Request) {
     const code = typeof error === "object" && error !== null && "code" in error
       ? (error as { code?: string }).code : undefined;
     if (code === "P2002") {
-      return NextResponse.json({ message: "Cette immatriculation existe deja." }, { status: 409 });
+      return NextResponse.json({ message: "Cette immatriculation existe déjà." }, { status: 409 });
     }
     console.error("Vehicle creation failed:", error);
-    return NextResponse.json({ message: "Impossible de creer le vehicule." }, { status: 500 });
+    return NextResponse.json({ message: "Impossible de créer le véhicule." }, { status: 500 });
   }
 }

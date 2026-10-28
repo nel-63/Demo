@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   }
 
   if (user.role !== "ADMIN") {
-    return NextResponse.json({ message: "Acces reserve a l'administrateur." }, { status: 403 });
+    return NextResponse.json({ message: "Accès réservé à l'administrateur." }, { status: 403 });
   }
 
   try {
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
 
     if (name.length < 2 || name.length > 100) {
       return NextResponse.json(
-        { message: "Le nom du lieu doit contenir entre 2 et 100 caracteres." },
+        { message: "Le nom du lieu doit contenir entre 2 et 100 caractères." },
         { status: 400 }
       );
     }
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
 
     if (code === "P2002") {
       return NextResponse.json(
-        { message: "Ce lieu existe deja." },
+        { message: "Ce lieu existe déjà." },
         { status: 409 }
       );
     }
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     console.error("Location creation failed:", error);
 
     return NextResponse.json(
-      { message: "Impossible de creer le lieu." },
+      { message: "Impossible de créer le lieu." },
       { status: 500 }
     );
   }

@@ -5,18 +5,28 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import VehicleForm from "./vehicle-form";
 import StatusToggleButton from "../status-toggle-button";
+import ListFilters from "../list-filters";
+import { readChoice, readParam, searchWords, type SearchParams } from "../search-params";
 
-export default function VehiclesPage() {
+export default function VehiclesPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   return (
     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
       <Suspense fallback={<p>Chargement...</p>}>
-        <VehiclesContent />
+        <VehiclesContent searchParams={searchParams} />
       </Suspense>
     </main>
   );
 }
 
-async function VehiclesContent() {
+async function VehiclesContent({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "SUPERVISOR") redirect("/dashboard");
@@ -28,9 +38,26 @@ async function VehiclesContent() {
 
   if (!profile?.locationId) redirect("/dashboard");
 
+  const params = await searchParams;
+  const q = readParam(params, "q");
+  const status = readChoice(params, "statut", ["actif", "inactif"] as const);
+  const filtered = q !== "" || status !== "";
+
   const [vehicles, drivers] = await Promise.all([
     prisma.vehicle.findMany({
-      where: { locationId: profile.locationId },
+      where: {
+        locationId: profile.locationId,
+        ...(status ? { isActive: status === "actif" } : {}),
+        AND: searchWords(q).map((word) => ({
+          OR: [
+            { licensePlate: { contains: word, mode: "insensitive" as const } },
+            { vehicleType: { contains: word, mode: "insensitive" as const } },
+            { driver: { firstName: { contains: word, mode: "insensitive" as const } } },
+            { driver: { lastName: { contains: word, mode: "insensitive" as const } } },
+            { driver: { phoneNumber: { contains: word, mode: "insensitive" as const } } },
+          ],
+        })),
+      },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -53,21 +80,39 @@ async function VehiclesContent() {
         &larr; Retour au tableau de bord
       </Link>
       <header className="my-6">
-        <h1 className="text-3xl font-bold text-slate-900">Vehicules du lieu</h1>
+        <h1 className="text-3xl font-bold text-slate-900">Véhicules du lieu</h1>
         <p className="mt-2 text-slate-600">
-          Lieu partage : {profile.assignedLocation?.name ?? "Non renseigne"}
+          Lieu partagé : {profile.assignedLocation?.name ?? "Non renseigné"}
         </p>
       </header>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[380px_1fr]">
         <section className="h-fit rounded-2xl bg-white p-6 shadow-sm">
-          <h2 className="mb-5 text-xl font-semibold">Ajouter un vehicule</h2>
+          <h2 className="mb-5 text-xl font-semibold">Ajouter un véhicule</h2>
           <VehicleForm drivers={drivers} />
         </section>
         <section className="rounded-2xl bg-white p-6 shadow-sm">
-          <h2 className="mb-5 text-xl font-semibold">Vehicules du lieu ({vehicles.length})</h2>
+          <h2 className="mb-5 text-xl font-semibold">Véhicules du lieu ({vehicles.length})</h2>
+          <ListFilters
+            action="/dashboard/vehicles"
+            q={q}
+            placeholder="Immatriculation, type ou chauffeur"
+            filters={[
+              {
+                name: "statut",
+                label: "Statut",
+                value: status,
+                options: [
+            { value: "actif", label: "Actif" },
+            { value: "inactif", label: "Inactif" },
+          ],
+              },
+            ]}
+          />
           {vehicles.length === 0 ? (
-            <p className="text-slate-500">Aucun vehicule enregistre pour ce lieu.</p>
+            <p className="text-slate-500">
+              {filtered ? "Aucun véhicule ne correspond à ces critères." : "Aucun véhicule enregistré pour ce lieu."}
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -76,7 +121,7 @@ async function VehiclesContent() {
                     <th className="px-3 py-3">Immatriculation</th>
                     <th className="px-3 py-3">Type</th>
                     <th className="px-3 py-3">Chauffeur</th>
-                    <th className="px-3 py-3">Telephone</th>
+                    <th className="px-3 py-3">Téléphone</th>
                     <th className="px-3 py-3">Statut</th>
                     <th className="px-3 py-3">Action</th>
                   </tr>

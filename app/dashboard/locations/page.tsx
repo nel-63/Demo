@@ -52,7 +52,7 @@ async function LocationsContent() {
         <header className="my-6">
           <h1 className="text-3xl font-bold text-slate-900">Gestion des lieux</h1>
           <p className="mt-2 text-slate-600">
-            Chaque lieu constitue un espace de donnees partage entre les regisseurs qui y sont affectes.
+            Chaque lieu constitue un espace de données partagé entre les régisseurs qui y sont affectés.
           </p>
         </header>
 
@@ -64,12 +64,12 @@ async function LocationsContent() {
 
           <section className="rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="mb-5 text-xl font-semibold">
-              Lieux enregistres ({locations.length})
+              Lieux enregistrés ({locations.length})
             </h2>
 
             {locations.length === 0 ? (
               <p className="text-slate-500">
-                Cree d&apos;abord un lieu avant d&apos;enregistrer un regisseur.
+                Crée d&apos;abord un lieu avant d&apos;enregistrer un régisseur.
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -77,9 +77,9 @@ async function LocationsContent() {
                   <thead className="border-b border-slate-200 text-slate-500">
                     <tr>
                       <th className="px-3 py-3">Lieu</th>
-                      <th className="px-3 py-3">Regisseurs</th>
+                      <th className="px-3 py-3">Régisseurs</th>
                       <th className="px-3 py-3">Chauffeurs</th>
-                      <th className="px-3 py-3">Vehicules</th>
+                      <th className="px-3 py-3">Véhicules</th>
                       <th className="px-3 py-3">Transports</th>
                     </tr>
                   </thead>
@@ -104,7 +104,7 @@ async function LocationsContent() {
               href="/dashboard/supervisors"
               className="mt-6 inline-flex rounded-lg border border-slate-300 px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-100"
             >
-              Affecter un regisseur a un lieu
+              Affecter un régisseur à un lieu
             </Link>
           </section>
         </div>

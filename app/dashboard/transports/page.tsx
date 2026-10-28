@@ -6,18 +6,28 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import TransportForm from "./transport-form";
 import TransportAmountForm from "./transport-amount-form";
+import ListFilters from "../list-filters";
+import { readChoice, readParam, searchWords, type SearchParams } from "../search-params";
 
-export default function TransportsPage() {
+export default function TransportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   return (
     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
       <Suspense fallback={<p>Chargement...</p>}>
-        <TransportsContent />
+        <TransportsContent searchParams={searchParams} />
       </Suspense>
     </main>
   );
 }
 
-async function TransportsContent() {
+async function TransportsContent({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "SUPERVISOR") redirect("/dashboard");
@@ -28,9 +38,38 @@ async function TransportsContent() {
   });
   if (!profile?.locationId) redirect("/dashboard");
 
+  const params = await searchParams;
+  const q = readParam(params, "q");
+  const status = readChoice(params, "statut", [
+    "PLANNED",
+    "IN_PROGRESS",
+    "COMPLETED",
+    "CANCELLED",
+  ] as const);
+  const payment = readChoice(params, "paiement", ["paye", "impaye"] as const);
+  const filtered = q !== "" || status !== "" || payment !== "";
+
   const [transports, vehicles] = await Promise.all([
     prisma.transportAssignment.findMany({
-      where: { locationId: profile.locationId },
+      where: {
+        locationId: profile.locationId,
+        ...(status ? { status } : {}),
+        ...(payment === "paye"
+          ? { payment: { isNot: null } }
+          : payment === "impaye"
+            ? { payment: { is: null } }
+            : {}),
+        AND: searchWords(q).map((word) => ({
+          OR: [
+            { product: { name: { contains: word, mode: "insensitive" as const } } },
+            { product: { type: { contains: word, mode: "insensitive" as const } } },
+            { vehicle: { licensePlate: { contains: word, mode: "insensitive" as const } } },
+            { vehicle: { vehicleType: { contains: word, mode: "insensitive" as const } } },
+            { vehicle: { driver: { firstName: { contains: word, mode: "insensitive" as const } } } },
+            { vehicle: { driver: { lastName: { contains: word, mode: "insensitive" as const } } } },
+          ],
+        })),
+      },
       orderBy: { assignedAt: "desc" },
       select: {
         id: true,
@@ -73,7 +112,7 @@ async function TransportsContent() {
       <header className="my-6">
         <h1 className="text-3xl font-bold text-slate-900">Transports du lieu</h1>
         <p className="mt-2 text-slate-600">
-          Lieu partage : {profile.assignedLocation?.name ?? "Non renseigne"}
+          Lieu partagé : {profile.assignedLocation?.name ?? "Non renseigné"}
         </p>
       </header>
 
@@ -87,9 +126,38 @@ async function TransportsContent() {
           <h2 className="mb-5 text-xl font-semibold">
             Transports du lieu ({transports.length})
           </h2>
+          <ListFilters
+            action="/dashboard/transports"
+            q={q}
+            placeholder="Produit, véhicule ou chauffeur"
+            filters={[
+              {
+                name: "statut",
+                label: "Statut",
+                value: status,
+                options: [
+                  { value: "PLANNED", label: "Planifié" },
+                  { value: "IN_PROGRESS", label: "En cours" },
+                  { value: "COMPLETED", label: "Terminé" },
+                  { value: "CANCELLED", label: "Annulé" },
+                ],
+              },
+              {
+                name: "paiement",
+                label: "Paiement",
+                value: payment,
+                options: [
+                  { value: "paye", label: "Payé" },
+                  { value: "impaye", label: "Non payé" },
+                ],
+              },
+            ]}
+          />
 
           {transports.length === 0 ? (
-            <p className="text-slate-500">Aucun transport pour ce lieu.</p>
+            <p className="text-slate-500">
+              {filtered ? "Aucun transport ne correspond à ces critères." : "Aucun transport pour ce lieu."}
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -97,7 +165,7 @@ async function TransportsContent() {
                   <tr>
                     <th className="px-3 py-3">Date / produit</th>
                     <th className="px-3 py-3">Tonnage</th>
-                    <th className="px-3 py-3">Vehicule</th>
+                    <th className="px-3 py-3">Véhicule</th>
                     <th className="px-3 py-3">Montant du</th>
                     <th className="px-3 py-3">Statut</th>
                   </tr>
@@ -122,12 +190,12 @@ async function TransportsContent() {
                         {item.amountDue !== null ? (
                           <div>
                             <p className="font-semibold">{String(item.amountDue)} MGA</p>
-                            {item.payment && <p className="text-xs text-green-700">Paye</p>}
+                            {item.payment && <p className="text-xs text-green-700">Payé</p>}
                           </div>
                         ) : item.payment ? (
-                          <span className="text-xs text-amber-700">Paiement existant : a verifier</span>
+                          <span className="text-xs text-amber-700">Paiement existant : à vérifier</span>
                         ) : item.status === "CANCELLED" ? (
-                          <span className="text-xs text-slate-500">Transport annule</span>
+                          <span className="text-xs text-slate-500">Transport annulé</span>
                         ) : (
                           <TransportAmountForm id={item.id} />
                         )}

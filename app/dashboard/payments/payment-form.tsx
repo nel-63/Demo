@@ -13,9 +13,9 @@ type TransportOption = {
 };
 
 const methods = [
-  { value: "CASH", label: "Especes" },
+  { value: "CASH", label: "Espèces" },
   { value: "BANK_TRANSFER", label: "Virement bancaire" },
-  { value: "CHECK", label: "Cheque" },
+  { value: "CHECK", label: "Chèque" },
   { value: "MOBILE_MONEY", label: "Mobile money" },
   { value: "OTHER", label: "Autre" },
 ];
@@ -49,7 +49,7 @@ export default function PaymentForm({
     setChange(null);
 
     if (!selectedTransport) {
-      setError("Selectionnez un transport a payer.");
+      setError("Sélectionnez un transport à payer.");
       return;
     }
 
@@ -71,7 +71,7 @@ export default function PaymentForm({
       }
 
       setChange(result.payment.changeReturned);
-      setSuccess("Paiement integral enregistre.");
+      setSuccess("Paiement intégral enregistré.");
       form.reset();
       setAssignmentId("");
       setMethod("CASH");
@@ -89,7 +89,7 @@ export default function PaymentForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label htmlFor="assignmentId" className="mb-1 block text-sm font-medium text-slate-700">
-          Transport a payer
+          Transport à payer
         </label>
         <select
           id="assignmentId"
@@ -100,7 +100,7 @@ export default function PaymentForm({
           disabled={transports.length === 0}
           className={inputClass}
         >
-          <option value="" disabled>Selectionner un transport</option>
+          <option value="" disabled>Sélectionner un transport</option>
           {transports.map((item) => (
             <option key={item.id} value={item.id}>
               {item.product.name} — {item.vehicle.licensePlate} — {money(item.amountDue)}
@@ -109,19 +109,19 @@ export default function PaymentForm({
         </select>
         {transports.length === 0 && (
           <p className="mt-1 text-sm text-amber-700">
-            Aucun transport eligible au paiement integral. Verifiez les montants des transports.
+            Aucun transport éligible au paiement intégral. Vérifiez les montants des transports.
           </p>
         )}
       </div>
 
       {selectedTransport && (
         <div className="rounded-lg bg-blue-50 p-4">
-          <p className="text-sm text-blue-800">Montant officiel a regler</p>
+          <p className="text-sm text-blue-800">Montant officiel à régler</p>
           <p className="mt-1 text-xl font-bold text-blue-900">
             {money(selectedTransport.amountDue)}
           </p>
           <p className="mt-1 text-xs text-blue-800">
-            Le montant est fixe dans le transport et ne peut pas etre change depuis la caisse.
+            Le montant est fixé dans le transport et ne peut pas être changé depuis la caisse.
           </p>
         </div>
       )}
@@ -138,21 +138,21 @@ export default function PaymentForm({
 
       <div>
         <label htmlFor="reference" className="mb-1 block text-sm font-medium text-slate-700">
-          Reference {method === "CASH" ? "(facultative)" : "(obligatoire)"}
+          Référence {method === "CASH" ? "(facultative)" : "(obligatoire)"}
         </label>
         <input id="reference" name="reference" type="text" maxLength={150}
           required={method !== "CASH"} className={inputClass}
-          placeholder={method === "CASH" ? "Reference facultative" : "Numero de transaction ou de cheque"} />
+          placeholder={method === "CASH" ? "Référence facultative" : "Numéro de transaction ou de chèque"} />
       </div>
 
       <div>
-        <label htmlFor="amountReceived" className="mb-1 block text-sm font-medium text-slate-700">Montant recu (MGA)</label>
+        <label htmlFor="amountReceived" className="mb-1 block text-sm font-medium text-slate-700">Montant reçu (MGA)</label>
         <input id="amountReceived" name="amountReceived" type="number" min="0.01"
           max="999999999999.99" step="0.01" required className={inputClass} />
       </div>
 
       <p className="text-xs text-slate-500">
-        Aucun paiement partiel. En especes, la monnaie rendue est calculee automatiquement.
+        Aucun paiement partiel. En espèces, la monnaie rendue est calculée automatiquement.
       </p>
 
       {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
@@ -165,7 +165,7 @@ export default function PaymentForm({
 
       <button type="submit" disabled={loading || !selectedTransport}
         className="w-full rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60">
-        {loading ? "Enregistrement..." : "Enregistrer le paiement integral"}
+        {loading ? "Enregistrement..." : "Enregistrer le paiement intégral"}
       </button>
     </form>
   );

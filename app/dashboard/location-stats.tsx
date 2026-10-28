@@ -52,19 +52,19 @@ export default async function LocationStats() {
       </p>
 
       {rows.length === 0 ? (
-        <p className="text-slate-500">Aucun lieu enregistre.</p>
+        <p className="text-slate-500">Aucun lieu enregistré.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-200 text-slate-500">
               <tr>
                 <th className="px-3 py-3 font-medium">Lieu</th>
-                <th className="px-3 py-3 font-medium">Regisseurs</th>
+                <th className="px-3 py-3 font-medium">Régisseurs</th>
                 <th className="px-3 py-3 font-medium">Chauffeurs</th>
-                <th className="px-3 py-3 font-medium">Vehicules</th>
+                <th className="px-3 py-3 font-medium">Véhicules</th>
                 <th className="px-3 py-3 font-medium">Transports</th>
                 <th className="px-3 py-3 font-medium">Paiements</th>
-                <th className="px-3 py-3 font-medium">Montant recu</th>
+                <th className="px-3 py-3 font-medium">Montant reçu</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

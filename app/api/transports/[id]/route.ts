@@ -24,14 +24,14 @@ export async function PATCH(
 
     if (!currentUser) {
       return NextResponse.json(
-        { error: "Authentification requise." },
+        { message: "Authentification requise." },
         { status: 401 },
       );
     }
 
     if (currentUser.role !== "SUPERVISOR") {
       return NextResponse.json(
-        { error: "Accès réservé aux superviseurs." },
+        { message: "Accès réservé aux superviseurs." },
         { status: 403 },
       );
     }
@@ -43,14 +43,14 @@ export async function PATCH(
       body = await request.json();
     } catch {
       return NextResponse.json(
-        { error: "Données JSON invalides." },
+        { message: "Données JSON invalides." },
         { status: 400 },
       );
     }
 
     if (body === null || typeof body !== "object" || Array.isArray(body)) {
       return NextResponse.json(
-        { error: "Données invalides." },
+        { message: "Données invalides." },
         { status: 400 },
       );
     }
@@ -61,7 +61,7 @@ export async function PATCH(
 
     if (hasAmountDue === hasStatus) {
       return NextResponse.json(
-        { error: "Indiquez soit un montant, soit un nouveau statut." },
+        { message: "Indiquez soit un montant, soit un nouveau statut." },
         { status: 400 },
       );
     }
@@ -73,7 +73,7 @@ export async function PATCH(
 
     if (!profile || !profile.locationId) {
       return NextResponse.json(
-        { error: "Aucun emplacement n'est affecté à ce superviseur." },
+        { message: "Aucun emplacement n'est affecté à ce superviseur." },
         { status: 403 },
       );
     }
@@ -88,7 +88,7 @@ export async function PATCH(
         Number(amountText) <= 0
       ) {
         return NextResponse.json(
-          { error: "Le montant doit être positif, avec au maximum deux décimales." },
+          { message: "Le montant doit être positif, avec au maximum deux décimales." },
           { status: 400 },
         );
       }
@@ -104,28 +104,28 @@ export async function PATCH(
 
         if (!transport) {
           return NextResponse.json(
-            { error: "Transport introuvable dans votre emplacement." },
+            { message: "Transport introuvable dans votre emplacement." },
             { status: 404 },
           );
         }
 
         if (transport.status === "CANCELLED") {
           return NextResponse.json(
-            { error: "Un transport annulé ne peut pas être modifié." },
+            { message: "Un transport annulé ne peut pas être modifié." },
             { status: 409 },
           );
         }
 
         if (transport.payment) {
           return NextResponse.json(
-            { error: "Le montant ne peut pas être changé après un paiement." },
+            { message: "Le montant ne peut pas être changé après un paiement." },
             { status: 409 },
           );
         }
 
         if (transport.amountDue !== null) {
           return NextResponse.json(
-            { error: "Le montant officiel est déjà fixé." },
+            { message: "Le montant officiel est déjà fixé." },
             { status: 409 },
           );
         }
@@ -160,7 +160,7 @@ export async function PATCH(
       !VALID_STATUSES.includes(requestedStatus as TransportStatusValue)
     ) {
       return NextResponse.json(
-        { error: "Statut de transport invalide." },
+        { message: "Statut de transport invalide." },
         { status: 400 },
       );
     }
@@ -178,7 +178,7 @@ export async function PATCH(
 
       if (!transport) {
         return NextResponse.json(
-          { error: "Transport introuvable dans votre emplacement." },
+          { message: "Transport introuvable dans votre emplacement." },
           { status: 404 },
         );
       }
@@ -194,7 +194,7 @@ export async function PATCH(
       if (!allowed) {
         return NextResponse.json(
           {
-            error:
+            message:
               "Transition impossible : un transport planifié peut démarrer ou être annulé ; un transport en cours peut être terminé ou annulé.",
           },
           { status: 409 },
@@ -204,7 +204,7 @@ export async function PATCH(
       if (nextStatus === "CANCELLED" && transport.payment) {
         return NextResponse.json(
           {
-            error:
+            message:
               "Ce transport est déjà payé. Son annulation est interdite sans procédure comptable adaptée.",
           },
           { status: 409 },
@@ -236,7 +236,7 @@ export async function PATCH(
     console.error("Erreur PATCH transport :", error);
 
     return NextResponse.json(
-      { error: "Une erreur est survenue lors de la modification du transport." },
+      { message: "Une erreur est survenue lors de la modification du transport." },
       { status: 500 },
     );
   }

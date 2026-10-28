@@ -12,7 +12,7 @@ export async function POST(request: Request) {
 
   if (admin.role !== "ADMIN") {
     return NextResponse.json(
-      { message: "Seul un administrateur peut enregistrer un regisseur." },
+      { message: "Seul un administrateur peut enregistrer un régisseur." },
       { status: 403 }
     );
   }
@@ -39,14 +39,14 @@ export async function POST(request: Request) {
         !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
         !nationalId || !locationId) {
       return NextResponse.json(
-        { message: "Prenom, nom, email, CIN et lieu sont obligatoires." },
+        { message: "Prénom, nom, email, CIN et lieu sont obligatoires." },
         { status: 400 }
       );
     }
 
     if (password.length < 12 || password.length > 200) {
       return NextResponse.json(
-        { message: "Le mot de passe doit contenir entre 12 et 200 caracteres." },
+        { message: "Le mot de passe doit contenir entre 12 et 200 caractères." },
         { status: 400 }
       );
     }
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 
     if (!location) {
       return NextResponse.json(
-        { message: "Le lieu selectionne n'existe pas." },
+        { message: "Le lieu sélectionné n'existe pas." },
         { status: 400 }
       );
     }
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
           phoneNumber: phoneNumber || null,
           passwordHash,
           role: "SUPERVISOR",
-          designation: "Regisseur",
+          designation: "Régisseur",
         },
         select: { id: true },
       });
@@ -128,14 +128,14 @@ export async function POST(request: Request) {
 
     if (code === "P2002") {
       return NextResponse.json(
-        { message: "Cet email ou cette CIN existe deja." },
+        { message: "Cet email ou cette CIN existe déjà." },
         { status: 409 }
       );
     }
 
     console.error("Supervisor creation failed:", error);
     return NextResponse.json(
-      { message: "Impossible de creer le regisseur." },
+      { message: "Impossible de créer le régisseur." },
       { status: 500 }
     );
   }

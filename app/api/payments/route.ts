@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 
@@ -55,6 +55,8 @@ export async function POST(request: Request) {
     }
 
     const outcome = await prisma.$transaction(async (tx) => {
+      // Verrou de ligne : un paiement et une annulation du meme transport sont serialises.
+      await tx.$queryRaw`SELECT "id" FROM "TransportAssignment" WHERE "id" = ${assignmentId} FOR UPDATE`;
       const assignment = await tx.transportAssignment.findFirst({
         where: {
           id: assignmentId,

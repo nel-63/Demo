@@ -48,7 +48,7 @@ export default async function LocationStats() {
         Statistiques par lieu
       </h2>
       <p className="mb-5 text-sm text-slate-500">
-        Vue globale de chaque lieu d'affectation.
+        Vue globale de chaque lieu d&apos;affectation.
       </p>
 
       {rows.length === 0 ? (

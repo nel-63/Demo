@@ -82,7 +82,7 @@ export default function SupervisorForm({
 
       <div>
         <label htmlFor="locationId" className="mb-1 block text-sm font-medium text-slate-700">
-          Lieu d'affectation
+          Lieu d&apos;affectation
         </label>
         <select
           id="locationId"
@@ -104,7 +104,7 @@ export default function SupervisorForm({
 
         {locations.length === 0 && (
           <p className="mt-2 text-sm text-amber-700">
-            Aucun lieu n'est disponible. Cree d'abord un lieu.
+            Aucun lieu n&apos;est disponible. Cree d&apos;abord un lieu.
           </p>
         )}
         <Link href="/dashboard/locations" className="mt-2 inline-block text-sm text-blue-700 hover:underline">

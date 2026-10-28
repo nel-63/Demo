@@ -1,4 +1,4 @@
-﻿const { Client } = require("pg");
+const { Client } = require("pg");
 
 async function main() {
   const connectionString = process.env.DATABASE_URL;

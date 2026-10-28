@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Votre compte doit etre affecte a un lieu." }, { status: 403 });
     }
 
-    const body: unknown = await request.json().catch(() => null);
+    const body: unknown = await request.json().catch(() => null)
     const data = body && typeof body === "object"
       ? body as Record<string, unknown>
       : {};

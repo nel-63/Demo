@@ -79,7 +79,7 @@ async function DashboardContent() {
   return (
     <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
       <h1 className="text-2xl font-bold">Acces non autorise</h1>
-      <p className="mt-3 text-slate-600">Contacte l'administrateur pour obtenir les droits necessaires.</p>
+      <p className="mt-3 text-slate-600">Contacte l&apos;administrateur pour obtenir les droits necessaires.</p>
     </section>
   );
 }
@@ -176,7 +176,7 @@ async function SupervisorDashboard({
     return (
       <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold">Aucun lieu affecte</h1>
-        <p className="mt-3 text-slate-600">Contacte l'administrateur pour associer ton compte a un lieu.</p>
+        <p className="mt-3 text-slate-600">Contacte l&apos;administrateur pour associer ton compte a un lieu.</p>
       </section>
     );
   }

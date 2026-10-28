@@ -1,0 +1,190 @@
+diff --git a/app/api/payments/route.ts b/app/api/payments/route.ts
+index 015b8d7..462d19a 100644
+--- a/app/api/payments/route.ts
++++ b/app/api/payments/route.ts
+@@ -55,6 +55,8 @@ export async function POST(request: Request) {
+     }
+ 
+     const outcome = await prisma.$transaction(async (tx) => {
++      // Verrou de ligne : un paiement et une annulation du meme transport sont serialises.
++      await tx.$queryRaw`SELECT "id" FROM "TransportAssignment" WHERE "id" = ${assignmentId} FOR UPDATE`;
+       const assignment = await tx.transportAssignment.findFirst({
+         where: {
+           id: assignmentId,
+diff --git a/app/api/transports/[id]/route.ts b/app/api/transports/[id]/route.ts
+index ec436dd..488106d 100644
+--- a/app/api/transports/[id]/route.ts
++++ b/app/api/transports/[id]/route.ts
+@@ -94,6 +94,8 @@ export async function PATCH(
+       }
+ 
+       return await prisma.$transaction(async (tx) => {
++        // Verrou de ligne : serialise avec un paiement ou un autre changement simultane.
++        await tx.$queryRaw`SELECT "id" FROM "TransportAssignment" WHERE "id" = ${id} FOR UPDATE`;
+         const transport = await tx.transportAssignment.findFirst({
+           where: { id, locationId: profile.locationId },
+           include: { payment: { select: { id: true } } },
+@@ -136,7 +138,7 @@ export async function PATCH(
+           data: {
+             userId: currentUser.id,
+             action: "SET_TRANSPORT_AMOUNT",
+-            entity: "TransportAssignment",
++            entityType: "TransportAssignment",
+             entityId: transport.id,
+             details: {
+               amountDue: amountText,
+@@ -165,6 +167,8 @@ export async function PATCH(
+     const nextStatus = requestedStatus as TransportStatusValue;
+ 
+     return await prisma.$transaction(async (tx) => {
++      // Verrou de ligne : serialise avec un paiement ou un autre changement simultane.
++      await tx.$queryRaw`SELECT "id" FROM "TransportAssignment" WHERE "id" = ${id} FOR UPDATE`;
+       const transport = await tx.transportAssignment.findFirst({
+         where: { id, locationId: profile.locationId },
+         include: { payment: { select: { id: true } } },
+@@ -214,7 +218,7 @@ export async function PATCH(
+         data: {
+           userId: currentUser.id,
+           action: "CHANGE_TRANSPORT_STATUS",
+-          entity: "TransportAssignment",
++          entityType: "TransportAssignment",
+           entityId: transport.id,
+           details: {
+             previousStatus: currentStatus,
+diff --git a/app/dashboard/drivers/[id]/edit/page.tsx b/app/dashboard/drivers/[id]/edit/page.tsx
+index 26c88b9..931f27b 100644
+--- a/app/dashboard/drivers/[id]/edit/page.tsx
++++ b/app/dashboard/drivers/[id]/edit/page.tsx
+@@ -1,14 +1,27 @@
++import { Suspense } from "react";
+ import Link from "next/link";
+ import { notFound, redirect } from "next/navigation";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
+ import DriverEditForm from "./driver-edit-form";
+ 
+-export default async function EditDriverPage({
+-  params,
+-}: {
+-  params: Promise<{ id: string }>;
+-}) {
++type PageProps = { params: Promise<{ id: string }> };
++
++export default function EditDriverPage({ params }: PageProps) {
++  return (
++    <Suspense
++      fallback={
++        <main className="min-h-screen bg-slate-100 p-6 md:p-10">
++          <p className="text-slate-600">Chargement...</p>
++        </main>
++      }
++    >
++      <EditDriverContent params={params} />
++    </Suspense>
++  );
++}
++
++async function EditDriverContent({ params }: PageProps) {
+   const user = await getCurrentUser();
+   if (!user) redirect("/login");
+   if (user.role !== "SUPERVISOR") redirect("/dashboard");
+diff --git a/app/dashboard/locations/page.tsx b/app/dashboard/locations/page.tsx
+index cf8187c..bb8a90d 100644
+--- a/app/dashboard/locations/page.tsx
++++ b/app/dashboard/locations/page.tsx
+@@ -1,10 +1,25 @@
++import { Suspense } from "react";
+ import Link from "next/link";
+ import { redirect } from "next/navigation";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
+ import LocationForm from "./location-form";
+ 
+-export default async function LocationsPage() {
++export default function LocationsPage() {
++  return (
++    <Suspense
++      fallback={
++        <main className="min-h-screen bg-slate-100 p-6 md:p-10">
++          <p className="text-slate-600">Chargement...</p>
++        </main>
++      }
++    >
++      <LocationsContent />
++    </Suspense>
++  );
++}
++
++async function LocationsContent() {
+   const user = await getCurrentUser();
+ 
+   if (!user) redirect("/login");
+diff --git a/app/dashboard/supervisors/page.tsx b/app/dashboard/supervisors/page.tsx
+index 880057b..165302c 100644
+--- a/app/dashboard/supervisors/page.tsx
++++ b/app/dashboard/supervisors/page.tsx
+@@ -1,3 +1,4 @@
++import { Suspense } from "react";
+ import Link from "next/link";
+ import { redirect } from "next/navigation";
+ import { prisma } from "@/lib/prisma";
+@@ -5,7 +6,21 @@ import { getCurrentUser } from "@/lib/auth";
+ import SupervisorForm from "./supervisor-form";
+ import LocationAssignmentForm from "./location-assignment-form";
+ 
+-export default async function SupervisorsPage() {
++export default function SupervisorsPage() {
++  return (
++    <Suspense
++      fallback={
++        <main className="min-h-screen bg-slate-100 p-6 md:p-10">
++          <p className="text-slate-600">Chargement...</p>
++        </main>
++      }
++    >
++      <SupervisorsContent />
++    </Suspense>
++  );
++}
++
++async function SupervisorsContent() {
+   const user = await getCurrentUser();
+ 
+   if (!user) redirect("/login");
+diff --git a/app/dashboard/vehicles/[id]/edit/page.tsx b/app/dashboard/vehicles/[id]/edit/page.tsx
+index 96cbbc8..d5193a6 100644
+--- a/app/dashboard/vehicles/[id]/edit/page.tsx
++++ b/app/dashboard/vehicles/[id]/edit/page.tsx
+@@ -1,14 +1,27 @@
++import { Suspense } from "react";
+ import Link from "next/link";
+ import { notFound, redirect } from "next/navigation";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
+ import VehicleEditForm from "./vehicle-edit-form";
+ 
+-export default async function EditVehiclePage({
+-  params,
+-}: {
+-  params: Promise<{ id: string }>;
+-}) {
++type PageProps = { params: Promise<{ id: string }> };
++
++export default function EditVehiclePage({ params }: PageProps) {
++  return (
++    <Suspense
++      fallback={
++        <main className="min-h-screen bg-slate-100 p-6 md:p-10">
++          <p className="text-slate-600">Chargement...</p>
++        </main>
++      }
++    >
++      <EditVehicleContent params={params} />
++    </Suspense>
++  );
++}
++
++async function EditVehicleContent({ params }: PageProps) {
+   const user = await getCurrentUser();
+   if (!user) redirect("/login");
+   if (user.role !== "SUPERVISOR") redirect("/dashboard");

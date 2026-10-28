@@ -1,4 +1,4 @@
-﻿import "dotenv/config";
+import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";

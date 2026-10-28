@@ -25,7 +25,7 @@ export default function TransportAmountForm({ id }: { id: string }) {
       const result = await response.json();
 
       if (!response.ok) {
-        setError(result.message ?? "Modification impossible.");
+        setError(result.error ?? result.message ?? "Modification impossible.");
         return;
       }
 

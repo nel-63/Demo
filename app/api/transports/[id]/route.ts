@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 
@@ -94,6 +94,9 @@ export async function PATCH(
       }
 
       return await prisma.$transaction(async (tx) => {
+        // Verrou de ligne : serialise avec un paiement ou un autre changement simultane.
+        await tx.$queryRaw`SELECT "id" FROM "TransportAssignment" WHERE "id" = ${id} FOR UPDATE`;
+
         const transport = await tx.transportAssignment.findFirst({
           where: { id, locationId: profile.locationId },
           include: { payment: { select: { id: true } } },
@@ -136,7 +139,7 @@ export async function PATCH(
           data: {
             userId: currentUser.id,
             action: "SET_TRANSPORT_AMOUNT",
-            entity: "TransportAssignment",
+            entityType: "TransportAssignment",
             entityId: transport.id,
             details: {
               amountDue: amountText,
@@ -165,6 +168,9 @@ export async function PATCH(
     const nextStatus = requestedStatus as TransportStatusValue;
 
     return await prisma.$transaction(async (tx) => {
+      // Verrou de ligne : serialise avec un paiement ou un autre changement simultane.
+      await tx.$queryRaw`SELECT "id" FROM "TransportAssignment" WHERE "id" = ${id} FOR UPDATE`;
+
       const transport = await tx.transportAssignment.findFirst({
         where: { id, locationId: profile.locationId },
         include: { payment: { select: { id: true } } },
@@ -214,7 +220,7 @@ export async function PATCH(
         data: {
           userId: currentUser.id,
           action: "CHANGE_TRANSPORT_STATUS",
-          entity: "TransportAssignment",
+          entityType: "TransportAssignment",
           entityId: transport.id,
           details: {
             previousStatus: currentStatus,

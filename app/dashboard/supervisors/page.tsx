@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -5,7 +6,21 @@ import { getCurrentUser } from "@/lib/auth";
 import SupervisorForm from "./supervisor-form";
 import LocationAssignmentForm from "./location-assignment-form";
 
-export default async function SupervisorsPage() {
+export default function SupervisorsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+          <p className="text-slate-600">Chargement...</p>
+        </main>
+      }
+    >
+      <SupervisorsContent />
+    </Suspense>
+  );
+}
+
+async function SupervisorsContent() {
   const user = await getCurrentUser();
 
   if (!user) redirect("/login");
@@ -78,7 +93,7 @@ export default async function SupervisorsPage() {
                       <th className="px-3 py-3">Email</th>
                       <th className="px-3 py-3">CIN</th>
                       <th className="px-3 py-3">Lieu actuel</th>
-                      <th className="px-3 py-3">Changer l'affectation</th>
+                      <th className="px-3 py-3">Changer l&apos;affectation</th>
                       <th className="px-3 py-3">Compte</th>
                     </tr>
                   </thead>

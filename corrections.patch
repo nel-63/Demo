@@ -1,0 +1,704 @@
+diff --git a/app/api/auth/login/route.ts b/app/api/auth/login/route.ts
+index 9ae78a7..b5ceab1 100644
+--- a/app/api/auth/login/route.ts
++++ b/app/api/auth/login/route.ts
+@@ -1,4 +1,4 @@
+-﻿import { NextResponse } from "next/server";
++import { NextResponse } from "next/server";
+ import bcrypt from "bcryptjs";
+ import { prisma } from "@/lib/prisma";
+ import { createSession } from "@/lib/auth";
+diff --git a/app/api/auth/logout/route.ts b/app/api/auth/logout/route.ts
+index 7df323e..5abb1bd 100644
+--- a/app/api/auth/logout/route.ts
++++ b/app/api/auth/logout/route.ts
+@@ -1,4 +1,4 @@
+-﻿import { NextResponse } from "next/server";
++import { NextResponse } from "next/server";
+ import { clearSession } from "@/lib/auth";
+ 
+ export async function POST() {
+diff --git a/app/api/db-test/route.ts b/app/api/db-test/route.ts
+index 9706271..77c2c8f 100644
+--- a/app/api/db-test/route.ts
++++ b/app/api/db-test/route.ts
+@@ -1,7 +1,18 @@
+-﻿import { NextResponse } from "next/server";
++import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
+ 
+ export async function GET() {
++  const user = await getCurrentUser();
++
++  if (!user) {
++    return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
++  }
++
++  if (user.role !== "ADMIN") {
++    return NextResponse.json({ message: "Acces reserve a l'administrateur." }, { status: 403 });
++  }
++
+   try {
+     const userCount = await prisma.user.count();
+ 
+@@ -14,10 +25,7 @@ export async function GET() {
+     console.error("Database test failed:", error);
+ 
+     return NextResponse.json(
+-      {
+-        ok: false,
+-        message: "Database connection failed",
+-      },
++      { ok: false, message: "Database connection failed" },
+       { status: 500 },
+     );
+   }
+diff --git a/app/api/payments/route.ts b/app/api/payments/route.ts
+index 015b8d7..bb06dde 100644
+--- a/app/api/payments/route.ts
++++ b/app/api/payments/route.ts
+@@ -1,4 +1,4 @@
+-﻿import { NextResponse } from "next/server";
++import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
+ 
+diff --git a/app/api/transports/[id]/route.ts b/app/api/transports/[id]/route.ts
+index ec436dd..6073820 100644
+--- a/app/api/transports/[id]/route.ts
++++ b/app/api/transports/[id]/route.ts
+@@ -1,4 +1,4 @@
+-﻿import { NextResponse } from "next/server";
++import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
+ 
+@@ -136,7 +136,7 @@ export async function PATCH(
+           data: {
+             userId: currentUser.id,
+             action: "SET_TRANSPORT_AMOUNT",
+-            entity: "TransportAssignment",
++            entityType: "TransportAssignment",
+             entityId: transport.id,
+             details: {
+               amountDue: amountText,
+@@ -214,7 +214,7 @@ export async function PATCH(
+         data: {
+           userId: currentUser.id,
+           action: "CHANGE_TRANSPORT_STATUS",
+-          entity: "TransportAssignment",
++          entityType: "TransportAssignment",
+           entityId: transport.id,
+           details: {
+             previousStatus: currentStatus,
+diff --git a/app/dashboard/location-stats.tsx b/app/dashboard/location-stats.tsx
+index 0886df9..45a84b3 100644
+--- a/app/dashboard/location-stats.tsx
++++ b/app/dashboard/location-stats.tsx
+@@ -48,7 +48,7 @@ export default async function LocationStats() {
+         Statistiques par lieu
+       </h2>
+       <p className="mb-5 text-sm text-slate-500">
+-        Vue globale de chaque lieu d'affectation.
++        Vue globale de chaque lieu d&apos;affectation.
+       </p>
+ 
+       {rows.length === 0 ? (
+diff --git a/app/dashboard/locations/page.tsx b/app/dashboard/locations/page.tsx
+index cf8187c..3e9a40c 100644
+--- a/app/dashboard/locations/page.tsx
++++ b/app/dashboard/locations/page.tsx
+@@ -54,7 +54,7 @@ export default async function LocationsPage() {
+ 
+             {locations.length === 0 ? (
+               <p className="text-slate-500">
+-                Cree d'abord un lieu avant d'enregistrer un regisseur.
++                Cree d&apos;abord un lieu avant d&apos;enregistrer un regisseur.
+               </p>
+             ) : (
+               <div className="overflow-x-auto">
+diff --git a/app/dashboard/logout-button.tsx b/app/dashboard/logout-button.tsx
+index 6838df6..8e954b5 100644
+--- a/app/dashboard/logout-button.tsx
++++ b/app/dashboard/logout-button.tsx
+@@ -1,4 +1,4 @@
+-﻿"use client";
++"use client";
+ 
+ import { useState } from "react";
+ import { useRouter } from "next/navigation";
+diff --git a/app/dashboard/page.tsx b/app/dashboard/page.tsx
+index 4e69067..6382c6e 100644
+--- a/app/dashboard/page.tsx
++++ b/app/dashboard/page.tsx
+@@ -79,7 +79,7 @@ async function DashboardContent() {
+   return (
+     <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
+       <h1 className="text-2xl font-bold">Acces non autorise</h1>
+-      <p className="mt-3 text-slate-600">Contacte l'administrateur pour obtenir les droits necessaires.</p>
++      <p className="mt-3 text-slate-600">Contacte l&apos;administrateur pour obtenir les droits necessaires.</p>
+     </section>
+   );
+ }
+@@ -176,7 +176,7 @@ async function SupervisorDashboard({
+     return (
+       <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
+         <h1 className="text-2xl font-bold">Aucun lieu affecte</h1>
+-        <p className="mt-3 text-slate-600">Contacte l'administrateur pour associer ton compte a un lieu.</p>
++        <p className="mt-3 text-slate-600">Contacte l&apos;administrateur pour associer ton compte a un lieu.</p>
+       </section>
+     );
+   }
+diff --git a/app/dashboard/page.tsx.before-location-stats.bak b/app/dashboard/page.tsx.before-location-stats.bak
+deleted file mode 100644
+index ba24a2d..0000000
+--- a/app/dashboard/page.tsx.before-location-stats.bak
++++ /dev/null
+@@ -1,299 +0,0 @@
+-import { Suspense } from "react";
+-import Link from "next/link";
+-import { redirect } from "next/navigation";
+-import { prisma } from "@/lib/prisma";
+-import { getCurrentUser } from "@/lib/auth";
+-
+-const statusLabels: Record<string, string> = {
+-  PLANNED: "Planifie",
+-  IN_PROGRESS: "En cours",
+-  COMPLETED: "Termine",
+-  CANCELLED: "Annule",
+-};
+-
+-function money(value: unknown) {
+-  return `${Number(value ?? 0).toLocaleString("fr-FR", {
+-    minimumFractionDigits: 2,
+-    maximumFractionDigits: 2,
+-  })} MGA`;
+-}
+-
+-function StatCard({
+-  label,
+-  value,
+-  description,
+-}: {
+-  label: string;
+-  value: string | number;
+-  description: string;
+-}) {
+-  return (
+-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+-      <p className="text-sm font-medium text-slate-500">{label}</p>
+-      <p className="mt-2 break-words text-2xl font-bold text-slate-900">{value}</p>
+-      <p className="mt-2 text-xs text-slate-500">{description}</p>
+-    </section>
+-  );
+-}
+-
+-function ModuleLink({
+-  href,
+-  title,
+-  description,
+-}: {
+-  href: string;
+-  title: string;
+-  description: string;
+-}) {
+-  return (
+-    <Link href={href} className="block rounded-xl border border-slate-200 bg-white p-5 transition hover:border-blue-400 hover:shadow-sm">
+-      <h3 className="font-semibold text-slate-900">{title}</h3>
+-      <p className="mt-2 text-sm text-slate-600">{description}</p>
+-    </Link>
+-  );
+-}
+-
+-export default function DashboardPage() {
+-  return (
+-    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+-      <Suspense fallback={<p>Chargement du tableau de bord...</p>}>
+-        <DashboardContent />
+-      </Suspense>
+-    </main>
+-  );
+-}
+-
+-async function DashboardContent() {
+-  const user = await getCurrentUser();
+-  if (!user) redirect("/login");
+-
+-  if (user.role === "ADMIN") {
+-    return <AdminDashboard firstName={user.firstName} lastName={user.lastName} />;
+-  }
+-  if (user.role === "SUPERVISOR") {
+-    return <SupervisorDashboard userId={user.id} firstName={user.firstName} lastName={user.lastName} />;
+-  }
+-
+-  return (
+-    <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
+-      <h1 className="text-2xl font-bold">Acces non autorise</h1>
+-      <p className="mt-3 text-slate-600">Contacte l'administrateur pour obtenir les droits necessaires.</p>
+-    </section>
+-  );
+-}
+-
+-async function AdminDashboard({ firstName, lastName }: { firstName: string; lastName: string }) {
+-  const [
+-    supervisors,
+-    drivers,
+-    vehicles,
+-    transports,
+-    products,
+-    payments,
+-    statuses,
+-  ] = await Promise.all([
+-    prisma.supervisor.count(),
+-    prisma.driver.count(),
+-    prisma.vehicle.count(),
+-    prisma.transportAssignment.count(),
+-    prisma.product.count(),
+-    prisma.payment.aggregate({
+-      _count: { _all: true },
+-      _sum: { amountDue: true, amountReceived: true, changeReturned: true },
+-    }),
+-    prisma.transportAssignment.groupBy({
+-      by: ["status"],
+-      _count: { _all: true },
+-    }),
+-  ]);
+-
+-  return (
+-    <div className="mx-auto max-w-7xl">
+-      <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
+-        <div>
+-          <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Administration</p>
+-          <h1 className="mt-2 text-3xl font-bold text-slate-900">Statistiques globales</h1>
+-          <p className="mt-2 text-slate-600">Bienvenue, {firstName} {lastName}.</p>
+-        </div>
+-        <Link href="/dashboard/supervisors" className="rounded-lg bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800">
+-          Enregistrer un regisseur
+-        </Link>
+-      </header>
+-
+-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+-        <StatCard label="Regisseurs" value={supervisors} description="Dans toute l'entreprise" />
+-        <StatCard label="Chauffeurs" value={drivers} description="Tous les lieux" />
+-        <StatCard label="Vehicules" value={vehicles} description="Tous les lieux" />
+-        <StatCard label="Transports" value={transports} description="Tous les transports enregistres" />
+-        <StatCard label="Produits" value={products} description="Fiches produits enregistrees" />
+-        <StatCard label="Paiements" value={payments._count._all} description="Operations de paiement enregistrees" />
+-        <StatCard label="Montant a regler" value={money(payments._sum.amountDue)} description="Total enregistre" />
+-        <StatCard label="Montant recu" value={money(payments._sum.amountReceived)} description="Total enregistre" />
+-        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistre" />
+-      </div>
+-
+-      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+-        <h2 className="mb-4 text-xl font-semibold">Etat global des transports</h2>
+-        <div className="flex flex-wrap gap-3">
+-          {statuses.map((item) => (
+-            <div key={item.status} className="rounded-lg bg-slate-100 px-4 py-3">
+-              <p className="text-sm text-slate-600">{statusLabels[item.status] ?? item.status}</p>
+-              <p className="mt-1 text-xl font-bold">{item._count._all}</p>
+-            </div>
+-          ))}
+-        </div>
+-      </section>
+-    </div>
+-  );
+-}
+-
+-async function SupervisorDashboard({
+-  userId,
+-  firstName,
+-  lastName,
+-}: {
+-  userId: string;
+-  firstName: string;
+-  lastName: string;
+-}) {
+-  const profile = await prisma.supervisor.findUnique({
+-    where: { userId },
+-    select: {
+-      locationId: true,
+-      assignedLocation: { select: { name: true } },
+-    },
+-  });
+-
+-  if (!profile?.locationId) {
+-    return (
+-      <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
+-        <h1 className="text-2xl font-bold">Aucun lieu affecte</h1>
+-        <p className="mt-3 text-slate-600">Contacte l'administrateur pour associer ton compte a un lieu.</p>
+-      </section>
+-    );
+-  }
+-
+-  const locationId = profile.locationId;
+-
+-  const [
+-    drivers,
+-    vehicles,
+-    transports,
+-    products,
+-    payments,
+-    statuses,
+-    recentTransports,
+-  ] = await Promise.all([
+-    prisma.driver.count({ where: { locationId } }),
+-    prisma.vehicle.count({ where: { locationId } }),
+-    prisma.transportAssignment.count({ where: { locationId } }),
+-    prisma.product.aggregate({
+-      where: { assignment: { is: { locationId } } },
+-      _count: { _all: true },
+-      _sum: { tonnage: true },
+-    }),
+-    prisma.payment.aggregate({
+-      where: { assignment: { is: { locationId } } },
+-      _count: { _all: true },
+-      _sum: { amountDue: true, amountReceived: true, changeReturned: true },
+-    }),
+-    prisma.transportAssignment.groupBy({
+-      by: ["status"],
+-      where: { locationId },
+-      _count: { _all: true },
+-    }),
+-    prisma.transportAssignment.findMany({
+-      where: { locationId },
+-      take: 8,
+-      orderBy: { assignedAt: "desc" },
+-      select: {
+-        id: true,
+-        assignedAt: true,
+-        status: true,
+-        product: { select: { name: true, tonnage: true } },
+-        vehicle: { select: { licensePlate: true } },
+-      },
+-    }),
+-  ]);
+-
+-  return (
+-    <div className="mx-auto max-w-7xl">
+-      <header className="mb-8">
+-        <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Espace regisseur</p>
+-        <h1 className="mt-2 text-3xl font-bold text-slate-900">Statistiques du lieu</h1>
+-        <p className="mt-2 text-slate-600">
+-          Bienvenue, {firstName} {lastName}. Lieu partage : {profile.assignedLocation?.name ?? "Non renseigne"}.
+-        </p>
+-        <p className="mt-1 text-sm text-slate-500">
+-          Les statistiques et les listes comprennent les donnees partagees par tous les regisseurs affectes a ce lieu.
+-        </p>
+-      </header>
+-
+-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+-        <StatCard label="Chauffeurs du lieu" value={drivers} description="Tous les chauffeurs affectes a ce lieu" />
+-        <StatCard label="Vehicules du lieu" value={vehicles} description="Tous les vehicules de ce lieu" />
+-        <StatCard label="Transports du lieu" value={transports} description="Tous les transports de ce lieu" />
+-        <StatCard label="Produits" value={products._count._all} description="Produits lies aux transports du lieu" />
+-        <StatCard label="Tonnage cumule" value={`${Number(products._sum.tonnage ?? 0).toLocaleString("fr-FR")} t`} description="Pour les transports de ce lieu" />
+-        <StatCard label="Paiements" value={payments._count._all} description="Paiements de tous les transports du lieu" />
+-        <StatCard label="Montant a regler" value={money(payments._sum.amountDue)} description="Total enregistre pour le lieu" />
+-        <StatCard label="Montant recu" value={money(payments._sum.amountReceived)} description="Total enregistre pour le lieu" />
+-        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistre pour le lieu" />
+-      </div>
+-
+-      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+-        <h2 className="mb-4 text-xl font-semibold">Etat des transports du lieu</h2>
+-        <div className="flex flex-wrap gap-3">
+-          {statuses.map((item) => (
+-            <div key={item.status} className="rounded-lg bg-slate-100 px-4 py-3">
+-              <p className="text-sm text-slate-600">{statusLabels[item.status] ?? item.status}</p>
+-              <p className="mt-1 text-xl font-bold">{item._count._all}</p>
+-            </div>
+-          ))}
+-        </div>
+-      </section>
+-
+-      <section className="mt-8">
+-        <h2 className="mb-4 text-xl font-semibold">Modules operationnels</h2>
+-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+-          <ModuleLink href="/dashboard/drivers" title="Chauffeurs" description="Consulter et ajouter les chauffeurs du lieu." />
+-          <ModuleLink href="/dashboard/vehicles" title="Vehicules" description="Consulter et ajouter les vehicules du lieu." />
+-          <ModuleLink href="/dashboard/transports" title="Transports" description="Creer et consulter les transports du lieu." />
+-          <ModuleLink href="/dashboard/payments" title="Paiements" description="Enregistrer et consulter les paiements du lieu." />
+-        </div>
+-      </section>
+-
+-      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+-        <h2 className="mb-4 text-xl font-semibold">Transports recents du lieu</h2>
+-        {recentTransports.length === 0 ? (
+-          <p className="text-slate-500">Aucun transport enregistre.</p>
+-        ) : (
+-          <div className="overflow-x-auto">
+-            <table className="w-full text-left text-sm">
+-              <thead className="border-b text-slate-500">
+-                <tr>
+-                  <th className="px-3 py-3">Date</th>
+-                  <th className="px-3 py-3">Produit</th>
+-                  <th className="px-3 py-3">Tonnage</th>
+-                  <th className="px-3 py-3">Vehicule</th>
+-                  <th className="px-3 py-3">Statut</th>
+-                </tr>
+-              </thead>
+-              <tbody className="divide-y">
+-                {recentTransports.map((item) => (
+-                  <tr key={item.id}>
+-                    <td className="px-3 py-4">{item.assignedAt.toLocaleDateString("fr-FR")}</td>
+-                    <td className="px-3 py-4 font-medium">{item.product.name}</td>
+-                    <td className="px-3 py-4">{String(item.product.tonnage)} t</td>
+-                    <td className="px-3 py-4">{item.vehicle.licensePlate}</td>
+-                    <td className="px-3 py-4">{statusLabels[item.status] ?? item.status}</td>
+-                  </tr>
+-                ))}
+-              </tbody>
+-            </table>
+-          </div>
+-        )}
+-      </section>
+-    </div>
+-  );
+-}
+\ No newline at end of file
+diff --git a/app/dashboard/supervisors/page.tsx b/app/dashboard/supervisors/page.tsx
+index 880057b..54d813d 100644
+--- a/app/dashboard/supervisors/page.tsx
++++ b/app/dashboard/supervisors/page.tsx
+@@ -78,7 +78,7 @@ export default async function SupervisorsPage() {
+                       <th className="px-3 py-3">Email</th>
+                       <th className="px-3 py-3">CIN</th>
+                       <th className="px-3 py-3">Lieu actuel</th>
+-                      <th className="px-3 py-3">Changer l'affectation</th>
++                      <th className="px-3 py-3">Changer l&apos;affectation</th>
+                       <th className="px-3 py-3">Compte</th>
+                     </tr>
+                   </thead>
+diff --git a/app/dashboard/supervisors/supervisor-form.tsx b/app/dashboard/supervisors/supervisor-form.tsx
+index 5a4cc88..7d882fa 100644
+--- a/app/dashboard/supervisors/supervisor-form.tsx
++++ b/app/dashboard/supervisors/supervisor-form.tsx
+@@ -82,7 +82,7 @@ export default function SupervisorForm({
+ 
+       <div>
+         <label htmlFor="locationId" className="mb-1 block text-sm font-medium text-slate-700">
+-          Lieu d'affectation
++          Lieu d&apos;affectation
+         </label>
+         <select
+           id="locationId"
+@@ -104,7 +104,7 @@ export default function SupervisorForm({
+ 
+         {locations.length === 0 && (
+           <p className="mt-2 text-sm text-amber-700">
+-            Aucun lieu n'est disponible. Cree d'abord un lieu.
++            Aucun lieu n&apos;est disponible. Cree d&apos;abord un lieu.
+           </p>
+         )}
+         <Link href="/dashboard/locations" className="mt-2 inline-block text-sm text-blue-700 hover:underline">
+diff --git a/app/dashboard/transports/page.tsx b/app/dashboard/transports/page.tsx
+index 900fc4c..c908295 100644
+--- a/app/dashboard/transports/page.tsx
++++ b/app/dashboard/transports/page.tsx
+@@ -1,4 +1,4 @@
+-﻿import TransportStatusControl from "./transport-status-control";
++import TransportStatusControl from "./transport-status-control";
+ import { Suspense } from "react";
+ import Link from "next/link";
+ import { redirect } from "next/navigation";
+diff --git a/app/dashboard/transports/transport-amount-form.tsx b/app/dashboard/transports/transport-amount-form.tsx
+index ef267bb..7894ad6 100644
+--- a/app/dashboard/transports/transport-amount-form.tsx
++++ b/app/dashboard/transports/transport-amount-form.tsx
+@@ -25,7 +25,7 @@ export default function TransportAmountForm({ id }: { id: string }) {
+       const result = await response.json();
+ 
+       if (!response.ok) {
+-        setError(result.message ?? "Modification impossible.");
++        setError(result.error ?? result.message ?? "Modification impossible.");
+         return;
+       }
+ 
+diff --git a/app/dashboard/transports/transport-form.tsx b/app/dashboard/transports/transport-form.tsx
+index afc4185..4916352 100644
+--- a/app/dashboard/transports/transport-form.tsx
++++ b/app/dashboard/transports/transport-form.tsx
+@@ -92,7 +92,7 @@ export default function TransportForm({ vehicles }: { vehicles: VehicleOption[]
+             </option>
+           ))}
+         </select>
+-        {vehicles.length === 0 && <p className="mt-1 text-sm text-amber-700">Enregistrez d'abord un vehicule actif pour ce lieu.</p>}
++        {vehicles.length === 0 && <p className="mt-1 text-sm text-amber-700">Enregistrez d&apos;abord un vehicule actif pour ce lieu.</p>}
+       </div>
+ 
+       <div>
+diff --git a/app/dashboard/transports/transport-status-control.tsx b/app/dashboard/transports/transport-status-control.tsx
+index 38f4f46..5f6e84f 100644
+--- a/app/dashboard/transports/transport-status-control.tsx
++++ b/app/dashboard/transports/transport-status-control.tsx
+@@ -1,4 +1,4 @@
+-﻿"use client";
++"use client";
+ 
+ import { useState } from "react";
+ 
+@@ -121,7 +121,7 @@ export default function TransportStatusControl({
+ 
+       {isPaid && currentStatus !== "COMPLETED" && currentStatus !== "CANCELLED" && (
+         <p className="text-xs text-amber-700">
+-          Paiement enregistré : l'annulation est bloquée.
++          Paiement enregistré : l&apos;annulation est bloquée.
+         </p>
+       )}
+ 
+diff --git a/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx b/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx
+index 5f7ce0d..9dee41b 100644
+--- a/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx
++++ b/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx
+@@ -66,7 +66,7 @@ export default function VehicleEditForm({ vehicle }: { vehicle: VehicleData }) {
+         <p className="text-sm font-medium text-slate-700">Chauffeur actuellement associe</p>
+         <p className="mt-1 text-slate-600">{vehicle.driver.firstName} {vehicle.driver.lastName}</p>
+         <p className="mt-2 text-xs text-slate-500">
+-          Le changement de chauffeur n'est pas effectue depuis ce formulaire afin de preserver l'historique des transports.
++          Le changement de chauffeur n&apos;est pas effectue depuis ce formulaire afin de preserver l&apos;historique des transports.
+         </p>
+       </div>
+ 
+diff --git a/app/dashboard/vehicles/vehicle-form.tsx b/app/dashboard/vehicles/vehicle-form.tsx
+index 36d811c..6cc5c2f 100644
+--- a/app/dashboard/vehicles/vehicle-form.tsx
++++ b/app/dashboard/vehicles/vehicle-form.tsx
+@@ -71,7 +71,7 @@ export default function VehicleForm({
+ 
+       <div>
+         <label htmlFor="licensePlate" className="mb-1 block text-sm font-medium text-slate-700">
+-          Numero d'immatriculation
++          Numero d&apos;immatriculation
+         </label>
+         <input
+           id="licensePlate"
+@@ -108,7 +108,7 @@ export default function VehicleForm({
+ 
+         {drivers.length === 0 && (
+           <p className="mt-1 text-sm text-amber-700">
+-            Enregistrez d'abord un chauffeur actif dans le module Chauffeurs.
++            Enregistrez d&apos;abord un chauffeur actif dans le module Chauffeurs.
+           </p>
+         )}
+       </div>
+diff --git a/app/layout.tsx b/app/layout.tsx
+index 9852c15..b1ec4f9 100644
+--- a/app/layout.tsx
++++ b/app/layout.tsx
+@@ -13,14 +13,14 @@ const geistMono = Geist_Mono({
+ });
+ 
+ export const metadata: Metadata = {
+-  title: "Create Next App",
+-  description: "Generated by create next app",
++  title: "Caisse & Transports",
++  description: "Gestion des transports et des paiements",
+ };
+ 
+ export default function RootLayout({ children }: LayoutProps<"/">) {
+   return (
+     <html
+-      lang="en"
++      lang="fr"
+       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+     >
+       <body className="min-h-full flex flex-col">{children}</body>
+diff --git a/app/login/page.tsx b/app/login/page.tsx
+index 8cb17dd..37a378f 100644
+--- a/app/login/page.tsx
++++ b/app/login/page.tsx
+@@ -1,4 +1,4 @@
+-﻿"use client";
++"use client";
+ 
+ import { useState, type FormEvent } from "react";
+ import { useRouter } from "next/navigation";
+diff --git a/app/page.tsx b/app/page.tsx
+index 15d1745..6fb2458 100644
+--- a/app/page.tsx
++++ b/app/page.tsx
+@@ -1,4 +1,4 @@
+-﻿import { redirect } from "next/navigation";
++import { redirect } from "next/navigation";
+ 
+ export default function HomePage() {
+   redirect("/login");
+diff --git a/eslint.config.mjs b/eslint.config.mjs
+index 05e726d..96ab273 100644
+--- a/eslint.config.mjs
++++ b/eslint.config.mjs
+@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
+     "out/**",
+     "build/**",
+     "next-env.d.ts",
++    "scripts/test-db.cjs",
++    ".agents/**",
++    ".claude/**",
++    ".windsurf/**",
+   ]),
+ ]);
+ 
+diff --git a/lib/auth.ts b/lib/auth.ts
+index 2853eb2..ff8aefc 100644
+--- a/lib/auth.ts
++++ b/lib/auth.ts
+@@ -1,4 +1,4 @@
+-﻿import { SignJWT, jwtVerify } from "jose";
++import { SignJWT, jwtVerify } from "jose";
+ import { cookies } from "next/headers";
+ import { prisma } from "@/lib/prisma";
+ 
+diff --git a/lib/prisma.ts b/lib/prisma.ts
+index efcaac5..3990fec 100644
+--- a/lib/prisma.ts
++++ b/lib/prisma.ts
+@@ -1,4 +1,4 @@
+-﻿import { PrismaClient } from "../app/generated/prisma/client";
++import { PrismaClient } from "../app/generated/prisma/client";
+ import { PrismaPg } from "@prisma/adapter-pg";
+ 
+ const globalForPrisma = globalThis as unknown as {
+diff --git a/package.json b/package.json
+index cdaa2f7..d5ababa 100644
+--- a/package.json
++++ b/package.json
+@@ -6,7 +6,8 @@
+     "dev": "next dev",
+     "build": "next build",
+     "start": "next start",
+-    "lint": "eslint"
++    "lint": "eslint",
++    "postinstall": "prisma generate"
+   },
+   "dependencies": {
+     "@prisma/adapter-pg": "^7.10.1",
+diff --git a/scripts/backfill-locations.ts b/scripts/backfill-locations.ts
+index ef5c1d7..389f2ac 100644
+--- a/scripts/backfill-locations.ts
++++ b/scripts/backfill-locations.ts
+@@ -1,4 +1,4 @@
+-﻿import "dotenv/config";
++import "dotenv/config";
+ import { prisma } from "../lib/prisma";
+ 
+ async function main() {
+diff --git a/scripts/create-admin.ts b/scripts/create-admin.ts
+index 8c0511f..a5a065e 100644
+--- a/scripts/create-admin.ts
++++ b/scripts/create-admin.ts
+@@ -1,4 +1,4 @@
+-﻿import "dotenv/config";
++import "dotenv/config";
+ import bcrypt from "bcryptjs";
+ import { createInterface } from "node:readline/promises";
+ import { stdin, stdout } from "node:process";
+diff --git a/scripts/test-db.cjs b/scripts/test-db.cjs
+index af001a6..c4ff37a 100644
+--- a/scripts/test-db.cjs
++++ b/scripts/test-db.cjs
+@@ -1,4 +1,4 @@
+-﻿const { Client } = require("pg");
++const { Client } = require("pg");
+ 
+ async function main() {
+   const connectionString = process.env.DATABASE_URL;

@@ -1,10 +1,25 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import LocationForm from "./location-form";
 
-export default async function LocationsPage() {
+export default function LocationsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+          <p className="text-slate-600">Chargement...</p>
+        </main>
+      }
+    >
+      <LocationsContent />
+    </Suspense>
+  );
+}
+
+async function LocationsContent() {
   const user = await getCurrentUser();
 
   if (!user) redirect("/login");
@@ -54,7 +69,7 @@ export default async function LocationsPage() {
 
             {locations.length === 0 ? (
               <p className="text-slate-500">
-                Cree d'abord un lieu avant d'enregistrer un regisseur.
+                Cree d&apos;abord un lieu avant d&apos;enregistrer un regisseur.
               </p>
             ) : (
               <div className="overflow-x-auto">

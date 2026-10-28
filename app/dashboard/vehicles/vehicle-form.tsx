@@ -71,7 +71,7 @@ export default function VehicleForm({
 
       <div>
         <label htmlFor="licensePlate" className="mb-1 block text-sm font-medium text-slate-700">
-          Numero d'immatriculation
+          Numero d&apos;immatriculation
         </label>
         <input
           id="licensePlate"
@@ -108,7 +108,7 @@ export default function VehicleForm({
 
         {drivers.length === 0 && (
           <p className="mt-1 text-sm text-amber-700">
-            Enregistrez d'abord un chauffeur actif dans le module Chauffeurs.
+            Enregistrez d&apos;abord un chauffeur actif dans le module Chauffeurs.
           </p>
         )}
       </div>

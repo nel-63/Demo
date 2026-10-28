@@ -1,4 +1,4 @@
-﻿import TransportStatusControl from "./transport-status-control";
+import TransportStatusControl from "./transport-status-control";
 import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";

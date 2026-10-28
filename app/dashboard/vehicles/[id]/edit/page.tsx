@@ -1,14 +1,27 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import VehicleEditForm from "./vehicle-edit-form";
 
-export default async function EditVehiclePage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+type PageProps = { params: Promise<{ id: string }> };
+
+export default function EditVehiclePage({ params }: PageProps) {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+          <p className="text-slate-600">Chargement...</p>
+        </main>
+      }
+    >
+      <EditVehicleContent params={params} />
+    </Suspense>
+  );
+}
+
+async function EditVehicleContent({ params }: PageProps) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "SUPERVISOR") redirect("/dashboard");

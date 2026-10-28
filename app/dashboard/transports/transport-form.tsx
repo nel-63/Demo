@@ -92,7 +92,7 @@ export default function TransportForm({ vehicles }: { vehicles: VehicleOption[] 
             </option>
           ))}
         </select>
-        {vehicles.length === 0 && <p className="mt-1 text-sm text-amber-700">Enregistrez d'abord un vehicule actif pour ce lieu.</p>}
+        {vehicles.length === 0 && <p className="mt-1 text-sm text-amber-700">Enregistrez d&apos;abord un vehicule actif pour ce lieu.</p>}
       </div>
 
       <div>

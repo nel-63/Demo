@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 
@@ -121,7 +121,7 @@ export default function TransportStatusControl({
 
       {isPaid && currentStatus !== "COMPLETED" && currentStatus !== "CANCELLED" && (
         <p className="text-xs text-amber-700">
-          Paiement enregistré : l'annulation est bloquée.
+          Paiement enregistré : l&apos;annulation est bloquée.
         </p>
       )}
 

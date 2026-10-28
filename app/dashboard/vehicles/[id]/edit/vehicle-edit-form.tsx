@@ -66,7 +66,7 @@ export default function VehicleEditForm({ vehicle }: { vehicle: VehicleData }) {
         <p className="text-sm font-medium text-slate-700">Chauffeur actuellement associe</p>
         <p className="mt-1 text-slate-600">{vehicle.driver.firstName} {vehicle.driver.lastName}</p>
         <p className="mt-2 text-xs text-slate-500">
-          Le changement de chauffeur n'est pas effectue depuis ce formulaire afin de preserver l'historique des transports.
+          Le changement de chauffeur n&apos;est pas effectue depuis ce formulaire afin de preserver l&apos;historique des transports.
         </p>
       </div>
 

@@ -115,11 +115,11 @@ async function PaymentsContent() {
           </h2>
 
           {payments.length === 0 ? (
-            <p className="text-slate-500">Aucun paiement enregistré pour ce lieu.</p>
+            <p className="text-slate-600">Aucun paiement enregistré pour ce lieu.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="border-b text-slate-500">
+                <thead className="border-b text-slate-600">
                   <tr>
                     <th className="px-3 py-3">Date / produit</th>
                     <th className="px-3 py-3">Mode / référence</th>
@@ -135,11 +135,11 @@ async function PaymentsContent() {
                       <td className="px-3 py-4">
                         <p>{payment.createdAt.toLocaleDateString("fr-FR")}</p>
                         <p className="font-medium">{payment.assignment.product.name}</p>
-                        <p className="text-xs text-slate-500">{payment.assignment.vehicle.licensePlate}</p>
+                        <p className="text-xs text-slate-700">{payment.assignment.vehicle.licensePlate}</p>
                       </td>
                       <td className="px-3 py-4">
                         <p>{labels[payment.paymentMethod] ?? payment.paymentMethod}</p>
-                        <p className="text-xs text-slate-500">{payment.reference || "—"}</p>
+                        <p className="text-xs text-slate-700">{payment.reference || "—"}</p>
                       </td>
                       <td className="px-3 py-4 whitespace-nowrap">{money(payment.amountDue)}</td>
                       <td className="px-3 py-4 whitespace-nowrap">{money(payment.amountReceived)}</td>

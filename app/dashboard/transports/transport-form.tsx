@@ -79,7 +79,7 @@ export default function TransportForm({ vehicles }: { vehicles: VehicleOption[] 
       <div>
         <label htmlFor="amountDue" className="mb-1 block text-sm font-medium">Montant total à régler (MGA)</label>
         <input id="amountDue" name="amountDue" type="number" min="0.01" max="999999999999.99" step="0.01" required className={inputClass} />
-        <p className="mt-1 text-xs text-slate-500">Ce montant sera utilisé par la caisse pour exiger un paiement intégral.</p>
+        <p className="mt-1 text-xs text-slate-700">Ce montant sera utilisé par la caisse pour exiger un paiement intégral.</p>
       </div>
 
       <div>

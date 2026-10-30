@@ -80,7 +80,7 @@ export default function VehicleEditForm({
             </option>
           ))}
         </select>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-slate-700">
           Seuls les chauffeurs actifs de votre lieu sont proposés. Les transports déjà enregistrés
           conservent leur chauffeur d&apos;origine ; le changement ne concerne que les prochains transports.
         </p>

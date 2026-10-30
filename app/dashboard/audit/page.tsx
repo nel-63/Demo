@@ -170,11 +170,11 @@ async function AuditContent({
         />
 
         {logs.length === 0 ? (
-          <p className="text-slate-500">Aucune opération ne correspond à ces critères.</p>
+          <p className="text-slate-600">Aucune opération ne correspond à ces critères.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b text-slate-500">
+              <thead className="border-b text-slate-600">
                 <tr>
                   <th className="px-3 py-3">Date</th>
                   <th className="px-3 py-3">Auteur</th>
@@ -212,7 +212,7 @@ async function AuditContent({
                         <p className="font-medium">
                           {log.user.firstName} {log.user.lastName}
                         </p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-slate-700">
                           {ROLE_LABELS[log.user.role] ?? log.user.role} — {log.user.email}
                         </p>
                       </td>
@@ -220,14 +220,14 @@ async function AuditContent({
                       <td className="px-3 py-4">
                         <p>{entityLabel(log.entityType)}</p>
                         {log.entityId && (
-                          <p className="font-mono text-xs text-slate-500" title={log.entityId}>
+                          <p className="font-mono text-xs text-slate-700" title={log.entityId}>
                             …{log.entityId.slice(-8)}
                           </p>
                         )}
                       </td>
                       <td className="px-3 py-4">
                         {lines.length === 0 ? (
-                          <span className="text-slate-400">—</span>
+                          <span className="text-slate-600">—</span>
                         ) : (
                           <ul className="space-y-0.5">
                             {lines.map((line) => (
@@ -251,7 +251,7 @@ async function AuditContent({
                 &larr; Plus récent
               </Link>
             ) : <span />}
-            <span className="text-slate-500">Page {page} sur {pageCount}</span>
+            <span className="text-slate-600">Page {page} sur {pageCount}</span>
             {page < pageCount ? (
               <Link href={hrefForPage(page + 1)} className="rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-100">
                 Plus ancien &rarr;

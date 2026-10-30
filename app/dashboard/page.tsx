@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import LocationStats from "./location-stats";
 import LogoutButton from "./logout-button";
+import { StatCard, StatusTile } from "./stat-card";
 
 const statusLabels: Record<string, string> = {
   PLANNED: "Planifié",
@@ -18,24 +19,6 @@ function money(value: unknown) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })} MGA`;
-}
-
-function StatCard({
-  label,
-  value,
-  description,
-}: {
-  label: string;
-  value: string | number;
-  description: string;
-}) {
-  return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-sm font-medium text-slate-500">{label}</p>
-      <p className="mt-2 break-words text-2xl font-bold text-slate-900">{value}</p>
-      <p className="mt-2 text-xs text-slate-500">{description}</p>
-    </section>
-  );
 }
 
 function ModuleLink({
@@ -138,16 +121,16 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
       </header>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <StatCard label="Lieux" value={locations} description="Emplacements enregistrés" />
-        <StatCard label="Régisseurs" value={supervisors} description="Dans toute l'entreprise" />
-        <StatCard label="Chauffeurs" value={drivers} description="Tous les lieux" />
-        <StatCard label="Véhicules" value={vehicles} description="Tous les lieux" />
-        <StatCard label="Transports" value={transports} description="Tous les transports enregistrés" />
-        <StatCard label="Produits" value={products} description="Fiches produits enregistrées" />
-        <StatCard label="Paiements" value={payments._count._all} description="Opérations de paiement enregistrées" />
-        <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés" />
-        <StatCard label="Montant reçu" value={money(payments._sum.amountReceived)} description="Total enregistré" />
-        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistré" />
+        <StatCard label="Lieux" value={locations} description="Emplacements enregistrés" kind="locations" />
+        <StatCard label="Régisseurs" value={supervisors} description="Dans toute l'entreprise" kind="supervisors" />
+        <StatCard label="Chauffeurs" value={drivers} description="Tous les lieux" kind="drivers" />
+        <StatCard label="Véhicules" value={vehicles} description="Tous les lieux" kind="vehicles" />
+        <StatCard label="Transports" value={transports} description="Tous les transports enregistrés" kind="transports" />
+        <StatCard label="Produits" value={products} description="Fiches produits enregistrées" kind="products" />
+        <StatCard label="Paiements" value={payments._count._all} description="Opérations de paiement enregistrées" kind="payments" />
+        <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés" kind="outstanding" />
+        <StatCard label="Montant reçu" value={money(payments._sum.amountReceived)} description="Total enregistré" kind="received" />
+        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistré" kind="change" />
       </div>
 
             <LocationStats />
@@ -156,10 +139,12 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
         <h2 className="mb-4 text-xl font-semibold">État global des transports</h2>
         <div className="flex flex-wrap gap-3">
           {statuses.map((item) => (
-            <div key={item.status} className="rounded-lg bg-slate-100 px-4 py-3">
-              <p className="text-sm text-slate-600">{statusLabels[item.status] ?? item.status}</p>
-              <p className="mt-1 text-xl font-bold">{item._count._all}</p>
-            </div>
+            <StatusTile
+              key={item.status}
+              label={statusLabels[item.status] ?? item.status}
+              count={item._count._all}
+              kind={`status-${item.status}`}
+            />
           ))}
         </div>
       </section>
@@ -255,7 +240,7 @@ async function SupervisorDashboard({
         <p className="mt-2 text-slate-600">
           Bienvenue, {firstName} {lastName}. Lieu partagé : {profile.assignedLocation?.name ?? "Non renseigné"}.
         </p>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-sm text-slate-600">
           Les statistiques et les listes comprennent les données partagées par tous les régisseurs affectés à ce lieu.
         </p>
       
@@ -263,25 +248,27 @@ async function SupervisorDashboard({
       </header>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <StatCard label="Chauffeurs du lieu" value={drivers} description="Tous les chauffeurs affectés à ce lieu" />
-        <StatCard label="Véhicules du lieu" value={vehicles} description="Tous les véhicules de ce lieu" />
-        <StatCard label="Transports du lieu" value={transports} description="Tous les transports de ce lieu" />
-        <StatCard label="Produits" value={products._count._all} description="Produits liés aux transports du lieu" />
-        <StatCard label="Tonnage cumulé" value={`${Number(tonnage._sum.tonnage ?? 0).toLocaleString("fr-FR")} t`} description="Transports non annulés de ce lieu" />
-        <StatCard label="Paiements" value={payments._count._all} description="Paiements de tous les transports du lieu" />
-        <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés du lieu" />
-        <StatCard label="Montant reçu" value={money(payments._sum.amountReceived)} description="Total enregistré pour le lieu" />
-        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistré pour le lieu" />
+        <StatCard label="Chauffeurs du lieu" value={drivers} description="Tous les chauffeurs affectés à ce lieu" kind="drivers" />
+        <StatCard label="Véhicules du lieu" value={vehicles} description="Tous les véhicules de ce lieu" kind="vehicles" />
+        <StatCard label="Transports du lieu" value={transports} description="Tous les transports de ce lieu" kind="transports" />
+        <StatCard label="Produits" value={products._count._all} description="Produits liés aux transports du lieu" kind="products" />
+        <StatCard label="Tonnage cumulé" value={`${Number(tonnage._sum.tonnage ?? 0).toLocaleString("fr-FR")} t`} description="Transports non annulés de ce lieu" kind="tonnage" />
+        <StatCard label="Paiements" value={payments._count._all} description="Paiements de tous les transports du lieu" kind="payments" />
+        <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés du lieu" kind="outstanding" />
+        <StatCard label="Montant reçu" value={money(payments._sum.amountReceived)} description="Total enregistré pour le lieu" kind="received" />
+        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistré pour le lieu" kind="change" />
       </div>
 
       <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-xl font-semibold">État des transports du lieu</h2>
         <div className="flex flex-wrap gap-3">
           {statuses.map((item) => (
-            <div key={item.status} className="rounded-lg bg-slate-100 px-4 py-3">
-              <p className="text-sm text-slate-600">{statusLabels[item.status] ?? item.status}</p>
-              <p className="mt-1 text-xl font-bold">{item._count._all}</p>
-            </div>
+            <StatusTile
+              key={item.status}
+              label={statusLabels[item.status] ?? item.status}
+              count={item._count._all}
+              kind={`status-${item.status}`}
+            />
           ))}
         </div>
       </section>
@@ -299,11 +286,11 @@ async function SupervisorDashboard({
       <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-xl font-semibold">Transports récents du lieu</h2>
         {recentTransports.length === 0 ? (
-          <p className="text-slate-500">Aucun transport enregistré.</p>
+          <p className="text-slate-600">Aucun transport enregistré.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b text-slate-500">
+              <thead className="border-b text-slate-600">
                 <tr>
                   <th className="px-3 py-3">Date</th>
                   <th className="px-3 py-3">Produit</th>

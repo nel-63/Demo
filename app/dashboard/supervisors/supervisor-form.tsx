@@ -126,7 +126,7 @@ export default function SupervisorForm({
           autoComplete="new-password"
           className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
         />
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-slate-700">
           Au moins 12 caractères.
         </p>
       </div>

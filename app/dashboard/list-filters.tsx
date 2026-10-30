@@ -32,7 +32,7 @@ export default function ListFilters({
       className="mb-5 flex flex-wrap items-end gap-3 rounded-xl bg-slate-50 p-4"
     >
       <div className="min-w-[200px] flex-1">
-        <label htmlFor="q" className="mb-1 block text-xs font-medium text-slate-500">
+        <label htmlFor="q" className="mb-1 block text-xs font-medium text-slate-700">
           Recherche
         </label>
         <input
@@ -48,7 +48,7 @@ export default function ListFilters({
 
       {filters.map((filter) => (
         <div key={filter.name}>
-          <label htmlFor={filter.name} className="mb-1 block text-xs font-medium text-slate-500">
+          <label htmlFor={filter.name} className="mb-1 block text-xs font-medium text-slate-700">
             {filter.label}
           </label>
           <select

@@ -112,7 +112,7 @@ export default function SupervisorAccountActions({
         className={
           isActive
             ? "rounded-full bg-green-50 px-2 py-1 text-xs text-green-700"
-            : "rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600"
+            : "rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700"
         }
       >
         {isActive ? "Actif" : "Inactif"}
@@ -151,7 +151,7 @@ export default function SupervisorAccountActions({
         <form onSubmit={resetPassword} className="space-y-2 rounded-lg bg-slate-50 p-3">
           <label
             htmlFor={`password-${supervisorId}`}
-            className="block text-xs font-medium text-slate-600"
+            className="block text-xs font-medium text-slate-700"
           >
             Nouveau mot de passe (12 caractères minimum)
           </label>
@@ -192,7 +192,7 @@ export default function SupervisorAccountActions({
               {loading ? "Enregistrement..." : "Réinitialiser"}
             </button>
           </div>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-700">
             Notez le mot de passe avant de valider : il ne sera plus affiché ensuite.
           </p>
         </form>

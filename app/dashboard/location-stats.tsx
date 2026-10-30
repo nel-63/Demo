@@ -47,16 +47,16 @@ export default async function LocationStats() {
       <h2 className="mb-2 text-xl font-semibold text-slate-900">
         Statistiques par lieu
       </h2>
-      <p className="mb-5 text-sm text-slate-500">
+      <p className="mb-5 text-sm text-slate-600">
         Vue globale de chaque lieu d&apos;affectation.
       </p>
 
       {rows.length === 0 ? (
-        <p className="text-slate-500">Aucun lieu enregistré.</p>
+        <p className="text-slate-600">Aucun lieu enregistré.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-200 text-slate-500">
+            <thead className="border-b border-slate-200 text-slate-600">
               <tr>
                 <th className="px-3 py-3 font-medium">Lieu</th>
                 <th className="px-3 py-3 font-medium">Régisseurs</th>

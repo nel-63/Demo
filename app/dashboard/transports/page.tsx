@@ -158,13 +158,13 @@ async function TransportsContent({
           />
 
           {transports.length === 0 ? (
-            <p className="text-slate-500">
+            <p className="text-slate-600">
               {filtered ? "Aucun transport ne correspond à ces critères." : "Aucun transport pour ce lieu."}
             </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="border-b text-slate-500">
+                <thead className="border-b text-slate-600">
                   <tr>
                     <th className="px-3 py-3">Date / produit</th>
                     <th className="px-3 py-3">Tonnage</th>
@@ -179,13 +179,13 @@ async function TransportsContent({
                       <td className="px-3 py-4">
                         <p className="font-medium">{item.assignedAt.toLocaleDateString("fr-FR")}</p>
                         <p>{item.product.name}</p>
-                        <p className="text-xs text-slate-500">{item.product.type}</p>
+                        <p className="text-xs text-slate-700">{item.product.type}</p>
                       </td>
                       <td className="px-3 py-4">{String(item.product.tonnage)} t</td>
                       <td className="px-3 py-4">
                         <p className="font-medium">{item.vehicle.licensePlate}</p>
                         <p>{item.vehicle.vehicleType}</p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-slate-700">
                           {(item.driver ?? item.vehicle.driver).firstName} {(item.driver ?? item.vehicle.driver).lastName}
                         </p>
                       </td>
@@ -198,7 +198,7 @@ async function TransportsContent({
                         ) : item.payment ? (
                           <span className="text-xs text-amber-700">Paiement existant : à vérifier</span>
                         ) : item.status === "CANCELLED" ? (
-                          <span className="text-xs text-slate-500">Transport annulé</span>
+                          <span className="text-xs text-slate-700">Transport annulé</span>
                         ) : (
                           <TransportAmountForm id={item.id} />
                         )}

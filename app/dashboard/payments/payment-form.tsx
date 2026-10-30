@@ -151,7 +151,7 @@ export default function PaymentForm({
           max="999999999999.99" step="0.01" required className={inputClass} />
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-700">
         Aucun paiement partiel. En espèces, la monnaie rendue est calculée automatiquement.
       </p>
 

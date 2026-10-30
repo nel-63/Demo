@@ -106,13 +106,13 @@ async function DriversContent({
             ]}
           />
           {drivers.length === 0 ? (
-            <p className="text-slate-500">
+            <p className="text-slate-600">
               {filtered ? "Aucun chauffeur ne correspond à ces critères." : "Aucun chauffeur enregistré pour ce lieu."}
             </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="border-b text-slate-500">
+                <thead className="border-b text-slate-600">
                   <tr>
                     <th className="px-3 py-3">Nom</th>
                     <th className="px-3 py-3">CIN</th>

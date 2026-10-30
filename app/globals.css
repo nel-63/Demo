@@ -1,8 +1,23 @@
 @import "tailwindcss";
 
+/* Palette de l'application (valeurs identiques aux classes Tailwind slate / blue utilisées).
+   Contrastes WCAG AA : texte principal 17,9:1, secondaire 10,4:1, atténué 7,6:1 sur blanc. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f1f5f9;
+  --foreground: #0f172a;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --text-secondary: #334155;
+  --text-muted: #475569;
+  --accent: #1d4ed8;
+  --accent-soft: #eff6ff;
+  --success: #047857;
+  --success-soft: #ecfdf5;
+  --warning: #b45309;
+  --warning-soft: #fffbeb;
+  --danger: #b91c1c;
+  --danger-soft: #fef2f2;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -12,15 +27,47 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* Pas de thème sombre : les écrans utilisent des surfaces claires, inverser la couleur du
+   texte rendait les cartes blanches illisibles. */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  /* Chiffres de même largeur : les colonnes de montants restent alignées. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Indication de saisie lisible (le gris par défaut est trop clair). */
+::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+/* Focus clavier visible partout. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Panneau de détails : tiroir à droite sur ordinateur, feuille qui monte sur mobile. */
+@keyframes drawer-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes sheet-in-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.details-backdrop { animation: backdrop-in 200ms ease-out; }
+.details-panel { animation: sheet-in-up 200ms ease-out; }
+@media (min-width: 768px) {
+  .details-panel { animation-name: drawer-in-right; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .details-backdrop, .details-panel { animation: none; }
 }

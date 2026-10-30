@@ -68,13 +68,13 @@ async function LocationsContent() {
             </h2>
 
             {locations.length === 0 ? (
-              <p className="text-slate-500">
+              <p className="text-slate-600">
                 Crée d&apos;abord un lieu avant d&apos;enregistrer un régisseur.
               </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b border-slate-200 text-slate-500">
+                  <thead className="border-b border-slate-200 text-slate-600">
                     <tr>
                       <th className="px-3 py-3">Lieu</th>
                       <th className="px-3 py-3">Régisseurs</th>

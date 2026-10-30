@@ -84,11 +84,11 @@ async function SupervisorsContent() {
             </div>
 
             {supervisors.length === 0 ? (
-              <p className="text-slate-500">Aucun régisseur enregistré.</p>
+              <p className="text-slate-600">Aucun régisseur enregistré.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b border-slate-200 text-slate-500">
+                  <thead className="border-b border-slate-200 text-slate-600">
                     <tr>
                       <th className="px-3 py-3">Régisseur</th>
                       <th className="px-3 py-3">Email</th>

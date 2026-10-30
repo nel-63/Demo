@@ -1,0 +1,1956 @@
+diff --git a/app/api/details/[kind]/route.ts b/app/api/details/[kind]/route.ts
+new file mode 100644
+index 0000000..b96bbdb
+--- /dev/null
++++ b/app/api/details/[kind]/route.ts
+@@ -0,0 +1,53 @@
++import { NextResponse } from "next/server";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import { getDetails, isAdminOnlyKind, isDetailKind } from "@/lib/details";
++
++// Contenu du panneau de détails ouvert depuis une carte statistique.
++export async function GET(
++  request: Request,
++  context: { params: Promise<{ kind: string }> },
++) {
++  const user = await getCurrentUser();
++
++  if (!user) {
++    return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
++  }
++
++  const { kind } = await context.params;
++
++  if (!isDetailKind(kind)) {
++    return NextResponse.json({ message: "Détail introuvable." }, { status: 404 });
++  }
++
++  const url = new URL(request.url);
++  const q = (url.searchParams.get("q") ?? "").trim().slice(0, 100);
++
++  try {
++    if (user.role === "ADMIN") {
++      const requested = (url.searchParams.get("locationId") ?? "").trim();
++      const details = await getDetails(kind, { admin: true, locationId: requested || null }, q);
++      return NextResponse.json(details);
++    }
++
++    if (user.role === "SUPERVISOR" && !isAdminOnlyKind(kind)) {
++      const profile = await prisma.supervisor.findUnique({
++        where: { userId: user.id },
++        select: { locationId: true },
++      });
++
++      // Le lieu vient toujours du profil : un paramètre `locationId` envoyé par le client est ignoré.
++      if (!profile?.locationId) {
++        return NextResponse.json({ message: "Aucun lieu affecté." }, { status: 403 });
++      }
++
++      const details = await getDetails(kind, { admin: false, locationId: profile.locationId }, q);
++      return NextResponse.json(details);
++    }
++
++    return NextResponse.json({ message: "Accès non autorisé." }, { status: 403 });
++  } catch (error) {
++    console.error("Details failed:", error);
++    return NextResponse.json({ message: "Impossible de charger le détail." }, { status: 500 });
++  }
++}
+diff --git a/app/dashboard/audit/page.tsx b/app/dashboard/audit/page.tsx
+index 0c9452a..aea1b0c 100644
+--- a/app/dashboard/audit/page.tsx
++++ b/app/dashboard/audit/page.tsx
+@@ -170,11 +170,11 @@ async function AuditContent({
+         />
+ 
+         {logs.length === 0 ? (
+-          <p className="text-slate-500">Aucune opération ne correspond à ces critères.</p>
++          <p className="text-slate-600">Aucune opération ne correspond à ces critères.</p>
+         ) : (
+           <div className="overflow-x-auto">
+             <table className="w-full text-left text-sm">
+-              <thead className="border-b text-slate-500">
++              <thead className="border-b text-slate-600">
+                 <tr>
+                   <th className="px-3 py-3">Date</th>
+                   <th className="px-3 py-3">Auteur</th>
+@@ -212,7 +212,7 @@ async function AuditContent({
+                         <p className="font-medium">
+                           {log.user.firstName} {log.user.lastName}
+                         </p>
+-                        <p className="text-xs text-slate-500">
++                        <p className="text-xs text-slate-700">
+                           {ROLE_LABELS[log.user.role] ?? log.user.role} — {log.user.email}
+                         </p>
+                       </td>
+@@ -220,14 +220,14 @@ async function AuditContent({
+                       <td className="px-3 py-4">
+                         <p>{entityLabel(log.entityType)}</p>
+                         {log.entityId && (
+-                          <p className="font-mono text-xs text-slate-500" title={log.entityId}>
++                          <p className="font-mono text-xs text-slate-700" title={log.entityId}>
+                             …{log.entityId.slice(-8)}
+                           </p>
+                         )}
+                       </td>
+                       <td className="px-3 py-4">
+                         {lines.length === 0 ? (
+-                          <span className="text-slate-400">—</span>
++                          <span className="text-slate-600">—</span>
+                         ) : (
+                           <ul className="space-y-0.5">
+                             {lines.map((line) => (
+@@ -251,7 +251,7 @@ async function AuditContent({
+                 &larr; Plus récent
+               </Link>
+             ) : <span />}
+-            <span className="text-slate-500">Page {page} sur {pageCount}</span>
++            <span className="text-slate-600">Page {page} sur {pageCount}</span>
+             {page < pageCount ? (
+               <Link href={hrefForPage(page + 1)} className="rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-100">
+                 Plus ancien &rarr;
+diff --git a/app/dashboard/details-drawer.tsx b/app/dashboard/details-drawer.tsx
+new file mode 100644
+index 0000000..107c6c8
+--- /dev/null
++++ b/app/dashboard/details-drawer.tsx
+@@ -0,0 +1,348 @@
++"use client";
++
++import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
++import { createPortal } from "react-dom";
++import Link from "next/link";
++import {
++  Banknote,
++  ChevronDown,
++  ChevronsUpDown,
++  ChevronUp,
++  CircleCheck,
++  CircleX,
++  Clock3,
++  Coins,
++  CreditCard,
++  ExternalLink,
++  Hourglass,
++  Info,
++  MapPin,
++  Package,
++  Route,
++  Scale,
++  Search,
++  Truck,
++  UserCog,
++  Users,
++  X,
++  type LucideIcon,
++} from "lucide-react";
++import type { Badge, Cell, DetailsResult } from "@/lib/details-types";
++
++const KIND_ICONS: Record<string, LucideIcon> = {
++  locations: MapPin,
++  supervisors: UserCog,
++  drivers: Users,
++  vehicles: Truck,
++  transports: Route,
++  products: Package,
++  tonnage: Scale,
++  payments: CreditCard,
++  received: Banknote,
++  change: Coins,
++  outstanding: Hourglass,
++};
++
++// Pictogramme associé à chaque type de donnée (les statuts de transport utilisent « Route »).
++export function KindIcon({ kind, className }: { kind: string; className?: string }) {
++  const Icon = KIND_ICONS[kind] ?? Route;
++  return <Icon className={className} aria-hidden="true" />;
++}
++
++// Pastille : l'état est toujours donné par une icône ET un libellé, jamais par la couleur seule.
++const BADGES: Record<Badge, { className: string; Icon: LucideIcon }> = {
++  ok: { className: "bg-emerald-50 text-emerald-700", Icon: CircleCheck },
++  warn: { className: "bg-amber-50 text-amber-700", Icon: Clock3 },
++  bad: { className: "bg-red-50 text-red-700", Icon: CircleX },
++  info: { className: "bg-blue-50 text-blue-700", Icon: Info },
++  muted: { className: "bg-slate-100 text-slate-700", Icon: Info },
++};
++
++function CellView({ cell }: { cell: Cell }) {
++  if (!cell.badge) return <>{cell.t}</>;
++  const { className, Icon } = BADGES[cell.badge];
++  return (
++    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-medium ${className}`}>
++      <Icon className="size-3.5" aria-hidden="true" />
++      {cell.t}
++    </span>
++  );
++}
++
++type Loaded = { key: string; data?: DetailsResult; error?: string };
++
++export default function DetailsDrawer({
++  kind,
++  label,
++  onClose,
++}: {
++  kind: string;
++  label: string;
++  onClose: () => void;
++}) {
++  const [query, setQuery] = useState("");
++  const [debounced, setDebounced] = useState("");
++  const [locationId, setLocationId] = useState("");
++  const [retry, setRetry] = useState(0);
++  const [loaded, setLoaded] = useState<Loaded | null>(null);
++  const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
++  const panelRef = useRef<HTMLDivElement>(null);
++  const closeRef = useRef<HTMLButtonElement>(null);
++
++  const requestKey = `${debounced}|${locationId}|${retry}`;
++
++  // Recherche : on attend la fin de la saisie avant d'interroger le serveur.
++  useEffect(() => {
++    const timer = setTimeout(() => setDebounced(query.trim()), 250);
++    return () => clearTimeout(timer);
++  }, [query]);
++
++  useEffect(() => {
++    const controller = new AbortController();
++    const params = new URLSearchParams();
++    if (debounced) params.set("q", debounced);
++    if (locationId) params.set("locationId", locationId);
++
++    fetch(`/api/details/${encodeURIComponent(kind)}?${params}`, { signal: controller.signal })
++      .then(async (response) => {
++        const body = await response.json().catch(() => ({}));
++        if (!response.ok) throw new Error(body.message ?? "Impossible de charger le détail.");
++        setLoaded({ key: requestKey, data: body as DetailsResult });
++      })
++      .catch((error: unknown) => {
++        if (controller.signal.aborted) return;
++        setLoaded({
++          key: requestKey,
++          error: error instanceof Error ? error.message : "Impossible de contacter le serveur.",
++        });
++      });
++
++    return () => controller.abort();
++  }, [kind, debounced, locationId, requestKey]);
++
++  // Échap ferme ; le défilement de la page est bloqué ; le focus entre dans le panneau.
++  useEffect(() => {
++    const onKey = (event: globalThis.KeyboardEvent) => {
++      if (event.key === "Escape") onClose();
++    };
++    document.addEventListener("keydown", onKey);
++    const previousOverflow = document.body.style.overflow;
++    document.body.style.overflow = "hidden";
++    closeRef.current?.focus();
++
++    return () => {
++      document.removeEventListener("keydown", onKey);
++      document.body.style.overflow = previousOverflow;
++    };
++  }, [onClose]);
++
++  // Tab reste dans le panneau tant qu'il est ouvert.
++  function trapFocus(event: KeyboardEvent<HTMLDivElement>) {
++    if (event.key !== "Tab" || !panelRef.current) return;
++    const focusable = panelRef.current.querySelectorAll<HTMLElement>(
++      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled])',
++    );
++    if (focusable.length === 0) return;
++    const first = focusable[0];
++    const last = focusable[focusable.length - 1];
++    if (event.shiftKey && document.activeElement === first) {
++      event.preventDefault();
++      last.focus();
++    } else if (!event.shiftKey && document.activeElement === last) {
++      event.preventDefault();
++      first.focus();
++    }
++  }
++
++  const data = loaded?.key === requestKey ? loaded.data : undefined;
++  const error = loaded?.key === requestKey ? loaded.error : undefined;
++  const loading = loaded?.key !== requestKey;
++  // Pendant un rechargement on garde l'ancien résultat affiché (pas de clignotement).
++  const shown = data ?? loaded?.data;
++
++  const rows = useMemo(() => {
++    if (!shown) return [];
++    if (!sort) return shown.rows;
++    const factor = sort.dir === "asc" ? 1 : -1;
++    return [...shown.rows].sort((a, b) => {
++      const x = a.cells[sort.key];
++      const y = b.cells[sort.key];
++      const vx = x?.s ?? x?.t ?? "";
++      const vy = y?.s ?? y?.t ?? "";
++      if (typeof vx === "number" && typeof vy === "number") return (vx - vy) * factor;
++      return String(vx).localeCompare(String(vy), "fr", { numeric: true }) * factor;
++    });
++  }, [shown, sort]);
++
++  function toggleSort(key: string) {
++    setSort((current) =>
++      current?.key !== key ? { key, dir: "asc" } : current.dir === "asc" ? { key, dir: "desc" } : null,
++    );
++  }
++
++  const titleId = `details-title-${kind}`;
++
++  return createPortal(
++    <div className="fixed inset-0 z-50" onKeyDown={trapFocus}>
++      <div
++        className="details-backdrop absolute inset-0 bg-slate-900/50"
++        onClick={onClose}
++        aria-hidden="true"
++      />
++
++      <div
++        ref={panelRef}
++        role="dialog"
++        aria-modal="true"
++        aria-labelledby={titleId}
++        className="details-panel absolute inset-x-0 bottom-0 flex h-[92dvh] flex-col rounded-t-2xl bg-white shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:h-full md:w-[600px] md:rounded-none md:rounded-l-2xl lg:w-[640px]"
++      >
++        <header className="flex items-start gap-4 border-b border-slate-200 p-5">
++          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
++            <KindIcon kind={kind} className="size-6" />
++          </span>
++          <div className="min-w-0 flex-1">
++            <h2 id={titleId} className="text-lg font-semibold text-slate-900">
++              {shown?.title ?? label}
++            </h2>
++            <p className="mt-0.5 break-words text-2xl font-bold text-slate-900">
++              {shown?.total ?? <span className="text-slate-600">…</span>}
++            </p>
++          </div>
++          <button
++            ref={closeRef}
++            type="button"
++            onClick={onClose}
++            aria-label="Fermer le panneau"
++            className="rounded-xl border border-slate-300 p-2 text-slate-700 hover:bg-slate-100"
++          >
++            <X className="size-5" aria-hidden="true" />
++          </button>
++        </header>
++
++        <div className="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row">
++          <div className="relative flex-1">
++            <Search
++              className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-600"
++              aria-hidden="true"
++            />
++            <input
++              type="search"
++              value={query}
++              onChange={(event) => setQuery(event.target.value)}
++              placeholder="Rechercher dans cette liste"
++              aria-label="Rechercher dans cette liste"
++              className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-base text-slate-900"
++            />
++          </div>
++
++          {shown?.locations && shown.locations.length > 1 && (
++            <select
++              value={locationId}
++              onChange={(event) => setLocationId(event.target.value)}
++              aria-label="Filtrer par lieu"
++              className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900"
++            >
++              <option value="">Tous les lieux</option>
++              {shown.locations.map((location) => (
++                <option key={location.id} value={location.id}>
++                  {location.name}
++                </option>
++              ))}
++            </select>
++          )}
++        </div>
++
++        <div className="min-h-0 flex-1 overflow-auto" aria-busy={loading}>
++          {error ? (
++            <div role="alert" className="m-5 rounded-xl bg-red-50 p-4 text-red-700">
++              <p className="font-medium">{error}</p>
++              <button
++                type="button"
++                onClick={() => setRetry((value) => value + 1)}
++                className="mt-3 rounded-lg border border-red-300 px-3 py-1.5 text-sm font-semibold hover:bg-red-100"
++              >
++                Réessayer
++              </button>
++            </div>
++          ) : !shown ? (
++            <div role="status" className="animate-pulse space-y-3 p-5">
++              <span className="sr-only">Chargement...</span>
++              {Array.from({ length: 6 }, (_, index) => (
++                <div key={index} className="h-10 rounded-lg bg-slate-200" />
++              ))}
++            </div>
++          ) : shown.rows.length === 0 ? (
++            <p className="p-8 text-center text-slate-700">
++              {debounced
++                ? `Aucun résultat pour « ${debounced} ».`
++                : "Aucun élément à afficher pour le moment."}
++            </p>
++          ) : (
++            <table className={`w-full min-w-max text-left text-sm ${loading ? "opacity-60" : ""}`}>
++              <thead className="sticky top-0 z-10 bg-slate-50 text-slate-700 shadow-[0_1px_0_#e2e8f0]">
++                <tr>
++                  {shown.columns.map((column) => {
++                    const active = sort?.key === column.key;
++                    const SortIcon = !active ? ChevronsUpDown : sort.dir === "asc" ? ChevronUp : ChevronDown;
++                    return (
++                      <th
++                        key={column.key}
++                        scope="col"
++                        aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
++                        className={`px-4 py-3 font-semibold ${column.align === "right" ? "text-right" : ""}`}
++                      >
++                        <button
++                          type="button"
++                          onClick={() => toggleSort(column.key)}
++                          className="inline-flex items-center gap-1 rounded hover:text-slate-900"
++                        >
++                          {column.label}
++                          <SortIcon className="size-4" aria-hidden="true" />
++                        </button>
++                      </th>
++                    );
++                  })}
++                </tr>
++              </thead>
++              <tbody className="divide-y divide-slate-200">
++                {rows.map((row) => (
++                  <tr key={row.id} className="hover:bg-blue-50">
++                    {shown.columns.map((column) => (
++                      <td
++                        key={column.key}
++                        className={`whitespace-nowrap px-4 py-3 text-slate-900 ${column.align === "right" ? "text-right" : ""}`}
++                      >
++                        <CellView cell={row.cells[column.key] ?? { t: "—" }} />
++                      </td>
++                    ))}
++                  </tr>
++                ))}
++              </tbody>
++            </table>
++          )}
++        </div>
++
++        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 p-4">
++          <p className="text-sm text-slate-700" aria-live="polite">
++            {shown &&
++              (shown.truncated
++                ? `${shown.rows.length} premiers éléments sur ${shown.count}.`
++                : `${shown.count} élément${shown.count > 1 ? "s" : ""}.`)}
++          </p>
++          {shown?.href && (
++            <Link
++              href={shown.href}
++              className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"
++            >
++              Ouvrir la page complète
++              <ExternalLink className="size-4" aria-hidden="true" />
++            </Link>
++          )}
++        </footer>
++      </div>
++    </div>,
++    document.body,
++  );
++}
++
+diff --git a/app/dashboard/drivers/page.tsx b/app/dashboard/drivers/page.tsx
+index bba7e60..1d74871 100644
+--- a/app/dashboard/drivers/page.tsx
++++ b/app/dashboard/drivers/page.tsx
+@@ -106,13 +106,13 @@ async function DriversContent({
+             ]}
+           />
+           {drivers.length === 0 ? (
+-            <p className="text-slate-500">
++            <p className="text-slate-600">
+               {filtered ? "Aucun chauffeur ne correspond à ces critères." : "Aucun chauffeur enregistré pour ce lieu."}
+             </p>
+           ) : (
+             <div className="overflow-x-auto">
+               <table className="w-full text-left text-sm">
+-                <thead className="border-b text-slate-500">
++                <thead className="border-b text-slate-600">
+                   <tr>
+                     <th className="px-3 py-3">Nom</th>
+                     <th className="px-3 py-3">CIN</th>
+diff --git a/app/dashboard/list-filters.tsx b/app/dashboard/list-filters.tsx
+index 1a6753b..96575f8 100644
+--- a/app/dashboard/list-filters.tsx
++++ b/app/dashboard/list-filters.tsx
+@@ -32,7 +32,7 @@ export default function ListFilters({
+       className="mb-5 flex flex-wrap items-end gap-3 rounded-xl bg-slate-50 p-4"
+     >
+       <div className="min-w-[200px] flex-1">
+-        <label htmlFor="q" className="mb-1 block text-xs font-medium text-slate-500">
++        <label htmlFor="q" className="mb-1 block text-xs font-medium text-slate-700">
+           Recherche
+         </label>
+         <input
+@@ -48,7 +48,7 @@ export default function ListFilters({
+ 
+       {filters.map((filter) => (
+         <div key={filter.name}>
+-          <label htmlFor={filter.name} className="mb-1 block text-xs font-medium text-slate-500">
++          <label htmlFor={filter.name} className="mb-1 block text-xs font-medium text-slate-700">
+             {filter.label}
+           </label>
+           <select
+diff --git a/app/dashboard/location-stats.tsx b/app/dashboard/location-stats.tsx
+index 25ff897..a4f6078 100644
+--- a/app/dashboard/location-stats.tsx
++++ b/app/dashboard/location-stats.tsx
+@@ -47,16 +47,16 @@ export default async function LocationStats() {
+       <h2 className="mb-2 text-xl font-semibold text-slate-900">
+         Statistiques par lieu
+       </h2>
+-      <p className="mb-5 text-sm text-slate-500">
++      <p className="mb-5 text-sm text-slate-600">
+         Vue globale de chaque lieu d&apos;affectation.
+       </p>
+ 
+       {rows.length === 0 ? (
+-        <p className="text-slate-500">Aucun lieu enregistré.</p>
++        <p className="text-slate-600">Aucun lieu enregistré.</p>
+       ) : (
+         <div className="overflow-x-auto">
+           <table className="w-full text-left text-sm">
+-            <thead className="border-b border-slate-200 text-slate-500">
++            <thead className="border-b border-slate-200 text-slate-600">
+               <tr>
+                 <th className="px-3 py-3 font-medium">Lieu</th>
+                 <th className="px-3 py-3 font-medium">Régisseurs</th>
+diff --git a/app/dashboard/locations/page.tsx b/app/dashboard/locations/page.tsx
+index 9f7d317..abc6ca8 100644
+--- a/app/dashboard/locations/page.tsx
++++ b/app/dashboard/locations/page.tsx
+@@ -68,13 +68,13 @@ async function LocationsContent() {
+             </h2>
+ 
+             {locations.length === 0 ? (
+-              <p className="text-slate-500">
++              <p className="text-slate-600">
+                 Crée d&apos;abord un lieu avant d&apos;enregistrer un régisseur.
+               </p>
+             ) : (
+               <div className="overflow-x-auto">
+                 <table className="w-full text-left text-sm">
+-                  <thead className="border-b border-slate-200 text-slate-500">
++                  <thead className="border-b border-slate-200 text-slate-600">
+                     <tr>
+                       <th className="px-3 py-3">Lieu</th>
+                       <th className="px-3 py-3">Régisseurs</th>
+diff --git a/app/dashboard/page.tsx b/app/dashboard/page.tsx
+index fad1456..8491a4e 100644
+--- a/app/dashboard/page.tsx
++++ b/app/dashboard/page.tsx
+@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
+ import LocationStats from "./location-stats";
+ import LogoutButton from "./logout-button";
++import { StatCard, StatusTile } from "./stat-card";
+ 
+ const statusLabels: Record<string, string> = {
+   PLANNED: "Planifié",
+@@ -20,24 +21,6 @@ function money(value: unknown) {
+   })} MGA`;
+ }
+ 
+-function StatCard({
+-  label,
+-  value,
+-  description,
+-}: {
+-  label: string;
+-  value: string | number;
+-  description: string;
+-}) {
+-  return (
+-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+-      <p className="text-sm font-medium text-slate-500">{label}</p>
+-      <p className="mt-2 break-words text-2xl font-bold text-slate-900">{value}</p>
+-      <p className="mt-2 text-xs text-slate-500">{description}</p>
+-    </section>
+-  );
+-}
+-
+ function ModuleLink({
+   href,
+   title,
+@@ -138,16 +121,16 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
+       </header>
+ 
+       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+-        <StatCard label="Lieux" value={locations} description="Emplacements enregistrés" />
+-        <StatCard label="Régisseurs" value={supervisors} description="Dans toute l'entreprise" />
+-        <StatCard label="Chauffeurs" value={drivers} description="Tous les lieux" />
+-        <StatCard label="Véhicules" value={vehicles} description="Tous les lieux" />
+-        <StatCard label="Transports" value={transports} description="Tous les transports enregistrés" />
+-        <StatCard label="Produits" value={products} description="Fiches produits enregistrées" />
+-        <StatCard label="Paiements" value={payments._count._all} description="Opérations de paiement enregistrées" />
+-        <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés" />
+-        <StatCard label="Montant reçu" value={money(payments._sum.amountReceived)} description="Total enregistré" />
+-        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistré" />
++        <StatCard label="Lieux" value={locations} description="Emplacements enregistrés" kind="locations" />
++        <StatCard label="Régisseurs" value={supervisors} description="Dans toute l'entreprise" kind="supervisors" />
++        <StatCard label="Chauffeurs" value={drivers} description="Tous les lieux" kind="drivers" />
++        <StatCard label="Véhicules" value={vehicles} description="Tous les lieux" kind="vehicles" />
++        <StatCard label="Transports" value={transports} description="Tous les transports enregistrés" kind="transports" />
++        <StatCard label="Produits" value={products} description="Fiches produits enregistrées" kind="products" />
++        <StatCard label="Paiements" value={payments._count._all} description="Opérations de paiement enregistrées" kind="payments" />
++        <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés" kind="outstanding" />
++        <StatCard label="Montant reçu" value={money(payments._sum.amountReceived)} description="Total enregistré" kind="received" />
++        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistré" kind="change" />
+       </div>
+ 
+             <LocationStats />
+@@ -156,10 +139,12 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
+         <h2 className="mb-4 text-xl font-semibold">État global des transports</h2>
+         <div className="flex flex-wrap gap-3">
+           {statuses.map((item) => (
+-            <div key={item.status} className="rounded-lg bg-slate-100 px-4 py-3">
+-              <p className="text-sm text-slate-600">{statusLabels[item.status] ?? item.status}</p>
+-              <p className="mt-1 text-xl font-bold">{item._count._all}</p>
+-            </div>
++            <StatusTile
++              key={item.status}
++              label={statusLabels[item.status] ?? item.status}
++              count={item._count._all}
++              kind={`status-${item.status}`}
++            />
+           ))}
+         </div>
+       </section>
+@@ -255,7 +240,7 @@ async function SupervisorDashboard({
+         <p className="mt-2 text-slate-600">
+           Bienvenue, {firstName} {lastName}. Lieu partagé : {profile.assignedLocation?.name ?? "Non renseigné"}.
+         </p>
+-        <p className="mt-1 text-sm text-slate-500">
++        <p className="mt-1 text-sm text-slate-600">
+           Les statistiques et les listes comprennent les données partagées par tous les régisseurs affectés à ce lieu.
+         </p>
+       
+@@ -263,25 +248,27 @@ async function SupervisorDashboard({
+       </header>
+ 
+       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+-        <StatCard label="Chauffeurs du lieu" value={drivers} description="Tous les chauffeurs affectés à ce lieu" />
+-        <StatCard label="Véhicules du lieu" value={vehicles} description="Tous les véhicules de ce lieu" />
+-        <StatCard label="Transports du lieu" value={transports} description="Tous les transports de ce lieu" />
+-        <StatCard label="Produits" value={products._count._all} description="Produits liés aux transports du lieu" />
+-        <StatCard label="Tonnage cumulé" value={`${Number(tonnage._sum.tonnage ?? 0).toLocaleString("fr-FR")} t`} description="Transports non annulés de ce lieu" />
+-        <StatCard label="Paiements" value={payments._count._all} description="Paiements de tous les transports du lieu" />
+-        <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés du lieu" />
+-        <StatCard label="Montant reçu" value={money(payments._sum.amountReceived)} description="Total enregistré pour le lieu" />
+-        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistré pour le lieu" />
++        <StatCard label="Chauffeurs du lieu" value={drivers} description="Tous les chauffeurs affectés à ce lieu" kind="drivers" />
++        <StatCard label="Véhicules du lieu" value={vehicles} description="Tous les véhicules de ce lieu" kind="vehicles" />
++        <StatCard label="Transports du lieu" value={transports} description="Tous les transports de ce lieu" kind="transports" />
++        <StatCard label="Produits" value={products._count._all} description="Produits liés aux transports du lieu" kind="products" />
++        <StatCard label="Tonnage cumulé" value={`${Number(tonnage._sum.tonnage ?? 0).toLocaleString("fr-FR")} t`} description="Transports non annulés de ce lieu" kind="tonnage" />
++        <StatCard label="Paiements" value={payments._count._all} description="Paiements de tous les transports du lieu" kind="payments" />
++        <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés du lieu" kind="outstanding" />
++        <StatCard label="Montant reçu" value={money(payments._sum.amountReceived)} description="Total enregistré pour le lieu" kind="received" />
++        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistré pour le lieu" kind="change" />
+       </div>
+ 
+       <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+         <h2 className="mb-4 text-xl font-semibold">État des transports du lieu</h2>
+         <div className="flex flex-wrap gap-3">
+           {statuses.map((item) => (
+-            <div key={item.status} className="rounded-lg bg-slate-100 px-4 py-3">
+-              <p className="text-sm text-slate-600">{statusLabels[item.status] ?? item.status}</p>
+-              <p className="mt-1 text-xl font-bold">{item._count._all}</p>
+-            </div>
++            <StatusTile
++              key={item.status}
++              label={statusLabels[item.status] ?? item.status}
++              count={item._count._all}
++              kind={`status-${item.status}`}
++            />
+           ))}
+         </div>
+       </section>
+@@ -299,11 +286,11 @@ async function SupervisorDashboard({
+       <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+         <h2 className="mb-4 text-xl font-semibold">Transports récents du lieu</h2>
+         {recentTransports.length === 0 ? (
+-          <p className="text-slate-500">Aucun transport enregistré.</p>
++          <p className="text-slate-600">Aucun transport enregistré.</p>
+         ) : (
+           <div className="overflow-x-auto">
+             <table className="w-full text-left text-sm">
+-              <thead className="border-b text-slate-500">
++              <thead className="border-b text-slate-600">
+                 <tr>
+                   <th className="px-3 py-3">Date</th>
+                   <th className="px-3 py-3">Produit</th>
+diff --git a/app/dashboard/payments/page.tsx b/app/dashboard/payments/page.tsx
+index 5999c2f..67a85db 100644
+--- a/app/dashboard/payments/page.tsx
++++ b/app/dashboard/payments/page.tsx
+@@ -115,11 +115,11 @@ async function PaymentsContent() {
+           </h2>
+ 
+           {payments.length === 0 ? (
+-            <p className="text-slate-500">Aucun paiement enregistré pour ce lieu.</p>
++            <p className="text-slate-600">Aucun paiement enregistré pour ce lieu.</p>
+           ) : (
+             <div className="overflow-x-auto">
+               <table className="w-full text-left text-sm">
+-                <thead className="border-b text-slate-500">
++                <thead className="border-b text-slate-600">
+                   <tr>
+                     <th className="px-3 py-3">Date / produit</th>
+                     <th className="px-3 py-3">Mode / référence</th>
+@@ -135,11 +135,11 @@ async function PaymentsContent() {
+                       <td className="px-3 py-4">
+                         <p>{payment.createdAt.toLocaleDateString("fr-FR")}</p>
+                         <p className="font-medium">{payment.assignment.product.name}</p>
+-                        <p className="text-xs text-slate-500">{payment.assignment.vehicle.licensePlate}</p>
++                        <p className="text-xs text-slate-700">{payment.assignment.vehicle.licensePlate}</p>
+                       </td>
+                       <td className="px-3 py-4">
+                         <p>{labels[payment.paymentMethod] ?? payment.paymentMethod}</p>
+-                        <p className="text-xs text-slate-500">{payment.reference || "—"}</p>
++                        <p className="text-xs text-slate-700">{payment.reference || "—"}</p>
+                       </td>
+                       <td className="px-3 py-4 whitespace-nowrap">{money(payment.amountDue)}</td>
+                       <td className="px-3 py-4 whitespace-nowrap">{money(payment.amountReceived)}</td>
+diff --git a/app/dashboard/payments/payment-form.tsx b/app/dashboard/payments/payment-form.tsx
+index 0478dde..b1aa777 100644
+--- a/app/dashboard/payments/payment-form.tsx
++++ b/app/dashboard/payments/payment-form.tsx
+@@ -151,7 +151,7 @@ export default function PaymentForm({
+           max="999999999999.99" step="0.01" required className={inputClass} />
+       </div>
+ 
+-      <p className="text-xs text-slate-500">
++      <p className="text-xs text-slate-700">
+         Aucun paiement partiel. En espèces, la monnaie rendue est calculée automatiquement.
+       </p>
+ 
+diff --git a/app/dashboard/stat-card.tsx b/app/dashboard/stat-card.tsx
+new file mode 100644
+index 0000000..ffab69f
+--- /dev/null
++++ b/app/dashboard/stat-card.tsx
+@@ -0,0 +1,86 @@
++"use client";
++
++import { useCallback, useRef, useState } from "react";
++import { ArrowRight } from "lucide-react";
++import DetailsDrawer, { KindIcon } from "./details-drawer";
++
++const cardClass =
++  "group block w-full cursor-pointer rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md";
++
++// Hook commun : ouvre le panneau et rend le focus au bouton à la fermeture.
++function useDrawer() {
++  const [open, setOpen] = useState(false);
++  const triggerRef = useRef<HTMLButtonElement>(null);
++  const close = useCallback(() => {
++    setOpen(false);
++    triggerRef.current?.focus();
++  }, []);
++  return { open, setOpen, triggerRef, close };
++}
++
++export function StatCard({
++  label,
++  value,
++  description,
++  kind,
++}: {
++  label: string;
++  value: string | number;
++  description: string;
++  kind: string;
++}) {
++  const { open, setOpen, triggerRef, close } = useDrawer();
++
++  return (
++    <>
++      <button
++        ref={triggerRef}
++        type="button"
++        onClick={() => setOpen(true)}
++        aria-haspopup="dialog"
++        className={`${cardClass} p-5`}
++      >
++        <span className="flex items-start justify-between gap-3">
++          <span className="text-sm font-medium text-slate-700">{label}</span>
++          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
++            <KindIcon kind={kind} className="size-5" />
++          </span>
++        </span>
++        <span className="mt-2 block break-words text-2xl font-bold text-slate-900">{value}</span>
++        <span className="mt-2 block text-sm text-slate-600">{description}</span>
++        <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-slate-700 group-hover:text-blue-700">
++          Voir le détail
++          <ArrowRight className="size-4 transition group-hover:translate-x-0.5" aria-hidden="true" />
++        </span>
++      </button>
++      {open && <DetailsDrawer kind={kind} label={label} onClose={close} />}
++    </>
++  );
++}
++
++// Un chiffre de la répartition par statut (Planifié, En cours...).
++export function StatusTile({ label, count, kind }: { label: string; count: number; kind: string }) {
++  const { open, setOpen, triggerRef, close } = useDrawer();
++
++  return (
++    <>
++      <button
++        ref={triggerRef}
++        type="button"
++        onClick={() => setOpen(true)}
++        aria-haspopup="dialog"
++        className="group cursor-pointer rounded-xl bg-slate-100 px-4 py-3 text-left transition duration-200 hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-sm"
++      >
++        <span className="block text-sm text-slate-700">{label}</span>
++        <span className="mt-1 flex items-center gap-2 text-xl font-bold text-slate-900">
++          {count}
++          <ArrowRight
++            className="size-4 text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-blue-700"
++            aria-hidden="true"
++          />
++        </span>
++      </button>
++      {open && <DetailsDrawer kind={kind} label={label} onClose={close} />}
++    </>
++  );
++}
+diff --git a/app/dashboard/supervisors/page.tsx b/app/dashboard/supervisors/page.tsx
+index feac163..e096cfe 100644
+--- a/app/dashboard/supervisors/page.tsx
++++ b/app/dashboard/supervisors/page.tsx
+@@ -84,11 +84,11 @@ async function SupervisorsContent() {
+             </div>
+ 
+             {supervisors.length === 0 ? (
+-              <p className="text-slate-500">Aucun régisseur enregistré.</p>
++              <p className="text-slate-600">Aucun régisseur enregistré.</p>
+             ) : (
+               <div className="overflow-x-auto">
+                 <table className="w-full text-left text-sm">
+-                  <thead className="border-b border-slate-200 text-slate-500">
++                  <thead className="border-b border-slate-200 text-slate-600">
+                     <tr>
+                       <th className="px-3 py-3">Régisseur</th>
+                       <th className="px-3 py-3">Email</th>
+diff --git a/app/dashboard/supervisors/supervisor-account-actions.tsx b/app/dashboard/supervisors/supervisor-account-actions.tsx
+index 84dffee..6264245 100644
+--- a/app/dashboard/supervisors/supervisor-account-actions.tsx
++++ b/app/dashboard/supervisors/supervisor-account-actions.tsx
+@@ -112,7 +112,7 @@ export default function SupervisorAccountActions({
+         className={
+           isActive
+             ? "rounded-full bg-green-50 px-2 py-1 text-xs text-green-700"
+-            : "rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600"
++            : "rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700"
+         }
+       >
+         {isActive ? "Actif" : "Inactif"}
+@@ -151,7 +151,7 @@ export default function SupervisorAccountActions({
+         <form onSubmit={resetPassword} className="space-y-2 rounded-lg bg-slate-50 p-3">
+           <label
+             htmlFor={`password-${supervisorId}`}
+-            className="block text-xs font-medium text-slate-600"
++            className="block text-xs font-medium text-slate-700"
+           >
+             Nouveau mot de passe (12 caractères minimum)
+           </label>
+@@ -192,7 +192,7 @@ export default function SupervisorAccountActions({
+               {loading ? "Enregistrement..." : "Réinitialiser"}
+             </button>
+           </div>
+-          <p className="text-xs text-slate-500">
++          <p className="text-xs text-slate-700">
+             Notez le mot de passe avant de valider : il ne sera plus affiché ensuite.
+           </p>
+         </form>
+diff --git a/app/dashboard/supervisors/supervisor-form.tsx b/app/dashboard/supervisors/supervisor-form.tsx
+index ef78892..bbb35a1 100644
+--- a/app/dashboard/supervisors/supervisor-form.tsx
++++ b/app/dashboard/supervisors/supervisor-form.tsx
+@@ -126,7 +126,7 @@ export default function SupervisorForm({
+           autoComplete="new-password"
+           className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+         />
+-        <p className="mt-1 text-xs text-slate-500">
++        <p className="mt-1 text-xs text-slate-700">
+           Au moins 12 caractères.
+         </p>
+       </div>
+diff --git a/app/dashboard/transports/page.tsx b/app/dashboard/transports/page.tsx
+index fa3650c..0366e67 100644
+--- a/app/dashboard/transports/page.tsx
++++ b/app/dashboard/transports/page.tsx
+@@ -158,13 +158,13 @@ async function TransportsContent({
+           />
+ 
+           {transports.length === 0 ? (
+-            <p className="text-slate-500">
++            <p className="text-slate-600">
+               {filtered ? "Aucun transport ne correspond à ces critères." : "Aucun transport pour ce lieu."}
+             </p>
+           ) : (
+             <div className="overflow-x-auto">
+               <table className="w-full text-left text-sm">
+-                <thead className="border-b text-slate-500">
++                <thead className="border-b text-slate-600">
+                   <tr>
+                     <th className="px-3 py-3">Date / produit</th>
+                     <th className="px-3 py-3">Tonnage</th>
+@@ -179,13 +179,13 @@ async function TransportsContent({
+                       <td className="px-3 py-4">
+                         <p className="font-medium">{item.assignedAt.toLocaleDateString("fr-FR")}</p>
+                         <p>{item.product.name}</p>
+-                        <p className="text-xs text-slate-500">{item.product.type}</p>
++                        <p className="text-xs text-slate-700">{item.product.type}</p>
+                       </td>
+                       <td className="px-3 py-4">{String(item.product.tonnage)} t</td>
+                       <td className="px-3 py-4">
+                         <p className="font-medium">{item.vehicle.licensePlate}</p>
+                         <p>{item.vehicle.vehicleType}</p>
+-                        <p className="text-xs text-slate-500">
++                        <p className="text-xs text-slate-700">
+                           {(item.driver ?? item.vehicle.driver).firstName} {(item.driver ?? item.vehicle.driver).lastName}
+                         </p>
+                       </td>
+@@ -198,7 +198,7 @@ async function TransportsContent({
+                         ) : item.payment ? (
+                           <span className="text-xs text-amber-700">Paiement existant : à vérifier</span>
+                         ) : item.status === "CANCELLED" ? (
+-                          <span className="text-xs text-slate-500">Transport annulé</span>
++                          <span className="text-xs text-slate-700">Transport annulé</span>
+                         ) : (
+                           <TransportAmountForm id={item.id} />
+                         )}
+diff --git a/app/dashboard/transports/transport-form.tsx b/app/dashboard/transports/transport-form.tsx
+index 89646e9..776c923 100644
+--- a/app/dashboard/transports/transport-form.tsx
++++ b/app/dashboard/transports/transport-form.tsx
+@@ -79,7 +79,7 @@ export default function TransportForm({ vehicles }: { vehicles: VehicleOption[]
+       <div>
+         <label htmlFor="amountDue" className="mb-1 block text-sm font-medium">Montant total à régler (MGA)</label>
+         <input id="amountDue" name="amountDue" type="number" min="0.01" max="999999999999.99" step="0.01" required className={inputClass} />
+-        <p className="mt-1 text-xs text-slate-500">Ce montant sera utilisé par la caisse pour exiger un paiement intégral.</p>
++        <p className="mt-1 text-xs text-slate-700">Ce montant sera utilisé par la caisse pour exiger un paiement intégral.</p>
+       </div>
+ 
+       <div>
+diff --git a/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx b/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx
+index 3b021da..4ddd49d 100644
+--- a/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx
++++ b/app/dashboard/vehicles/[id]/edit/vehicle-edit-form.tsx
+@@ -80,7 +80,7 @@ export default function VehicleEditForm({
+             </option>
+           ))}
+         </select>
+-        <p className="mt-2 text-xs text-slate-500">
++        <p className="mt-2 text-xs text-slate-700">
+           Seuls les chauffeurs actifs de votre lieu sont proposés. Les transports déjà enregistrés
+           conservent leur chauffeur d&apos;origine ; le changement ne concerne que les prochains transports.
+         </p>
+diff --git a/app/dashboard/vehicles/page.tsx b/app/dashboard/vehicles/page.tsx
+index 9c16c9c..772817f 100644
+--- a/app/dashboard/vehicles/page.tsx
++++ b/app/dashboard/vehicles/page.tsx
+@@ -110,13 +110,13 @@ async function VehiclesContent({
+             ]}
+           />
+           {vehicles.length === 0 ? (
+-            <p className="text-slate-500">
++            <p className="text-slate-600">
+               {filtered ? "Aucun véhicule ne correspond à ces critères." : "Aucun véhicule enregistré pour ce lieu."}
+             </p>
+           ) : (
+             <div className="overflow-x-auto">
+               <table className="w-full text-left text-sm">
+-                <thead className="border-b text-slate-500">
++                <thead className="border-b text-slate-600">
+                   <tr>
+                     <th className="px-3 py-3">Immatriculation</th>
+                     <th className="px-3 py-3">Type</th>
+diff --git a/app/globals.css b/app/globals.css
+index a2dc41e..91ebca5 100644
+--- a/app/globals.css
++++ b/app/globals.css
+@@ -1,8 +1,23 @@
+ @import "tailwindcss";
+ 
++/* Palette de l'application (valeurs identiques aux classes Tailwind slate / blue utilisées).
++   Contrastes WCAG AA : texte principal 17,9:1, secondaire 10,4:1, atténué 7,6:1 sur blanc. */
+ :root {
+-  --background: #ffffff;
+-  --foreground: #171717;
++  --background: #f1f5f9;
++  --foreground: #0f172a;
++  --surface: #ffffff;
++  --border: #e2e8f0;
++  --text-secondary: #334155;
++  --text-muted: #475569;
++  --accent: #1d4ed8;
++  --accent-soft: #eff6ff;
++  --success: #047857;
++  --success-soft: #ecfdf5;
++  --warning: #b45309;
++  --warning-soft: #fffbeb;
++  --danger: #b91c1c;
++  --danger-soft: #fef2f2;
++  color-scheme: light;
+ }
+ 
+ @theme inline {
+@@ -12,15 +27,47 @@
+   --font-mono: var(--font-geist-mono);
+ }
+ 
+-@media (prefers-color-scheme: dark) {
+-  :root {
+-    --background: #0a0a0a;
+-    --foreground: #ededed;
+-  }
+-}
+-
++/* Pas de thème sombre : les écrans utilisent des surfaces claires, inverser la couleur du
++   texte rendait les cartes blanches illisibles. */
+ body {
+   background: var(--background);
+   color: var(--foreground);
+-  font-family: Arial, Helvetica, sans-serif;
++  font-family: var(--font-geist-sans), system-ui, sans-serif;
++  /* Chiffres de même largeur : les colonnes de montants restent alignées. */
++  font-variant-numeric: tabular-nums;
++}
++
++/* Indication de saisie lisible (le gris par défaut est trop clair). */
++::placeholder {
++  color: var(--text-muted);
++  opacity: 1;
++}
++
++/* Focus clavier visible partout. */
++:focus-visible {
++  outline: 2px solid var(--accent);
++  outline-offset: 2px;
++}
++
++/* Panneau de détails : tiroir à droite sur ordinateur, feuille qui monte sur mobile. */
++@keyframes drawer-in-right {
++  from { transform: translateX(100%); }
++  to { transform: translateX(0); }
++}
++@keyframes sheet-in-up {
++  from { transform: translateY(100%); }
++  to { transform: translateY(0); }
++}
++@keyframes backdrop-in {
++  from { opacity: 0; }
++  to { opacity: 1; }
++}
++
++.details-backdrop { animation: backdrop-in 200ms ease-out; }
++.details-panel { animation: sheet-in-up 200ms ease-out; }
++@media (min-width: 768px) {
++  .details-panel { animation-name: drawer-in-right; }
++}
++@media (prefers-reduced-motion: reduce) {
++  .details-backdrop, .details-panel { animation: none; }
+ }
+diff --git a/lib/details-types.ts b/lib/details-types.ts
+new file mode 100644
+index 0000000..0b6d785
+--- /dev/null
++++ b/lib/details-types.ts
+@@ -0,0 +1,24 @@
++// Types partagés entre l'API des détails et le panneau (client).
++
++export type Badge = "ok" | "warn" | "bad" | "info" | "muted";
++
++export type Cell = {
++  t: string; // texte affiché
++  s?: number | string; // valeur de tri (nombre, date...) si différente du texte
++  badge?: Badge; // affiche une pastille avec icône + libellé
++};
++
++export type Column = { key: string; label: string; align?: "right" };
++
++export type DetailsRow = { id: string; cells: Record<string, Cell> };
++
++export type DetailsResult = {
++  title: string;
++  total: string; // chiffre de la carte (nombre, montant ou tonnage)
++  count: number; // éléments correspondant à la recherche
++  truncated: boolean;
++  columns: Column[];
++  rows: DetailsRow[];
++  href: string | null; // page complète (null si elle n'existe pas pour ce rôle)
++  locations: { id: string; name: string }[] | null; // filtre par lieu (administrateur)
++};
+diff --git a/lib/details.ts b/lib/details.ts
+new file mode 100644
+index 0000000..b4ba214
+--- /dev/null
++++ b/lib/details.ts
+@@ -0,0 +1,556 @@
++import { prisma } from "@/lib/prisma";
++import {
++  PAYMENT_METHOD_LABELS,
++  TRANSPORT_STATUS_LABELS,
++  formatMGA,
++} from "@/lib/audit";
++import type { Badge, Cell, Column, DetailsResult, DetailsRow } from "@/lib/details-types";
++
++export const DETAIL_LIMIT = 200;
++
++const STATUS_KEYS = Object.keys(TRANSPORT_STATUS_LABELS);
++
++export const SIMPLE_KINDS = [
++  "locations",
++  "supervisors",
++  "drivers",
++  "vehicles",
++  "transports",
++  "products",
++  "tonnage",
++  "payments",
++  "received",
++  "change",
++  "outstanding",
++] as const;
++
++// Ces deux listes n'ont pas de sens pour un régisseur (un seul lieu, pas d'autres comptes).
++const ADMIN_ONLY = new Set<string>(["locations", "supervisors"]);
++
++export function isDetailKind(kind: string): boolean {
++  return (
++    (SIMPLE_KINDS as readonly string[]).includes(kind) ||
++    (kind.startsWith("status-") && STATUS_KEYS.includes(kind.slice(7)))
++  );
++}
++
++export function isAdminOnlyKind(kind: string): boolean {
++  return ADMIN_ONLY.has(kind);
++}
++
++export type DetailScope = {
++  admin: boolean;
++  // Régisseur : son lieu (imposé). Administrateur : filtre facultatif choisi dans le panneau.
++  locationId: string | null;
++};
++
++const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
++  dateStyle: "short",
++  timeZone: "Indian/Antananarivo",
++});
++
++const has = (word: string) => ({ contains: word, mode: "insensitive" as const });
++
++function words(q: string) {
++  return q.split(/\s+/).filter(Boolean).slice(0, 5);
++}
++
++// Chaque mot de la recherche doit se retrouver dans au moins un des champs.
++function andWords(list: string[], fields: (word: string) => object[]) {
++  return list.length > 0 ? { AND: list.map((word) => ({ OR: fields(word) })) } : {};
++}
++
++const text = (t: string, extra: Partial<Cell> = {}): Cell => ({ t, ...extra });
++const num = (value: unknown, t: string): Cell => ({ t, s: Number(value ?? 0) });
++const date = (value: Date): Cell => ({ t: dateFormatter.format(value), s: value.getTime() });
++const fullName = (p?: { firstName: string; lastName: string } | null) =>
++  p ? `${p.firstName} ${p.lastName}` : "—";
++const activeBadge = (isActive: boolean): Cell =>
++  isActive ? text("Actif", { badge: "ok" }) : text("Inactif", { badge: "muted" });
++
++const STATUS_BADGES: Record<string, Badge> = {
++  PLANNED: "info",
++  IN_PROGRESS: "warn",
++  COMPLETED: "ok",
++  CANCELLED: "bad",
++};
++const statusCell = (status: string): Cell =>
++  text(TRANSPORT_STATUS_LABELS[status] ?? status, { badge: STATUS_BADGES[status] ?? "muted" });
++
++const col = (key: string, label: string, align?: "right"): Column => ({ key, label, align });
++const locationColumn = (admin: boolean): Column[] => (admin ? [col("location", "Lieu")] : []);
++const withLocation = (admin: boolean, name?: string | null): Record<string, Cell> =>
++  admin ? { location: text(name ?? "—") } : {};
++
++export async function getDetails(
++  kind: string,
++  scope: DetailScope,
++  rawQuery: string,
++): Promise<DetailsResult> {
++  const { admin } = scope;
++  const list = words(rawQuery);
++  const loc = scope.locationId ? { locationId: scope.locationId } : {};
++  // Filtre « transport du lieu » pour les tables liées (produits, paiements).
++  const viaAssignment = (extra: object = {}) =>
++    scope.locationId || Object.keys(extra).length > 0
++      ? { assignment: { is: { ...loc, ...extra } } }
++      : {};
++
++  const locations = admin
++    ? await prisma.location.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } })
++    : null;
++
++  const finish = (
++    title: string,
++    total: string,
++    count: number,
++    columns: Column[],
++    rows: DetailsRow[],
++    href: string | null,
++  ): DetailsResult => ({
++    title,
++    total,
++    count,
++    truncated: count > rows.length,
++    columns,
++    rows,
++    // Les pages « complètes » des chauffeurs, véhicules, transports et paiements
++    // sont réservées aux régisseurs.
++    href: admin && !["locations", "supervisors"].includes(kind) ? null : href,
++    locations,
++  });
++
++  switch (kind) {
++    case "locations": {
++      const where = {
++        ...(scope.locationId ? { id: scope.locationId } : {}),
++        ...andWords(list, (w) => [{ name: has(w) }]),
++      };
++      const [count, total, rows] = await Promise.all([
++        prisma.location.count({ where }),
++        prisma.location.count({ where: scope.locationId ? { id: scope.locationId } : {} }),
++        prisma.location.findMany({
++          where,
++          orderBy: { name: "asc" },
++          take: DETAIL_LIMIT,
++          select: {
++            id: true,
++            name: true,
++            _count: { select: { supervisors: true, drivers: true, vehicles: true, assignments: true } },
++          },
++        }),
++      ]);
++      return finish(
++        "Lieux",
++        String(total),
++        count,
++        [
++          col("name", "Lieu"),
++          col("supervisors", "Régisseurs", "right"),
++          col("drivers", "Chauffeurs", "right"),
++          col("vehicles", "Véhicules", "right"),
++          col("transports", "Transports", "right"),
++        ],
++        rows.map((r) => ({
++          id: r.id,
++          cells: {
++            name: text(r.name),
++            supervisors: num(r._count.supervisors, String(r._count.supervisors)),
++            drivers: num(r._count.drivers, String(r._count.drivers)),
++            vehicles: num(r._count.vehicles, String(r._count.vehicles)),
++            transports: num(r._count.assignments, String(r._count.assignments)),
++          },
++        })),
++        "/dashboard/locations",
++      );
++    }
++
++    case "supervisors": {
++      const base = loc;
++      const where = {
++        ...base,
++        ...andWords(list, (w) => [
++          { user: { firstName: has(w) } },
++          { user: { lastName: has(w) } },
++          { user: { email: has(w) } },
++          { nationalId: has(w) },
++        ]),
++      };
++      const [count, total, rows] = await Promise.all([
++        prisma.supervisor.count({ where }),
++        prisma.supervisor.count({ where: base }),
++        prisma.supervisor.findMany({
++          where,
++          orderBy: { user: { lastName: "asc" } },
++          take: DETAIL_LIMIT,
++          select: {
++            id: true,
++            nationalId: true,
++            assignedLocation: { select: { name: true } },
++            user: { select: { firstName: true, lastName: true, email: true, isActive: true } },
++          },
++        }),
++      ]);
++      return finish(
++        "Régisseurs",
++        String(total),
++        count,
++        [col("name", "Nom"), col("email", "Email"), col("nationalId", "CIN"), ...locationColumn(admin), col("status", "Compte")],
++        rows.map((r) => ({
++          id: r.id,
++          cells: {
++            name: text(fullName(r.user)),
++            email: text(r.user.email),
++            nationalId: text(r.nationalId),
++            ...withLocation(admin, r.assignedLocation?.name),
++            status: activeBadge(r.user.isActive),
++          },
++        })),
++        "/dashboard/supervisors",
++      );
++    }
++
++    case "drivers": {
++      const where = {
++        ...loc,
++        ...andWords(list, (w) => [
++          { firstName: has(w) },
++          { lastName: has(w) },
++          { nationalId: has(w) },
++          { licenseNumber: has(w) },
++          { phoneNumber: has(w) },
++        ]),
++      };
++      const [count, total, rows] = await Promise.all([
++        prisma.driver.count({ where }),
++        prisma.driver.count({ where: loc }),
++        prisma.driver.findMany({
++          where,
++          orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
++          take: DETAIL_LIMIT,
++          select: {
++            id: true,
++            firstName: true,
++            lastName: true,
++            nationalId: true,
++            licenseNumber: true,
++            phoneNumber: true,
++            isActive: true,
++            assignedLocation: { select: { name: true } },
++          },
++        }),
++      ]);
++      return finish(
++        "Chauffeurs",
++        String(total),
++        count,
++        [
++          col("name", "Nom"),
++          col("nationalId", "CIN"),
++          col("license", "Permis"),
++          col("phone", "Téléphone"),
++          ...locationColumn(admin),
++          col("status", "Statut"),
++        ],
++        rows.map((r) => ({
++          id: r.id,
++          cells: {
++            name: text(fullName(r)),
++            nationalId: text(r.nationalId),
++            license: text(r.licenseNumber),
++            phone: text(r.phoneNumber ?? "—"),
++            ...withLocation(admin, r.assignedLocation?.name),
++            status: activeBadge(r.isActive),
++          },
++        })),
++        "/dashboard/drivers",
++      );
++    }
++
++    case "vehicles": {
++      const where = {
++        ...loc,
++        ...andWords(list, (w) => [
++          { licensePlate: has(w) },
++          { vehicleType: has(w) },
++          { driver: { firstName: has(w) } },
++          { driver: { lastName: has(w) } },
++        ]),
++      };
++      const [count, total, rows] = await Promise.all([
++        prisma.vehicle.count({ where }),
++        prisma.vehicle.count({ where: loc }),
++        prisma.vehicle.findMany({
++          where,
++          orderBy: { licensePlate: "asc" },
++          take: DETAIL_LIMIT,
++          select: {
++            id: true,
++            licensePlate: true,
++            vehicleType: true,
++            isActive: true,
++            driver: { select: { firstName: true, lastName: true } },
++            assignedLocation: { select: { name: true } },
++          },
++        }),
++      ]);
++      return finish(
++        "Véhicules",
++        String(total),
++        count,
++        [
++          col("plate", "Immatriculation"),
++          col("type", "Type"),
++          col("driver", "Chauffeur"),
++          ...locationColumn(admin),
++          col("status", "Statut"),
++        ],
++        rows.map((r) => ({
++          id: r.id,
++          cells: {
++            plate: text(r.licensePlate),
++            type: text(r.vehicleType),
++            driver: text(fullName(r.driver)),
++            ...withLocation(admin, r.assignedLocation?.name),
++            status: activeBadge(r.isActive),
++          },
++        })),
++        "/dashboard/vehicles",
++      );
++    }
++
++    case "products":
++    case "tonnage": {
++      // Le tonnage cumulé ne compte pas les transports annulés.
++      const base = kind === "tonnage" ? viaAssignment({ status: { not: "CANCELLED" } }) : viaAssignment();
++      const where = {
++        AND: [
++          base,
++          andWords(list, (w) => [{ name: has(w) }, { type: has(w) }]),
++        ],
++      };
++      const [count, sum, total, rows] = await Promise.all([
++        prisma.product.count({ where }),
++        prisma.product.aggregate({ where: base, _sum: { tonnage: true } }),
++        prisma.product.count({ where: base }),
++        prisma.product.findMany({
++          where,
++          orderBy: { createdAt: "desc" },
++          take: DETAIL_LIMIT,
++          select: {
++            id: true,
++            name: true,
++            type: true,
++            tonnage: true,
++            assignment: {
++              select: {
++                assignedAt: true,
++                status: true,
++                vehicle: { select: { licensePlate: true } },
++                assignedLocation: { select: { name: true } },
++              },
++            },
++          },
++        }),
++      ]);
++      const tonnageText = (v: unknown) => `${Number(v ?? 0).toLocaleString("fr-FR")} t`;
++      return finish(
++        kind === "tonnage" ? "Tonnage cumulé" : "Produits",
++        kind === "tonnage" ? tonnageText(sum._sum.tonnage) : String(total),
++        count,
++        [
++          col("name", "Produit"),
++          col("type", "Type"),
++          col("tonnage", "Tonnage", "right"),
++          col("transport", "Transport lié"),
++          ...locationColumn(admin),
++          col("status", "Statut"),
++        ],
++        rows.map((r) => ({
++          id: r.id,
++          cells: {
++            name: text(r.name),
++            type: text(r.type),
++            tonnage: num(r.tonnage, tonnageText(r.tonnage)),
++            transport: r.assignment
++              ? { t: `${dateFormatter.format(r.assignment.assignedAt)} · ${r.assignment.vehicle.licensePlate}`, s: r.assignment.assignedAt.getTime() }
++              : text("—"),
++            ...withLocation(admin, r.assignment?.assignedLocation?.name),
++            status: r.assignment ? statusCell(r.assignment.status) : text("—"),
++          },
++        })),
++        "/dashboard/transports",
++      );
++    }
++
++    case "payments":
++    case "received":
++    case "change": {
++      const base = {
++        ...viaAssignment(),
++        ...(kind === "change" ? { changeReturned: { gt: 0 } } : {}),
++      };
++      const where = {
++        AND: [
++          base,
++          andWords(list, (w) => [
++            { reference: has(w) },
++            { assignment: { product: { name: has(w) } } },
++            { assignment: { vehicle: { licensePlate: has(w) } } },
++            { recordedBy: { firstName: has(w) } },
++            { recordedBy: { lastName: has(w) } },
++          ]),
++        ],
++      };
++      const [count, agg, rows] = await Promise.all([
++        prisma.payment.count({ where }),
++        prisma.payment.aggregate({
++          where: base,
++          _count: { _all: true },
++          _sum: { amountReceived: true, changeReturned: true },
++        }),
++        prisma.payment.findMany({
++          where,
++          orderBy: { createdAt: "desc" },
++          take: DETAIL_LIMIT,
++          select: {
++            id: true,
++            createdAt: true,
++            paymentMethod: true,
++            reference: true,
++            amountDue: true,
++            amountReceived: true,
++            changeReturned: true,
++            recordedBy: { select: { firstName: true, lastName: true } },
++            assignment: {
++              select: {
++                product: { select: { name: true } },
++                vehicle: { select: { licensePlate: true } },
++                assignedLocation: { select: { name: true } },
++              },
++            },
++          },
++        }),
++      ]);
++      const total =
++        kind === "received"
++          ? formatMGA(agg._sum.amountReceived ?? 0)
++          : kind === "change"
++            ? formatMGA(agg._sum.changeReturned ?? 0)
++            : String(agg._count._all);
++      return finish(
++        kind === "received" ? "Montant reçu" : kind === "change" ? "Monnaie rendue" : "Paiements",
++        total,
++        count,
++        [
++          col("date", "Date"),
++          col("transport", "Transport"),
++          col("method", "Mode"),
++          col("due", "Dû", "right"),
++          col("received", "Reçu", "right"),
++          col("change", "Monnaie", "right"),
++          col("by", "Enregistré par"),
++          ...locationColumn(admin),
++        ],
++        rows.map((r) => ({
++          id: r.id,
++          cells: {
++            date: date(r.createdAt),
++            transport: text(`${r.assignment.product.name} · ${r.assignment.vehicle.licensePlate}`),
++            method: text(
++              `${PAYMENT_METHOD_LABELS[r.paymentMethod] ?? r.paymentMethod}${r.reference ? ` (${r.reference})` : ""}`,
++            ),
++            due: num(r.amountDue, formatMGA(r.amountDue)),
++            received: num(r.amountReceived, formatMGA(r.amountReceived)),
++            change: num(r.changeReturned, formatMGA(r.changeReturned)),
++            by: text(fullName(r.recordedBy)),
++            ...withLocation(admin, r.assignment.assignedLocation?.name),
++          },
++        })),
++        "/dashboard/payments",
++      );
++    }
++
++    default: {
++      // transports, outstanding, status-XXX
++      const statusFilter = kind.startsWith("status-") ? kind.slice(7) : null;
++      const base = {
++        ...loc,
++        ...(statusFilter ? { status: statusFilter as "PLANNED" } : {}),
++        ...(kind === "outstanding"
++          ? { status: { not: "CANCELLED" as const }, payment: { is: null }, amountDue: { not: null } }
++          : {}),
++      };
++      const where = {
++        AND: [
++          base,
++          andWords(list, (w) => [
++            { product: { name: has(w) } },
++            { vehicle: { licensePlate: has(w) } },
++            { driver: { firstName: has(w) } },
++            { driver: { lastName: has(w) } },
++            { vehicle: { driver: { lastName: has(w) } } },
++          ]),
++        ],
++      };
++      const [count, total, sum, rows] = await Promise.all([
++        prisma.transportAssignment.count({ where }),
++        prisma.transportAssignment.count({ where: base }),
++        prisma.transportAssignment.aggregate({ where: base, _sum: { amountDue: true } }),
++        prisma.transportAssignment.findMany({
++          where,
++          orderBy: { assignedAt: "desc" },
++          take: DETAIL_LIMIT,
++          select: {
++            id: true,
++            assignedAt: true,
++            status: true,
++            amountDue: true,
++            product: { select: { name: true, tonnage: true } },
++            vehicle: { select: { licensePlate: true, driver: { select: { firstName: true, lastName: true } } } },
++            driver: { select: { firstName: true, lastName: true } },
++            assignedLocation: { select: { name: true } },
++            payment: { select: { id: true } },
++          },
++        }),
++      ]);
++      const title = statusFilter
++        ? `Transports : ${TRANSPORT_STATUS_LABELS[statusFilter]}`
++        : kind === "outstanding"
++          ? "Reste à encaisser"
++          : "Transports";
++      return finish(
++        title,
++        kind === "outstanding" ? formatMGA(sum._sum.amountDue ?? 0) : String(total),
++        count,
++        [
++          col("date", "Date"),
++          col("product", "Produit"),
++          col("tonnage", "Tonnage", "right"),
++          col("vehicle", "Véhicule"),
++          col("driver", "Chauffeur"),
++          col("amount", "Montant", "right"),
++          col("status", "Statut"),
++          col("payment", "Paiement"),
++          ...locationColumn(admin),
++        ],
++        rows.map((r) => ({
++          id: r.id,
++          cells: {
++            date: date(r.assignedAt),
++            product: text(r.product.name),
++            tonnage: num(r.product.tonnage, `${Number(r.product.tonnage).toLocaleString("fr-FR")} t`),
++            vehicle: text(r.vehicle.licensePlate),
++            // Chauffeur au moment du transport, sinon celui du véhicule (anciens transports).
++            driver: text(fullName(r.driver ?? r.vehicle.driver)),
++            amount: r.amountDue === null ? text("Non fixé") : num(r.amountDue, formatMGA(r.amountDue)),
++            status: statusCell(r.status),
++            payment: r.payment ? text("Payé", { badge: "ok" }) : text("Non payé", { badge: "warn" }),
++            ...withLocation(admin, r.assignedLocation?.name),
++          },
++        })),
++        "/dashboard/transports",
++      );
++    }
++  }
++}
+diff --git a/package-lock.json b/package-lock.json
+index 7b7bbd5..524b979 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -14,6 +14,7 @@
+         "bcryptjs": "^3.0.3",
+         "dotenv": "^18.0.9",
+         "jose": "^6.2.13",
++        "lucide-react": "^1.65.0",
+         "next": "16.4.3",
+         "pg": "^8.23.1",
+         "react": "19.3.0",
+@@ -2949,7 +2950,7 @@
+       "version": "19.3.0",
+       "resolved": "https://registry.npmjs.org/@types/react-dom/-/react-dom-19.3.0.tgz",
+       "integrity": "sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q==",
+-      "devOptional": true,
++      "dev": true,
+       "license": "MIT",
+       "peerDependencies": {
+         "@types/react": "^19.3.0"
+@@ -7245,6 +7246,21 @@
+         "url": "https://github.com/sponsors/wellwelwel"
+       }
+     },
++    "node_modules/lucide-react": {
++      "version": "1.65.0",
++      "resolved": "https://registry.npmjs.org/lucide-react/-/lucide-react-1.65.0.tgz",
++      "integrity": "sha512-roSdtzudEY39i2hn5LLjA8toYfhF2z4S10WSqZF4ubXpHlOmNTvaxMxZLdJfQDi6pEifQWX+cRmYihKSsvAxfA==",
++      "license": "ISC",
++      "peerDependencies": {
++        "@types/react": "*",
++        "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0"
++      },
++      "peerDependenciesMeta": {
++        "@types/react": {
++          "optional": true
++        }
++      }
++    },
+     "node_modules/magic-string": {
+       "version": "0.30.21",
+       "resolved": "https://registry.npmjs.org/magic-string/-/magic-string-0.30.21.tgz",
+diff --git a/package.json b/package.json
+index af9d03c..cd2d150 100644
+--- a/package.json
++++ b/package.json
+@@ -18,6 +18,7 @@
+     "bcryptjs": "^3.0.3",
+     "dotenv": "^18.0.9",
+     "jose": "^6.2.13",
++    "lucide-react": "^1.65.0",
+     "next": "16.4.3",
+     "pg": "^8.23.1",
+     "react": "19.3.0",
+diff --git a/tests/integration/details.test.ts b/tests/integration/details.test.ts
+new file mode 100644
+index 0000000..2da8580
+--- /dev/null
++++ b/tests/integration/details.test.ts
+@@ -0,0 +1,230 @@
++import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import { GET } from "@/app/api/details/[kind]/route";
++import { assertTestDatabase, resetDatabase, seed } from "./setup";
++import type { DetailsResult } from "@/lib/details-types";
++
++vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn() }));
++
++type World = Awaited<ReturnType<typeof seed>>;
++let w: World;
++
++const as = (user: Awaited<ReturnType<typeof getCurrentUser>>) =>
++  vi.mocked(getCurrentUser).mockResolvedValue(user);
++
++async function call(kind: string, query = "") {
++  const response = await GET(new Request(`http://localhost/api/details/${kind}${query}`), {
++    params: Promise.resolve({ kind }),
++  });
++  return { status: response.status, body: (await response.json()) as DetailsResult & { message?: string } };
++}
++
++// Données :  Lieu A (Tana)                         Lieu B (Tamatave)
++//   T1 terminé  payé  40 000  2,5 t  (reçu 50 000)   T5 terminé payé 70 000  6 t (mobile money)
++//   T2 planifié       30 000  3 t
++//   T3 annulé         20 000  4 t
++//   T4 en cours       25 000  1,5 t
++async function addTransport(opts: {
++  w: World; side: "A" | "B"; name: string; tonnage: string; amountDue: string; status: string;
++  payment?: { method: "CASH" | "MOBILE_MONEY"; received: string; change: string; reference?: string };
++}) {
++  const a = opts.side === "A";
++  const supervisor = a ? opts.w.supA1 : opts.w.supB;
++  const vehicleId = a
++    ? opts.w.vehicle.id
++    : (await prisma.vehicle.findFirstOrThrow({ where: { locationId: opts.w.locB.id } })).id;
++  const driverId = a ? opts.w.driver1.id : opts.w.driverB.id;
++
++  const product = await prisma.product.create({
++    data: { name: opts.name, type: "Test", tonnage: opts.tonnage },
++  });
++
++  return prisma.transportAssignment.create({
++    data: {
++      productId: product.id,
++      supervisorId: supervisor.profile.id,
++      locationId: a ? opts.w.locA.id : opts.w.locB.id,
++      vehicleId,
++      driverId,
++      status: opts.status as "PLANNED",
++      amountDue: opts.amountDue,
++      ...(opts.payment
++        ? {
++            payment: {
++              create: {
++                recordedById: supervisor.user.id,
++                paymentMethod: opts.payment.method,
++                reference: opts.payment.reference ?? null,
++                amountDue: opts.amountDue,
++                amountReceived: opts.payment.received,
++                changeReturned: opts.payment.change,
++              },
++            },
++          }
++        : {}),
++    },
++  });
++}
++
++beforeAll(() => assertTestDatabase());
++afterAll(() => prisma.$disconnect());
++
++beforeEach(async () => {
++  await resetDatabase();
++  w = await seed();
++  await prisma.vehicle.create({
++    data: {
++      vehicleType: "Camion", licensePlate: "2000 BBB", driverId: w.driverB.id,
++      locationId: w.locB.id, supervisorId: w.supB.profile.id,
++    },
++  });
++  await addTransport({ w, side: "A", name: "Riz", tonnage: "2.5", amountDue: "40000", status: "COMPLETED",
++    payment: { method: "CASH", received: "50000", change: "10000" } });
++  await addTransport({ w, side: "A", name: "Ciment", tonnage: "3", amountDue: "30000", status: "PLANNED" });
++  await addTransport({ w, side: "A", name: "Girofle", tonnage: "4", amountDue: "20000", status: "CANCELLED" });
++  await addTransport({ w, side: "A", name: "Farine", tonnage: "1.5", amountDue: "25000", status: "IN_PROGRESS" });
++  await addTransport({ w, side: "B", name: "Sucre", tonnage: "6", amountDue: "70000", status: "COMPLETED",
++    payment: { method: "MOBILE_MONEY", received: "70000", change: "0", reference: "MVOLA-1" } });
++});
++
++describe("accès", () => {
++  it("refuse un utilisateur non connecté", async () => {
++    as(null);
++    expect((await call("transports")).status).toBe(401);
++  });
++
++  it("répond 404 pour un type de détail inconnu", async () => {
++    as(w.admin);
++    expect((await call("nimportequoi")).status).toBe(404);
++    expect((await call("status-EXPLOSE")).status).toBe(404);
++  });
++
++  it("refuse les rôles non prévus", async () => {
++    as({ ...w.supA1.user, role: "CASHIER" });
++    expect((await call("transports")).status).toBe(403);
++  });
++
++  it("les listes Lieux et Régisseurs sont réservées à l'administrateur", async () => {
++    as(w.supA1.user);
++    expect((await call("locations")).status).toBe(403);
++    expect((await call("supervisors")).status).toBe(403);
++  });
++});
++
++describe("administrateur : tous les lieux", () => {
++  beforeEach(() => as(w.admin));
++
++  it("transports : 5 au total, colonne Lieu, pas de page complète", async () => {
++    const { status, body } = await call("transports");
++    expect(status).toBe(200);
++    expect(body.total).toBe("5");
++    expect(body.rows).toHaveLength(5);
++    expect(body.columns.map((c) => c.key)).toContain("location");
++    expect(body.href).toBeNull();
++    expect(body.locations?.map((l) => l.name).sort()).toEqual(["Tamatave", "Tana"]);
++  });
++
++  it("filtre par lieu et par recherche", async () => {
++    expect((await call("transports", `?locationId=${w.locB.id}`)).body.rows).toHaveLength(1);
++    expect((await call("transports", `?locationId=${w.locA.id}`)).body.rows).toHaveLength(4);
++    const search = await call("transports", "?q=ciment");
++    expect(search.body.count).toBe(1);
++    expect(search.body.total).toBe("5"); // le total reste celui de la carte
++  });
++
++  it("reste à encaisser : ni annulés, ni payés", async () => {
++    const { body } = await call("outstanding");
++    expect(body.rows).toHaveLength(2);
++    expect(body.total).toMatch(/^55.000,00 MGA$/);
++    expect(body.title).toBe("Reste à encaisser");
++  });
++
++  it("montant reçu, monnaie rendue et paiements", async () => {
++    expect((await call("received")).body.total).toMatch(/^120.000,00 MGA$/);
++    const change = await call("change");
++    expect(change.body.total).toMatch(/^10.000,00 MGA$/);
++    expect(change.body.rows).toHaveLength(1);
++    const payments = await call("payments");
++    expect(payments.body.total).toBe("2");
++    expect(payments.body.rows[0].cells.method.t).toMatch(/Espèces|Mobile money/);
++  });
++
++  it("tonnage cumulé exclut les transports annulés, produits les compte", async () => {
++    const tonnage = await call("tonnage");
++    expect(tonnage.body.total).toBe("13 t");
++    expect(tonnage.body.rows).toHaveLength(4);
++    expect((await call("products")).body.total).toBe("5");
++  });
++
++  it("répartition par statut", async () => {
++    const { body } = await call("status-CANCELLED");
++    expect(body.title).toBe("Transports : Annulé");
++    expect(body.rows).toHaveLength(1);
++    expect(body.rows[0].cells.status.badge).toBe("bad");
++  });
++
++  it("lieux et régisseurs, avec lien vers la page complète", async () => {
++    const locations = await call("locations");
++    expect(locations.body.total).toBe("2");
++    const tana = locations.body.rows.find((r) => r.cells.name.t === "Tana");
++    expect(tana?.cells.transports.t).toBe("4");
++    expect(locations.body.href).toBe("/dashboard/locations");
++
++    const supervisors = await call("supervisors");
++    expect(supervisors.body.total).toBe("3");
++    expect(supervisors.body.href).toBe("/dashboard/supervisors");
++  });
++
++  it("chauffeurs et véhicules : recherche par nom ou immatriculation", async () => {
++    expect((await call("drivers", "?q=Chauffeur1")).body.count).toBe(1);
++    expect((await call("vehicles", "?q=2000")).body.count).toBe(1);
++  });
++});
++
++describe("régisseur : uniquement son lieu", () => {
++  it("ne voit que les données de son lieu, sans colonne Lieu", async () => {
++    as(w.supA1.user);
++    const { body } = await call("transports");
++    expect(body.total).toBe("4");
++    expect(body.columns.map((c) => c.key)).not.toContain("location");
++    expect(body.locations).toBeNull();
++    expect(body.href).toBe("/dashboard/transports");
++  });
++
++  it("le même lieu est partagé entre les régisseurs du lieu", async () => {
++    as(w.supA2.user);
++    expect((await call("transports")).body.total).toBe("4");
++  });
++
++  it("ignore un locationId envoyé pour voir un autre lieu", async () => {
++    as(w.supA1.user);
++    const { body } = await call("transports", `?locationId=${w.locB.id}`);
++    expect(body.total).toBe("4");
++    expect(body.rows.every((r) => r.cells.product.t !== "Sucre")).toBe(true);
++  });
++
++  it("un régisseur d'un autre lieu ne voit rien du lieu A", async () => {
++    as(w.supB.user);
++    const { body } = await call("transports");
++    expect(body.total).toBe("1");
++    expect(body.rows[0].cells.product.t).toBe("Sucre");
++    expect((await call("received")).body.total).toMatch(/^70.000,00 MGA$/);
++    expect((await call("outstanding")).body.total).toMatch(/^0,00 MGA$/);
++    expect((await call("tonnage")).body.total).toBe("6 t");
++  });
++
++  it("montants du lieu A", async () => {
++    as(w.supA1.user);
++    expect((await call("received")).body.total).toMatch(/^50.000,00 MGA$/);
++    expect((await call("outstanding")).body.total).toMatch(/^55.000,00 MGA$/);
++    expect((await call("tonnage")).body.total).toBe("7 t");
++  });
++
++  it("le chauffeur affiché est celui du transport, même après un changement de chauffeur", async () => {
++    as(w.supA1.user);
++    await prisma.vehicle.update({ where: { id: w.vehicle.id }, data: { driverId: w.driver2.id } });
++    const { body } = await call("transports");
++    expect(body.rows.every((r) => r.cells.driver.t === "Chauffeur1 Test")).toBe(true);
++  });
++});

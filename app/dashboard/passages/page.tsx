@@ -21,6 +21,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const isAdmin = user.role === "ADMIN";
+  const isSupervisor = user.role === "SUPERVISOR";
   if (!isAdmin && user.role !== "SUPERVISOR") redirect("/dashboard");
 
   let locationId: string | null = null;

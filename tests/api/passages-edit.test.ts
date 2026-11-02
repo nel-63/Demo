@@ -15,6 +15,7 @@ const db = prisma as unknown as FakePrisma;
 const current = {
   id: "pass-1",
   productId: "product-1",
+  locationId: "location-1",
   assignedAt: new Date("2026-10-30T12:00:00.000Z"),
   origin: "Antsirabe",
   destination: "Toamasina",
@@ -53,12 +54,13 @@ const context = { params: Promise.resolve({ id: "pass-1" }) };
 
 beforeEach(() => {
   resetFakePrisma(db);
-  vi.mocked(getCurrentUser).mockResolvedValue(ADMIN);
+  vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
+  db.supervisor.findUnique.mockResolvedValue({ id: "supervisor-1", locationId: "location-1" });
   db.passage.findUnique.mockResolvedValue(current);
   db.recordRevision.findFirst.mockResolvedValue({ version: 1 });
 });
 
-describe("gestion administrateur des passages", () => {
+describe("gestion des passages par les régisseurs", () => {
   it("modifie le passage, le produit et le paiement en créant une version", async () => {
     db.passage.findUnique
       .mockResolvedValueOnce(current)
@@ -98,23 +100,23 @@ describe("gestion administrateur des passages", () => {
     expect((await read(response)).status).toBe(200);
     expect(db.passage.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "pass-1" },
-      data: expect.objectContaining({ deletedById: ADMIN.id, deletedAt: expect.any(Date) }),
+      data: expect.objectContaining({ deletedById: SUPERVISOR.id, deletedAt: expect.any(Date) }),
     }));
     expect(db.product.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "product-1" },
-      data: expect.objectContaining({ deletedById: ADMIN.id, deletedAt: expect.any(Date) }),
+      data: expect.objectContaining({ deletedById: SUPERVISOR.id, deletedAt: expect.any(Date) }),
     }));
     expect(db.payment.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "payment-1" },
-      data: expect.objectContaining({ deletedById: ADMIN.id, deletedAt: expect.any(Date) }),
+      data: expect.objectContaining({ deletedById: SUPERVISOR.id, deletedAt: expect.any(Date) }),
     }));
     expect(db.recordRevision.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ action: "DELETE", entityType: "Passage", entityId: "pass-1" }),
     }));
   });
 
-  it("refuse les modifications et suppressions aux régisseurs", async () => {
-    vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
+  it("refuse les modifications et suppressions à l'administrateur", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue(ADMIN);
     const update = await PATCH(jsonRequest("/api/passages/pass-1", "PATCH", valid), context);
     const remove = await DELETE(
       new Request("https://demo.test/api/passages/pass-1", { method: "DELETE" }),
@@ -123,5 +125,12 @@ describe("gestion administrateur des passages", () => {
     expect((await read(update)).status).toBe(403);
     expect((await read(remove)).status).toBe(403);
     expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("refuse à un régisseur de modifier un passage situé dans un autre lieu", async () => {
+    db.passage.findUnique.mockResolvedValue({ ...current, locationId: "location-2" });
+    const response = await PATCH(jsonRequest("/api/passages/pass-1", "PATCH", valid), context);
+    expect((await read(response)).status).toBe(404);
+    expect(db.product.update).not.toHaveBeenCalled();
   });
 });

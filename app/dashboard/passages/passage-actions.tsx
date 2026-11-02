@@ -23,7 +23,7 @@ type Revision = {
   actor: { firstName: string; lastName: string; email: string };
 };
 
-export default function PassageActions({ initial }: { initial: Initial }) {
+export default function PassageActions({ initial, canManage }: { initial: Initial; canManage: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -49,7 +49,7 @@ export default function PassageActions({ initial }: { initial: Initial }) {
   }
 
   async function remove() {
-    if (!window.confirm("Supprimer logiquement ce passage et ses données liées ? L'historique restera accessible à l'administrateur.")) return;
+    if (!window.confirm("Supprimer logiquement ce passage et ses données liées ? L'historique restera conservé.")) return;
     setBusy(true);
     setMessage("");
     try {
@@ -78,7 +78,7 @@ export default function PassageActions({ initial }: { initial: Initial }) {
   const label = "mb-1 block text-xs font-medium text-slate-700";
   return (
     <div className="min-w-[220px] space-y-2">
-      <details className="rounded-lg border border-slate-200 p-2">
+      {canManage && <details className="rounded-lg border border-slate-200 p-2">
         <summary className="cursor-pointer text-sm font-semibold text-blue-700">Modifier</summary>
         <form onSubmit={save} className="mt-3 grid gap-2">
           <label className={label}>Nom du produit<input className={field} name="productName" defaultValue={initial.product.name} required maxLength={150}/></label>
@@ -99,8 +99,8 @@ export default function PassageActions({ initial }: { initial: Initial }) {
           <label className={label}>Référence paiement<input className={field} name="reference" defaultValue={initial.payment.reference ?? ""} maxLength={150}/></label>
           <button disabled={busy} className="rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "En cours…" : "Enregistrer les modifications"}</button>
         </form>
-      </details>
-      <button type="button" onClick={remove} disabled={busy} className="w-full rounded-lg border border-red-300 px-3 py-2 text-left text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">Supprimer logiquement</button>
+      </details>}
+      {canManage && <button type="button" onClick={remove} disabled={busy} className="w-full rounded-lg border border-red-300 px-3 py-2 text-left text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">Supprimer logiquement</button>}
       <button type="button" onClick={toggleHistory} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50">{historyOpen ? "Masquer l'historique" : "Voir l'historique"}</button>
       {message && <p role="status" className="text-xs text-slate-700">{message}</p>}
       {historyOpen && (

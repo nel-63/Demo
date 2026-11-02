@@ -4,6 +4,7 @@
 export const ACTION_LABELS: Record<string, string> = {
   CREATE: "Création",
   UPDATE: "Modification",
+  DELETE: "Suppression logique",
   ACTIVATE: "Activation",
   DEACTIVATE: "Désactivation",
   CHANGE_LOCATION: "Changement de lieu",
@@ -100,7 +101,27 @@ export function describeAudit(
   const details = asDetails(rawDetails);
   const lines: string[] = [];
 
-  if (entityType === "Payment" && action === "CREATE") {
+  if ((action === "UPDATE" || action === "DELETE") && details.before !== undefined) {
+    const before = asDetails(details.before);
+    const after = asDetails(details.after);
+    const beforePassage = asDetails(before.passage);
+    const afterPassage = asDetails(after.passage);
+    const beforeProduct = asDetails(before.product);
+    const afterProduct = asDetails(after.product);
+    const beforePayment = asDetails(before.payment);
+    const afterPayment = asDetails(after.payment);
+    const oldName = str(beforeProduct.name);
+    const newName = str(afterProduct.name);
+    if (oldName || newName) lines.push(`Produit : ${oldName ?? "—"} → ${newName ?? "—"}`);
+    const oldRoute = `${str(beforePassage.origin) ?? "—"} → ${str(beforePassage.destination) ?? "—"}`;
+    const newRoute = `${str(afterPassage.origin) ?? "—"} → ${str(afterPassage.destination) ?? "—"}`;
+    if (oldRoute !== newRoute) lines.push(`Trajet : ${oldRoute} → ${newRoute}`);
+    const oldAmount = beforePayment.amountDue === undefined ? "—" : formatMGA(beforePayment.amountDue);
+    const newAmount = afterPayment.amountDue === undefined ? "—" : formatMGA(afterPayment.amountDue);
+    if (oldAmount !== newAmount) lines.push(`Montant dû : ${oldAmount} → ${newAmount}`);
+    if (action === "DELETE") lines.push("Passage, produit et paiement conservés en base avec statut supprimé");
+    if (details.deletedAt) lines.push(`Suppression : ${str(details.deletedAt) ?? "date inconnue"}`);
+  } else if (entityType === "Payment" && action === "CREATE") {
     if (details.amountDue !== undefined) lines.push(`Montant dû : ${formatMGA(details.amountDue)}`);
     if (details.amountReceived !== undefined) lines.push(`Montant reçu : ${formatMGA(details.amountReceived)}`);
     if (details.changeReturned !== undefined) lines.push(`Monnaie rendue : ${formatMGA(details.changeReturned)}`);

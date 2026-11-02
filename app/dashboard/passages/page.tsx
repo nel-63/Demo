@@ -139,7 +139,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
                       <td className="px-3 py-4">{item.supervisor.user.firstName} {item.supervisor.user.lastName}</td>
                       {isAdmin && !deleted && item.payment && <td className="min-w-[230px] px-3 py-4">
                         <PassageActions initial={{
-                          id: item.id, origin: item.origin, destination: item.destination,
+                          id: item.id, assignedAt: item.assignedAt.toISOString().slice(0, 10), origin: item.origin, destination: item.destination,
                           vehicleInfo: item.vehicleInfo, vehicleRegistration: item.vehicleRegistration,
                           vehicleCharacteristics: item.vehicleCharacteristics, driverName: item.driverName,
                           driverLicenseNumber: item.driverLicenseNumber, notes: item.notes,

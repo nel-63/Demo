@@ -47,9 +47,9 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
   const [supervisors, locations, passages, tonnage, payments] = await Promise.all([
     prisma.supervisor.count(),
     prisma.location.count(),
-    prisma.passage.count(),
-    prisma.product.aggregate({ _sum: { tonnage: true } }),
-    prisma.payment.aggregate({ _sum: { amountReceived: true, changeReturned: true } }),
+    prisma.passage.count({ where: { deletedAt: null } }),
+    prisma.product.aggregate({ where: { deletedAt: null, passage: { is: { deletedAt: null } } }, _sum: { tonnage: true } }),
+    prisma.payment.aggregate({ where: { deletedAt: null, passage: { is: { deletedAt: null } } }, _sum: { amountReceived: true, changeReturned: true } }),
   ]);
 
   return (
@@ -102,17 +102,17 @@ async function SupervisorDashboard({
   const locationId = profile.locationId;
 
   const [passages, tonnage, payments, recent] = await Promise.all([
-    prisma.passage.count({ where: { locationId } }),
+    prisma.passage.count({ where: { locationId, deletedAt: null } }),
     prisma.product.aggregate({
-      where: { passage: { is: { locationId } } },
+      where: { deletedAt: null, passage: { is: { locationId, deletedAt: null } } },
       _sum: { tonnage: true },
     }),
     prisma.payment.aggregate({
-      where: { passage: { is: { locationId } } },
+      where: { deletedAt: null, passage: { is: { locationId, deletedAt: null } } },
       _sum: { amountReceived: true, changeReturned: true },
     }),
     prisma.passage.findMany({
-      where: { locationId },
+      where: { locationId, deletedAt: null },
       take: 8,
       orderBy: { assignedAt: "desc" },
       select: {

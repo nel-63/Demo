@@ -162,6 +162,37 @@ describe("validation", () => {
     expect(created()).toMatchObject({ vehicleInfo: "Camion benne blanc", driverName: "Jean" });
   });
 
+  it("conserve les données du véhicule et du chauffeur dans le passage et sa première version", async () => {
+    const { status } = await read(await send({
+      vehicleRegistration: "1234 TAA",
+      vehicleCharacteristics: "Camion benne blanc, 10 roues",
+      driverName: "Jean Rakoto",
+      driverLicenseNumber: "PER-123",
+    }));
+    expect(status).toBe(201);
+    expect(created()).toMatchObject({
+      vehicleRegistration: "1234 TAA",
+      vehicleCharacteristics: "Camion benne blanc, 10 roues",
+      driverName: "Jean Rakoto",
+      driverLicenseNumber: "PER-123",
+    });
+    expect(db.recordRevision.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        entityType: "Passage",
+        version: 1,
+        action: "CREATE",
+        snapshot: expect.objectContaining({
+          passage: expect.objectContaining({
+            vehicleRegistration: "1234 TAA",
+            vehicleCharacteristics: "Camion benne blanc, 10 roues",
+            driverName: "Jean Rakoto",
+            driverLicenseNumber: "PER-123",
+          }),
+        }),
+      }),
+    }));
+  });
+
   it("utilise la date fournie", async () => {
     await send({ assignedAt: "2026-10-15" });
     expect(created().assignedAt).toEqual(new Date("2026-10-15T12:00:00.000Z"));

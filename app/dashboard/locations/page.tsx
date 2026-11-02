@@ -4,8 +4,9 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import LocationForm from "./location-form";
+import { readParam, type SearchParams } from "../search-params";
 
-export default function LocationsPage() {
+export default function LocationsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   return (
     <Suspense
       fallback={
@@ -14,18 +15,21 @@ export default function LocationsPage() {
         </div>
       }
     >
-      <LocationsContent />
+      <LocationsContent searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function LocationsContent() {
+async function LocationsContent({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const user = await getCurrentUser();
 
   if (!user) redirect("/login");
   if (user.role !== "ADMIN") redirect("/dashboard");
 
+  const params = await searchParams;
+  const q = readParam(params, "q");
   const locations = await prisma.location.findMany({
+    where: q ? { name: { contains: q, mode: "insensitive" } } : undefined,
     orderBy: { name: "asc" },
     select: {
       id: true,
@@ -64,6 +68,10 @@ async function LocationsContent() {
             <h2 className="mb-5 text-xl font-semibold">
               Lieux enregistrés ({locations.length})
             </h2>
+            <form method="GET" action="/dashboard/locations" className="mb-5 flex gap-2">
+              <input name="q" type="search" defaultValue={q} maxLength={100} placeholder="Rechercher un lieu…" className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              <button className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white">Rechercher</button>
+            </form>
 
             {locations.length === 0 ? (
               <p className="text-slate-600">

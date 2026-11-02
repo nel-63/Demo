@@ -58,10 +58,10 @@ async function SupervisorSheet({ params, searchParams }: Props) {
   if (!supervisor) notFound();
 
   const [total, tonnage, payments] = await Promise.all([
-    prisma.passage.count({ where: { supervisorId: id } }),
-    prisma.product.aggregate({ where: { passage: { is: { supervisorId: id } } }, _sum: { tonnage: true } }),
+    prisma.passage.count({ where: { supervisorId: id, deletedAt: null } }),
+    prisma.product.aggregate({ where: { deletedAt: null, passage: { is: { supervisorId: id, deletedAt: null } } }, _sum: { tonnage: true } }),
     prisma.payment.aggregate({
-      where: { passage: { is: { supervisorId: id } } },
+      where: { deletedAt: null, passage: { is: { supervisorId: id, deletedAt: null } } },
       _sum: { amountReceived: true },
     }),
   ]);
@@ -71,7 +71,7 @@ async function SupervisorSheet({ params, searchParams }: Props) {
 
   const [passages, activity, accountEvents] = await Promise.all([
     prisma.passage.findMany({
-      where: { supervisorId: id },
+      where: { supervisorId: id, deletedAt: null },
       orderBy: { assignedAt: "desc" },
       skip: (page - 1) * FICHE_PAGE_SIZE,
       take: FICHE_PAGE_SIZE,

@@ -70,7 +70,7 @@ export async function getDetails(
   const list = words(rawQuery);
   const loc = scope.locationId ? { locationId: scope.locationId } : {};
   // Filtre « passage du lieu » pour les paiements.
-  const viaPassage = scope.locationId ? { passage: { is: { locationId: scope.locationId } } } : {};
+  const viaPassage = { passage: { is: { deletedAt: null, ...(scope.locationId ? { locationId: scope.locationId } : {}) } } };
 
   const locations = admin
     ? await prisma.location.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } })
@@ -112,7 +112,7 @@ export async function getDetails(
           select: {
             id: true,
             name: true,
-            _count: { select: { supervisors: true, passages: true } },
+            _count: { select: { supervisors: true, passages: { where: { deletedAt: null } } } },
           },
         }),
       ]);
@@ -159,7 +159,7 @@ export async function getDetails(
             nationalId: true,
             assignedLocation: { select: { name: true } },
             user: { select: { firstName: true, lastName: true, email: true, isActive: true } },
-            _count: { select: { passages: true } },
+            _count: { select: { passages: { where: { deletedAt: null } } } },
           },
         }),
       ]);
@@ -193,6 +193,7 @@ export async function getDetails(
     case "received":
     case "change": {
       const base = {
+        deletedAt: null,
         ...viaPassage,
         ...(kind === "change" ? { changeReturned: { gt: 0 } } : {}),
       };
@@ -278,6 +279,7 @@ export async function getDetails(
       // passages, tonnage : la même liste de passages, avec un total différent.
       const where = {
         AND: [
+          { deletedAt: null },
           loc,
           andWords(list, (w) => [
             { product: { name: has(w) } },
@@ -285,7 +287,10 @@ export async function getDetails(
             { origin: has(w) },
             { destination: has(w) },
             { vehicleInfo: has(w) },
+            { vehicleRegistration: has(w) },
+            { vehicleCharacteristics: has(w) },
             { driverName: has(w) },
+            { driverLicenseNumber: has(w) },
             { supervisor: { user: { lastName: has(w) } } },
             { supervisor: { user: { firstName: has(w) } } },
           ]),
@@ -293,9 +298,9 @@ export async function getDetails(
       };
       const [count, total, sum, rows] = await Promise.all([
         prisma.passage.count({ where }),
-        prisma.passage.count({ where: loc }),
+        prisma.passage.count({ where: { ...loc, deletedAt: null } }),
         prisma.product.aggregate({
-          where: scope.locationId ? { passage: { is: { locationId: scope.locationId } } } : {},
+          where: { deletedAt: null, passage: { is: { deletedAt: null, ...(scope.locationId ? { locationId: scope.locationId } : {}) } } },
           _sum: { tonnage: true },
         }),
         prisma.passage.findMany({

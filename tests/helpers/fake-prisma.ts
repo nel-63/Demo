@@ -11,6 +11,7 @@ const MODELS = [
   "passage",
   "payment",
   "auditLog",
+  "recordRevision",
   "loginFailure",
 ] as const;
 

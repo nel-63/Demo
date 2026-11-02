@@ -43,6 +43,9 @@ export async function POST(request: Request) {
     const destination = text("destination");
     const vehicleInfo = text("vehicleInfo");
     const driverName = text("driverName");
+    const vehicleRegistration = text("vehicleRegistration");
+    const vehicleCharacteristics = text("vehicleCharacteristics");
+    const driverLicenseNumber = text("driverLicenseNumber");
     const notes = text("notes");
     const tonnageText = text("tonnage");
     const assignedAtText = text("assignedAt");
@@ -62,6 +65,8 @@ export async function POST(request: Request) {
       productName.length > 150 || productType.length > 100 ||
       origin.length > 150 || destination.length > 150 ||
       vehicleInfo.length > 200 || driverName.length > 150 ||
+      vehicleRegistration.length > 40 || vehicleCharacteristics.length > 200 ||
+      driverLicenseNumber.length > 80 ||
       notes.length > 2000 || reference.length > 150
     ) {
       return NextResponse.json({ message: "Un champ est trop long." }, { status: 400 });
@@ -132,6 +137,9 @@ export async function POST(request: Request) {
           destination,
           vehicleInfo: vehicleInfo || null,
           driverName: driverName || null,
+          vehicleRegistration: vehicleRegistration || null,
+          vehicleCharacteristics: vehicleCharacteristics || null,
+          driverLicenseNumber: driverLicenseNumber || null,
           notes: notes || null,
           ...(assignedAt ? { assignedAt } : {}),
           payment: {
@@ -176,6 +184,11 @@ export async function POST(request: Request) {
             tonnage: tonnageText,
             origin,
             destination,
+            vehicleInfo,
+            vehicleRegistration,
+            vehicleCharacteristics,
+            driverName,
+            driverLicenseNumber,
           },
         },
       });
@@ -194,6 +207,36 @@ export async function POST(request: Request) {
             amountDue,
             amountReceived,
             changeReturned,
+          },
+        },
+      });
+
+      await tx.recordRevision.create({
+        data: {
+          entityType: "Passage",
+          entityId: created.id,
+          version: 1,
+          action: "CREATE",
+          actorId: user.id,
+          snapshot: {
+            passage: {
+              id: created.id, assignedAt: created.assignedAt.toISOString(),
+              origin, destination, vehicleInfo: vehicleInfo || null,
+              vehicleRegistration: vehicleRegistration || null,
+              vehicleCharacteristics: vehicleCharacteristics || null,
+              driverName: driverName || null, driverLicenseNumber: driverLicenseNumber || null,
+              notes: notes || null, deletedAt: null,
+            },
+            product: {
+              id: product.id, name: productName, type: productType,
+              tonnage: tonnageText, description: null, deletedAt: null,
+            },
+            payment: {
+              id: created.payment?.id ?? null, paymentMethod: method,
+              reference: reference || null, amountDue: String(amountDue),
+              amountReceived: String(amountReceived), changeReturned: String(changeReturned),
+              deletedAt: null,
+            },
           },
         },
       });

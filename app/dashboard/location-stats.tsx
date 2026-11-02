@@ -8,7 +8,7 @@ export default async function LocationStats() {
     select: {
       id: true,
       name: true,
-      _count: { select: { supervisors: true, passages: true } },
+      _count: { select: { supervisors: true, passages: { where: { deletedAt: null } } } },
     },
   });
 
@@ -16,11 +16,11 @@ export default async function LocationStats() {
     locations.map(async (location) => {
       const [tonnage, payments] = await Promise.all([
         prisma.product.aggregate({
-          where: { passage: { is: { locationId: location.id } } },
+          where: { deletedAt: null, passage: { is: { locationId: location.id, deletedAt: null } } },
           _sum: { tonnage: true },
         }),
         prisma.payment.aggregate({
-          where: { passage: { is: { locationId: location.id } } },
+          where: { deletedAt: null, passage: { is: { locationId: location.id, deletedAt: null } } },
           _sum: { amountReceived: true },
         }),
       ]);

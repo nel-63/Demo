@@ -146,6 +146,14 @@ export function describeAudit(
     const origin = str(details.origin) ?? "—";
     const destination = str(details.destination) ?? "—";
     lines.push(`Trajet : ${origin} → ${destination}`);
+    const registration = str(details.vehicleRegistration);
+    const vehicle = str(details.vehicleCharacteristics) ?? str(details.vehicleInfo);
+    const driver = str(details.driverName);
+    const license = str(details.driverLicenseNumber);
+    if (registration) lines.push("Immatriculation : " + registration);
+    if (vehicle) lines.push("Véhicule : " + vehicle);
+    if (driver) lines.push("Chauffeur : " + driver);
+    if (license) lines.push("Permis : " + license);
   } else if (action === "SET_TRANSPORT_AMOUNT" || (entityType === "TransportAssignment" && action === "CREATE")) {
     if (details.amountDue !== undefined) lines.push(`Montant officiel : ${formatMGA(details.amountDue)}`);
   } else if (action === "CHANGE_LOCATION") {

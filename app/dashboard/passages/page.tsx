@@ -21,6 +21,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const isAdmin = user.role === "ADMIN";
+  const isSupervisor = user.role === "SUPERVISOR";
   if (!isAdmin && user.role !== "SUPERVISOR") redirect("/dashboard");
 
   let locationId: string | null = null;
@@ -31,7 +32,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
       select: { locationId: true, assignedLocation: { select: { name: true } } },
     });
     if (!profile?.locationId) {
-      return <section className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"><h1 className="text-2xl font-bold">Aucun lieu affecté</h1><p className="mt-3 text-slate-700">Contactez l'administrateur pour associer votre compte à un lieu.</p></section>;
+      return <section className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"><h1 className="text-2xl font-bold">Aucun lieu affecté</h1><p className="mt-3 text-slate-700">Contactez l&apos;administrateur pour associer votre compte à un lieu.</p></section>;
     }
     locationId = profile.locationId;
     locationName = profile.assignedLocation?.name ?? null;
@@ -118,7 +119,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
                   <th className="px-3 py-3 text-right">Tonnage</th><th className="px-3 py-3">Trajet</th>
                   <th className="px-3 py-3">Véhicule / chauffeur</th><th className="px-3 py-3 text-right">Montant payé</th>
                   <th className="px-3 py-3">Mode</th><th className="px-3 py-3">Régisseur</th>
-                  {isAdmin && !deleted && <th className="px-3 py-3">Actions</th>}
+                  {(isAdmin || isSupervisor) && !deleted && <th className="px-3 py-3">{isAdmin ? "Historique" : "Actions"}</th>}
                 </tr></thead>
                 <tbody className="divide-y">
                   {passages.map((item) => (
@@ -137,8 +138,8 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
                       <td className="whitespace-nowrap px-3 py-4 text-right">{item.payment ? formatMGA(item.payment.amountDue) : "—"}</td>
                       <td className="px-3 py-4">{item.payment ? <>{PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod}{item.payment.reference && <p className="text-xs text-slate-700">{item.payment.reference}</p>}</> : "—"}</td>
                       <td className="px-3 py-4">{item.supervisor.user.firstName} {item.supervisor.user.lastName}</td>
-                      {isAdmin && !deleted && <td className="min-w-[230px] px-3 py-4">
-                        {item.payment ? <PassageActions initial={{
+                      {(isAdmin || isSupervisor) && !deleted && <td className="min-w-[230px] px-3 py-4">
+                        {item.payment ? <PassageActions canManage={isSupervisor} initial={{
                           id: item.id, assignedAt: item.assignedAt.toISOString().slice(0, 10), origin: item.origin, destination: item.destination,
                           vehicleInfo: item.vehicleInfo, vehicleRegistration: item.vehicleRegistration,
                           vehicleCharacteristics: item.vehicleCharacteristics, driverName: item.driverName,

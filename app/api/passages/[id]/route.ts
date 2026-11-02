@@ -77,6 +77,14 @@ async function recordRevision(
   });
 }
 
+async function getSupervisorLocationId(userId: string): Promise<string | null> {
+  const profile = await prisma.supervisor.findUnique({
+    where: { userId },
+    select: { locationId: true },
+  });
+  return profile?.locationId ?? null;
+}
+
 async function loadForUpdate(tx: Prisma.TransactionClient, id: string) {
   return tx.passage.findUnique({
     where: { id },
@@ -90,9 +98,11 @@ async function loadForUpdate(tx: Prisma.TransactionClient, id: string) {
 export async function PATCH(request: Request, context: Context) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
-  if (user.role !== "ADMIN") return NextResponse.json({ message: "Modification réservée à l'administrateur." }, { status: 403 });
+  if (user.role !== "SUPERVISOR") return NextResponse.json({ message: "Modification réservée aux régisseurs." }, { status: 403 });
 
   try {
+    const supervisorLocationId = await getSupervisorLocationId(user.id);
+    if (!supervisorLocationId) return NextResponse.json({ message: "Votre compte n'est affecté à aucun lieu." }, { status: 403 });
     const { id } = await context.params;
     const body: unknown = await request.json().catch(() => null);
     const data = body && typeof body === "object" ? body as Record<string, unknown> : {};
@@ -146,7 +156,7 @@ export async function PATCH(request: Request, context: Context) {
     const updated = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "TransportAssignment" WHERE "id" = ${id} FOR UPDATE`;
       const current = await loadForUpdate(tx, id);
-      if (!current || current.deletedAt) return null;
+      if (!current || current.deletedAt || current.locationId !== supervisorLocationId) return null;
       if (!current.payment) return null;
       const before = snapshotOf(current);
       const paymentData = {
@@ -183,7 +193,7 @@ export async function PATCH(request: Request, context: Context) {
       return after;
     });
 
-    if (!updated) return NextResponse.json({ message: "Passage introuvable, supprimé ou sans paiement." }, { status: 404 });
+    if (!updated) return NextResponse.json({ message: "Passage introuvable, supprimé, situé hors de votre lieu ou sans paiement." }, { status: 404 });
     return NextResponse.json({ ok: true, message: "Passage modifié. La version précédente est conservée." });
   } catch (error) {
     console.error("Passage update failed:", error);
@@ -194,14 +204,16 @@ export async function PATCH(request: Request, context: Context) {
 export async function DELETE(_request: Request, context: Context) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
-  if (user.role !== "ADMIN") return NextResponse.json({ message: "Suppression réservée à l'administrateur." }, { status: 403 });
+  if (user.role !== "SUPERVISOR") return NextResponse.json({ message: "Suppression réservée aux régisseurs." }, { status: 403 });
 
   try {
+    const supervisorLocationId = await getSupervisorLocationId(user.id);
+    if (!supervisorLocationId) return NextResponse.json({ message: "Votre compte n'est affecté à aucun lieu." }, { status: 403 });
     const { id } = await context.params;
     const result = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "TransportAssignment" WHERE "id" = ${id} FOR UPDATE`;
       const current = await loadForUpdate(tx, id);
-      if (!current || current.deletedAt) return false;
+      if (!current || current.deletedAt || current.locationId !== supervisorLocationId) return false;
 
       const before = snapshotOf(current);
       const now = new Date();
@@ -220,7 +232,7 @@ export async function DELETE(_request: Request, context: Context) {
       return true;
     });
 
-    if (!result) return NextResponse.json({ message: "Passage introuvable ou déjà supprimé." }, { status: 404 });
+    if (!result) return NextResponse.json({ message: "Passage introuvable, déjà supprimé ou situé hors de votre lieu." }, { status: 404 });
     return NextResponse.json({ ok: true, message: "Passage supprimé logiquement. Les données restent conservées." });
   } catch (error) {
     console.error("Passage deletion failed:", error);

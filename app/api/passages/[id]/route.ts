@@ -101,6 +101,7 @@ export async function PATCH(request: Request, context: Context) {
     const productType = text("productType");
     const tonnage = text("tonnage");
     const origin = text("origin");
+    const assignedAtText = text("assignedAt");
     const destination = text("destination");
     const vehicleInfo = text("vehicleInfo");
     const driverName = text("driverName");
@@ -126,6 +127,10 @@ export async function PATCH(request: Request, context: Context) {
       return NextResponse.json({ message: "Tonnage invalide." }, { status: 400 });
     }
     if (!isPaymentMethod(method)) return NextResponse.json({ message: "Mode de paiement invalide." }, { status: 400 });
+    const assignedAt = /^\\d{4}-\\d{2}-\\d{2}$/.test(assignedAtText) ? new Date(`${"${assignedAtText}"}T12:00:00.000Z`) : null;
+    if (!assignedAt || Number.isNaN(assignedAt.getTime()) || assignedAt.toISOString().slice(0, 10) !== assignedAtText) {
+      return NextResponse.json({ message: "Date de passage invalide." }, { status: 400 });
+    }
     const dueCents = parseCents(dueText);
     const receivedCents = parseCents(receivedText);
     if (dueCents === null || dueCents <= 0 || receivedCents === null || receivedCents <= 0) {
@@ -156,7 +161,7 @@ export async function PATCH(request: Request, context: Context) {
       await tx.passage.update({
         where: { id },
         data: {
-          origin, destination, vehicleInfo: vehicleInfo || null, driverName: driverName || null,
+          origin, destination, assignedAt, vehicleInfo: vehicleInfo || null, driverName: driverName || null,
           vehicleRegistration: vehicleRegistration || null,
           vehicleCharacteristics: vehicleCharacteristics || null,
           driverLicenseNumber: driverLicenseNumber || null, notes: notes || null,

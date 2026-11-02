@@ -51,10 +51,10 @@ async function LocationSheet({ params, searchParams }: Props) {
   if (!location) notFound();
 
   const [total, tonnage, payments, supervisors] = await Promise.all([
-    prisma.passage.count({ where: { locationId: id } }),
-    prisma.product.aggregate({ where: { passage: { is: { locationId: id } } }, _sum: { tonnage: true } }),
+    prisma.passage.count({ where: { locationId: id, deletedAt: null } }),
+    prisma.product.aggregate({ where: { deletedAt: null, passage: { is: { locationId: id, deletedAt: null } } }, _sum: { tonnage: true } }),
     prisma.payment.aggregate({
-      where: { passage: { is: { locationId: id } } },
+      where: { deletedAt: null, passage: { is: { locationId: id, deletedAt: null } } },
       _sum: { amountReceived: true },
     }),
     prisma.supervisor.findMany({
@@ -63,7 +63,7 @@ async function LocationSheet({ params, searchParams }: Props) {
       select: {
         id: true,
         user: { select: { firstName: true, lastName: true, email: true, isActive: true } },
-        _count: { select: { passages: true } },
+        _count: { select: { passages: { where: { deletedAt: null } } } },
       },
     }),
   ]);
@@ -73,7 +73,7 @@ async function LocationSheet({ params, searchParams }: Props) {
 
   const [passages, activity] = await Promise.all([
     prisma.passage.findMany({
-      where: { locationId: id },
+      where: { locationId: id, deletedAt: null },
       orderBy: { assignedAt: "desc" },
       skip: (page - 1) * FICHE_PAGE_SIZE,
       take: FICHE_PAGE_SIZE,

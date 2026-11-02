@@ -31,7 +31,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
       select: { locationId: true, assignedLocation: { select: { name: true } } },
     });
     if (!profile?.locationId) {
-      return <section className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"><h1 className="text-2xl font-bold">Aucun lieu affecté</h1><p className="mt-3 text-slate-700">Contactez l'administrateur pour associer votre compte à un lieu.</p></section>;
+      return <section className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"><h1 className="text-2xl font-bold">Aucun lieu affecté</h1><p className="mt-3 text-slate-700">Contactez l&apos;administrateur pour associer votre compte à un lieu.</p></section>;
     }
     locationId = profile.locationId;
     locationName = profile.assignedLocation?.name ?? null;

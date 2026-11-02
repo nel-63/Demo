@@ -137,15 +137,15 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
                       <td className="whitespace-nowrap px-3 py-4 text-right">{item.payment ? formatMGA(item.payment.amountDue) : "—"}</td>
                       <td className="px-3 py-4">{item.payment ? <>{PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod}{item.payment.reference && <p className="text-xs text-slate-700">{item.payment.reference}</p>}</> : "—"}</td>
                       <td className="px-3 py-4">{item.supervisor.user.firstName} {item.supervisor.user.lastName}</td>
-                      {isAdmin && !deleted && item.payment && <td className="min-w-[230px] px-3 py-4">
-                        <PassageActions initial={{
+                      {isAdmin && !deleted && <td className="min-w-[230px] px-3 py-4">
+                        {item.payment ? <PassageActions initial={{
                           id: item.id, assignedAt: item.assignedAt.toISOString().slice(0, 10), origin: item.origin, destination: item.destination,
                           vehicleInfo: item.vehicleInfo, vehicleRegistration: item.vehicleRegistration,
                           vehicleCharacteristics: item.vehicleCharacteristics, driverName: item.driverName,
                           driverLicenseNumber: item.driverLicenseNumber, notes: item.notes,
                           product: { name: item.product.name, type: item.product.type, tonnage: String(item.product.tonnage) },
                           payment: { paymentMethod: item.payment.paymentMethod as keyof typeof PAYMENT_METHOD_LABELS, reference: item.payment.reference, amountDue: String(item.payment.amountDue), amountReceived: String(item.payment.amountReceived) },
-                        }}/>
+                        }}/> : <span className="text-xs text-slate-500">—</span>}
                       </td>}
                       {isAdmin && deleted && <td className="px-3 py-4 text-xs font-semibold text-red-700">Supprimé le {item.deletedAt ? dateFormatter.format(item.deletedAt) : "—"}</td>}
                     </tr>

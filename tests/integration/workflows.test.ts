@@ -2,10 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { buildAuditWhere } from "@/lib/audit";
-import { POST as createTransport } from "@/app/api/transports/route";
-import { PATCH as patchTransport } from "@/app/api/transports/[id]/route";
-import { POST as createPayment } from "@/app/api/payments/route";
-import { PUT as updateVehicle } from "@/app/api/vehicles/[id]/route";
+import { POST as createPassage } from "@/app/api/passages/route";
 import { PATCH as patchSupervisor } from "@/app/api/supervisors/[id]/route";
 import { POST as resetPassword } from "@/app/api/supervisors/[id]/password/route";
 import { assertTestDatabase, resetDatabase, seed } from "./setup";
@@ -19,33 +16,28 @@ let w: World;
 const as = (user: Awaited<ReturnType<typeof getCurrentUser>>) =>
   vi.mocked(getCurrentUser).mockResolvedValue(user);
 
-async function newTransport(user: World["supA1"]["user"], vehicleId: string, amountDue = "40000") {
-  as(user);
-  const response = await createTransport(
-    jsonRequest("/api/transports", "POST", {
-      productName: "Riz",
+const passage = (body: Record<string, unknown> = {}) =>
+  createPassage(
+    jsonRequest("/api/passages", "POST", {
+      productName: "Riz blanc",
       productType: "Céréale",
-      tonnage: "2.5",
-      amountDue,
-      vehicleId,
-    }),
-  );
-  expect(response.status).toBe(201);
-  return ((await response.json()) as { transport: { id: string } }).transport.id;
-}
-
-const pay = (assignmentId: string, body: Record<string, unknown> = {}) =>
-  createPayment(
-    jsonRequest("/api/payments", "POST", {
-      assignmentId,
+      tonnage: "8.5",
+      origin: "Antsirabe",
+      destination: "Toamasina",
+      vehicleInfo: "Camion benne blanc",
+      driverName: "Jean",
+      amountDue: "40000",
       paymentMethod: "CASH",
       amountReceived: "40000",
       ...body,
     }),
   );
 
-const setStatus = (id: string, status: string) =>
-  patchTransport(jsonRequest(`/api/transports/${id}`, "PATCH", { status }), params(id));
+const counts = async () => ({
+  products: await prisma.product.count(),
+  passages: await prisma.passage.count(),
+  payments: await prisma.payment.count(),
+});
 
 beforeAll(() => assertTestDatabase());
 afterAll(() => prisma.$disconnect());
@@ -55,151 +47,103 @@ beforeEach(async () => {
   w = await seed();
 });
 
-describe("historique après changement de chauffeur", () => {
-  it("les anciens transports gardent leur chauffeur, les nouveaux prennent le nouveau", async () => {
-    const oldTransport = await newTransport(w.supA1.user, w.vehicle.id);
-
+describe("un passage n'existe qu'avec son paiement", () => {
+  it("crée produit, passage, paiement et journal d'un seul coup", async () => {
     as(w.supA1.user);
-    const response = await updateVehicle(
-      jsonRequest(`/api/vehicles/${w.vehicle.id}`, "PUT", {
-        vehicleType: "Camion",
-        licensePlate: "1000 AAA",
-        driverId: w.driver2.id,
-      }),
-      params(w.vehicle.id),
-    );
-    expect(response.status).toBe(200);
-
-    const newTransportId = await newTransport(w.supA1.user, w.vehicle.id);
-
-    const [oldRow, newRow, vehicle] = await Promise.all([
-      prisma.transportAssignment.findUniqueOrThrow({ where: { id: oldTransport } }),
-      prisma.transportAssignment.findUniqueOrThrow({ where: { id: newTransportId } }),
-      prisma.vehicle.findUniqueOrThrow({ where: { id: w.vehicle.id } }),
-    ]);
-
-    expect(vehicle.driverId).toBe(w.driver2.id);
-    expect(oldRow.driverId).toBe(w.driver1.id);
-    expect(newRow.driverId).toBe(w.driver2.id);
-
-    const log = await prisma.auditLog.findFirstOrThrow({ where: { action: "CHANGE_DRIVER" } });
-    expect(log.details).toMatchObject({ previousDriverId: w.driver1.id, newDriverId: w.driver2.id });
-  });
-
-  it("refuse un chauffeur inactif ou d'un autre lieu et ne change rien", async () => {
-    as(w.supA1.user);
-
-    for (const driverId of [w.driverInactive.id, w.driverB.id]) {
-      const response = await updateVehicle(
-        jsonRequest(`/api/vehicles/${w.vehicle.id}`, "PUT", {
-          vehicleType: "Camion",
-          licensePlate: "1000 AAA",
-          driverId,
-        }),
-        params(w.vehicle.id),
-      );
-      expect(response.status).toBe(403);
-    }
-
-    const vehicle = await prisma.vehicle.findUniqueOrThrow({ where: { id: w.vehicle.id } });
-    expect(vehicle.driverId).toBe(w.driver1.id);
-  });
-});
-
-describe("isolation des lieux", () => {
-  it("deux régisseurs du même lieu partagent les transports", async () => {
-    const id = await newTransport(w.supA1.user, w.vehicle.id);
-    as(w.supA2.user);
-    expect((await setStatus(id, "IN_PROGRESS")).status).toBe(200);
-  });
-
-  it("un régisseur d'un autre lieu ne peut ni modifier, ni payer, ni changer le véhicule", async () => {
-    const id = await newTransport(w.supA1.user, w.vehicle.id);
-    as(w.supB.user);
-
-    expect((await setStatus(id, "IN_PROGRESS")).status).toBe(404);
-    expect((await pay(id)).status).toBe(404);
-
-    const response = await updateVehicle(
-      jsonRequest(`/api/vehicles/${w.vehicle.id}`, "PUT", { vehicleType: "Pirate", licensePlate: "HACK" }),
-      params(w.vehicle.id),
-    );
-    expect(response.status).toBe(404);
-    expect((await prisma.vehicle.findUniqueOrThrow({ where: { id: w.vehicle.id } })).vehicleType).toBe("Camion");
-  });
-});
-
-describe("paiements et concurrence", () => {
-  it("deux paiements simultanés du même transport : un seul est enregistré", async () => {
-    const id = await newTransport(w.supA1.user, w.vehicle.id);
-    as(w.supA1.user);
-
-    const results = await Promise.all([pay(id), pay(id), pay(id)]);
-    const statuses = results.map((response) => response.status).sort();
-
-    expect(statuses).toEqual([201, 409, 409]);
-    expect(await prisma.payment.count({ where: { assignmentId: id } })).toBe(1);
-  });
-
-  it("paiement espèces avec monnaie rendue, audit complet", async () => {
-    const id = await newTransport(w.supA1.user, w.vehicle.id);
-    as(w.supA1.user);
-
-    const response = await pay(id, { amountReceived: "50000" });
+    const response = await passage({ amountReceived: "50000" });
     expect(response.status).toBe(201);
 
-    const payment = await prisma.payment.findUniqueOrThrow({ where: { assignmentId: id } });
-    expect(String(payment.amountDue)).toBe("40000");
-    expect(String(payment.changeReturned)).toBe("10000");
-
-    const log = await prisma.auditLog.findFirstOrThrow({ where: { entityType: "Payment" } });
-    expect(log.details).toMatchObject({
-      paymentMethod: "CASH",
-      amountDue: "40000",
-      amountReceived: "50000",
-      changeReturned: "10000",
+    const row = await prisma.passage.findFirstOrThrow({
+      include: { product: true, payment: true, assignedLocation: true },
     });
+    expect(row).toMatchObject({
+      origin: "Antsirabe",
+      destination: "Toamasina",
+      vehicleInfo: "Camion benne blanc",
+      driverName: "Jean",
+      supervisorId: w.supA1.profile.id,
+      locationId: w.locA.id,
+    });
+    expect(row.assignedLocation?.name).toBe("Tana");
+    expect(String(row.product.tonnage)).toBe("8.5");
+    expect(row.payment).toMatchObject({ paymentMethod: "CASH", recordedById: w.supA1.user.id });
+    expect(String(row.payment?.changeReturned)).toBe("10000");
+
+    const logs = await prisma.auditLog.findMany({ orderBy: { createdAt: "asc" } });
+    expect(logs.map((log) => `${log.action} ${log.entityType}`).sort()).toEqual([
+      "CREATE Passage",
+      "CREATE Payment",
+    ]);
+    const paymentLog = logs.find((log) => log.entityType === "Payment");
+    expect(paymentLog?.details).toMatchObject({ amountReceived: "50000.00", changeReturned: "10000.00" });
   });
 
-  it("paiement et annulation simultanés : jamais un transport à la fois payé et annulé", async () => {
-    for (let round = 0; round < 8; round += 1) {
-      const id = await newTransport(w.supA1.user, w.vehicle.id);
-      as(w.supA1.user);
-
-      await Promise.all([pay(id), setStatus(id, "CANCELLED")]);
-
-      const row = await prisma.transportAssignment.findUniqueOrThrow({
-        where: { id },
-        include: { payment: true },
-      });
-      expect(row.status === "CANCELLED" && row.payment !== null).toBe(false);
-    }
-  });
-
-  it("un transport annulé ne peut plus être payé ; un transport payé ne peut plus être annulé", async () => {
-    const cancelled = await newTransport(w.supA1.user, w.vehicle.id);
-    const paid = await newTransport(w.supA1.user, w.vehicle.id);
+  it("sans paiement valide, rien n'est enregistré (pas même le produit)", async () => {
     as(w.supA1.user);
 
-    expect((await setStatus(cancelled, "CANCELLED")).status).toBe(200);
-    expect((await pay(cancelled)).status).toBe(404);
+    expect((await passage({ amountReceived: "39999" })).status).toBe(400);
+    expect((await passage({ paymentMethod: "BANK_TRANSFER", reference: "" })).status).toBe(400);
+    expect((await passage({ paymentMethod: "CHECK", reference: "C-1", amountReceived: "40001" })).status).toBe(400);
 
-    expect((await pay(paid)).status).toBe(201);
-    expect((await setStatus(paid, "CANCELLED")).status).toBe(409);
-    expect((await pay(paid)).status).toBe(409);
+    expect(await counts()).toEqual({ products: 0, passages: 0, payments: 0 });
+    expect(await prisma.auditLog.count()).toBe(0);
   });
 
-  it("un paiement non liquide incomplet est refusé", async () => {
-    const id = await newTransport(w.supA1.user, w.vehicle.id);
+  it("le passage est rattaché au lieu du régisseur qui l'enregistre", async () => {
     as(w.supA1.user);
+    await passage({ productName: "Riz" });
+    as(w.supB.user);
+    await passage({ productName: "Sucre" });
+    as(w.supA2.user);
+    await passage({ productName: "Farine" });
 
-    const response = await pay(id, {
-      paymentMethod: "BANK_TRANSFER",
-      reference: "VIR-1",
-      amountReceived: "39999.99",
+    const rows = await prisma.passage.findMany({ include: { product: true } });
+    const byProduct = Object.fromEntries(rows.map((r) => [r.product.name, r.locationId]));
+    expect(byProduct).toEqual({ Riz: w.locA.id, Sucre: w.locB.id, Farine: w.locA.id });
+  });
+
+  it("ignore un lieu ou un régisseur envoyé dans la requête", async () => {
+    as(w.supA1.user);
+    await passage({ locationId: w.locB.id, supervisorId: w.supB.profile.id });
+    const row = await prisma.passage.findFirstOrThrow();
+    expect(row.locationId).toBe(w.locA.id);
+    expect(row.supervisorId).toBe(w.supA1.profile.id);
+  });
+
+  it("des enregistrements simultanés créent chacun leur passage sans se mélanger", async () => {
+    as(w.supA1.user);
+    const results = await Promise.all(
+      [1, 2, 3, 4, 5].map((n) => passage({ productName: `Produit ${n}`, amountReceived: "45000" })),
+    );
+    expect(results.map((r) => r.status)).toEqual([201, 201, 201, 201, 201]);
+    expect(await counts()).toEqual({ products: 5, passages: 5, payments: 5 });
+  });
+});
+
+describe("fiches : retrouver ce qui a été fait", () => {
+  it("l'activité d'un régisseur et celle d'un lieu sont retrouvées dans le journal", async () => {
+    as(w.supA1.user);
+    await passage({ productName: "Riz" });
+    as(w.supB.user);
+    await passage({ productName: "Sucre" });
+
+    // Ce que fait la fiche d'un régisseur
+    const bySupervisor = await prisma.auditLog.findMany({ where: { userId: w.supA1.user.id } });
+    expect(bySupervisor).toHaveLength(2);
+    expect(bySupervisor.every((log) => log.userId === w.supA1.user.id)).toBe(true);
+
+    // Ce que fait la fiche d'un lieu
+    const inLocationA = await prisma.auditLog.findMany({
+      where: { OR: [{ details: { path: ["locationId"], equals: w.locA.id } }, { entityType: "Location", entityId: w.locA.id }] },
     });
-    expect(response.status).toBe(400);
-    expect(await prisma.payment.count()).toBe(0);
+    expect(inLocationA).toHaveLength(2);
+    const inLocationB = await prisma.auditLog.findMany({
+      where: { details: { path: ["locationId"], equals: w.locB.id } },
+    });
+    expect(inLocationB).toHaveLength(2);
+
+    const passagesOfA = await prisma.passage.count({ where: { supervisorId: w.supA1.profile.id } });
+    expect(passagesOfA).toBe(1);
   });
 });
 
@@ -220,7 +164,18 @@ describe("comptes régisseurs", () => {
     expect(await prisma.auditLog.count({ where: { action: "DEACTIVATE", entityId: w.supA1.profile.id } })).toBe(1);
   });
 
-  it("réinitialisation : nouveau hash, sessions fermées, blocage de connexion levé, rien de secret dans l'audit", async () => {
+  it("désactiver un régisseur ne supprime rien de son historique", async () => {
+    as(w.supA1.user);
+    await passage();
+    as(w.admin);
+    await patchSupervisor(
+      jsonRequest(`/api/supervisors/${w.supA1.profile.id}`, "PATCH", { isActive: false }),
+      params(w.supA1.profile.id),
+    );
+    expect(await prisma.passage.count({ where: { supervisorId: w.supA1.profile.id } })).toBe(1);
+  });
+
+  it("réinitialisation : nouveau hash, sessions fermées, blocage levé, rien de secret dans l'audit", async () => {
     await prisma.loginFailure.create({ data: { email: "a1@test.mg", ipAddress: "1.2.3.4" } });
     as(w.admin);
     const before = await prisma.user.findUniqueOrThrow({ where: { id: w.supA1.user.id } });
@@ -246,9 +201,8 @@ describe("comptes régisseurs", () => {
 
 describe("requêtes du journal d'audit", () => {
   it("les filtres de buildAuditWhere sont acceptés par la vraie base", async () => {
-    const id = await newTransport(w.supA1.user, w.vehicle.id);
     as(w.supA1.user);
-    await pay(id, { amountReceived: "50000" });
+    await passage({ amountReceived: "50000" });
 
     const filters = [
       { q: "", entityType: "", action: "", period: "" },
@@ -256,16 +210,13 @@ describe("requêtes du journal d'audit", () => {
       { q: "A1 test", entityType: "", action: "", period: "30d" },
       { q: "a1@TEST.mg", entityType: "", action: "", period: "7d" },
     ];
+    const counts: number[] = [];
+    for (const filter of filters) counts.push(await prisma.auditLog.count({ where: buildAuditWhere(filter) }));
 
-    const counts = [];
-    for (const filter of filters) {
-      counts.push(await prisma.auditLog.count({ where: buildAuditWhere(filter) }));
-    }
-
-    expect(counts[0]).toBeGreaterThanOrEqual(2);
+    expect(counts[0]).toBe(2);
     expect(counts[1]).toBe(1);
-    expect(counts[2]).toBeGreaterThanOrEqual(2);
-    expect(counts[3]).toBeGreaterThanOrEqual(2);
-    expect(await prisma.auditLog.count({ where: buildAuditWhere({ q: "personne-inconnue", entityType: "", action: "", period: "" }) })).toBe(0);
+    expect(counts[2]).toBe(2);
+    expect(counts[3]).toBe(2);
+    expect(await prisma.auditLog.count({ where: buildAuditWhere({ q: "inconnu", entityType: "", action: "", period: "" }) })).toBe(0);
   });
 });

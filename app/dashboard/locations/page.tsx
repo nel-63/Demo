@@ -34,9 +34,7 @@ async function LocationsContent() {
       _count: {
         select: {
           supervisors: true,
-          drivers: true,
-          vehicles: true,
-          assignments: true,
+          passages: true,
         },
       },
     },
@@ -78,21 +76,19 @@ async function LocationsContent() {
                     <tr>
                       <th className="px-3 py-3">Lieu</th>
                       <th className="px-3 py-3">Régisseurs</th>
-                      <th className="px-3 py-3">Chauffeurs</th>
-                      <th className="px-3 py-3">Véhicules</th>
-                      <th className="px-3 py-3">Transports</th>
+                      <th className="px-3 py-3">Passages</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {locations.map((location) => (
                       <tr key={location.id}>
-                        <td className="px-3 py-4 font-medium text-slate-900">
-                          {location.name}
+                        <td className="px-3 py-4 font-medium">
+                          <Link href={`/dashboard/locations/${location.id}`} className="text-blue-700 hover:underline">
+                            {location.name}
+                          </Link>
                         </td>
                         <td className="px-3 py-4">{location._count.supervisors}</td>
-                        <td className="px-3 py-4">{location._count.drivers}</td>
-                        <td className="px-3 py-4">{location._count.vehicles}</td>
-                        <td className="px-3 py-4">{location._count.assignments}</td>
+                        <td className="px-3 py-4">{location._count.passages}</td>
                       </tr>
                     ))}
                   </tbody>

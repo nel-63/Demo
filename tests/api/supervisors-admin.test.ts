@@ -109,10 +109,8 @@ describe("changement de lieu (non-régression)", () => {
       location: "Tamatave",
     });
     expect(auditEntries(db)[0]).toMatchObject({ action: "CHANGE_LOCATION" });
-    // aucun transport, véhicule ou chauffeur n'est déplacé
-    expect(db.transportAssignment.update).not.toHaveBeenCalled();
-    expect(db.vehicle.update).not.toHaveBeenCalled();
-    expect(db.driver.update).not.toHaveBeenCalled();
+    // l'historique des passages reste attaché au lieu où ils ont eu lieu
+    expect(db.passage.update).not.toHaveBeenCalled();
   });
 });
 

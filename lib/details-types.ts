@@ -6,6 +6,7 @@ export type Cell = {
   t: string; // texte affiché
   s?: number | string; // valeur de tri (nombre, date...) si différente du texte
   badge?: Badge; // affiche une pastille avec icône + libellé
+  href?: string; // rend le texte cliquable (fiche d'un régisseur ou d'un lieu)
 };
 
 export type Column = { key: string; label: string; align?: "right" };

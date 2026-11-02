@@ -4,18 +4,13 @@ import { getCurrentUser } from "@/lib/auth";
 import { resetFakePrisma, type FakePrisma } from "../helpers/fake-prisma";
 import { ADMIN, SUPERVISOR, jsonRequest, params } from "../helpers/http";
 
-import { POST as driversPost } from "@/app/api/drivers/route";
-import { PUT as driversPut, PATCH as driversPatch } from "@/app/api/drivers/[id]/route";
-import { POST as vehiclesPost } from "@/app/api/vehicles/route";
-import { PUT as vehiclesPut, PATCH as vehiclesPatch } from "@/app/api/vehicles/[id]/route";
-import { POST as transportsPost } from "@/app/api/transports/route";
-import { PATCH as transportsPatch } from "@/app/api/transports/[id]/route";
-import { POST as paymentsPost } from "@/app/api/payments/route";
+import { POST as passagesPost } from "@/app/api/passages/route";
 import { POST as locationsPost } from "@/app/api/locations/route";
 import { POST as supervisorsPost } from "@/app/api/supervisors/route";
 import { PATCH as supervisorsPatch } from "@/app/api/supervisors/[id]/route";
 import { POST as supervisorsPassword } from "@/app/api/supervisors/[id]/password/route";
 import { GET as dbTest } from "@/app/api/db-test/route";
+import { GET as detailsGet } from "@/app/api/details/[kind]/route";
 
 vi.mock("@/lib/prisma", async () => {
   const { createFakePrisma } = await import("../helpers/fake-prisma");
@@ -29,20 +24,11 @@ type Call = () => Promise<Response>;
 
 const body = { x: "y" };
 const post = (url: string) => jsonRequest(url, "POST", body);
-const put = (url: string) => jsonRequest(url, "PUT", body);
 const patch = (url: string) => jsonRequest(url, "PATCH", body);
 
-// Routes réservées aux régisseurs : formulaires opérationnels.
+// Routes réservées aux régisseurs : enregistrement d'un passage et de son paiement.
 const supervisorRoutes: Array<[string, Call]> = [
-  ["POST /api/drivers", () => driversPost(post("/api/drivers"))],
-  ["PUT /api/drivers/[id]", () => driversPut(put("/api/drivers/x"), params())],
-  ["PATCH /api/drivers/[id]", () => driversPatch(patch("/api/drivers/x"), params())],
-  ["POST /api/vehicles", () => vehiclesPost(post("/api/vehicles"))],
-  ["PUT /api/vehicles/[id]", () => vehiclesPut(put("/api/vehicles/x"), params())],
-  ["PATCH /api/vehicles/[id]", () => vehiclesPatch(patch("/api/vehicles/x"), params())],
-  ["POST /api/transports", () => transportsPost(post("/api/transports"))],
-  ["PATCH /api/transports/[id]", () => transportsPatch(patch("/api/transports/x"), params())],
-  ["POST /api/payments", () => paymentsPost(post("/api/payments"))],
+  ["POST /api/passages", () => passagesPost(post("/api/passages"))],
 ];
 
 // Routes réservées à l'administrateur : lieux et comptes.
@@ -70,6 +56,13 @@ beforeEach(() => {
 });
 
 describe("utilisateur non connecté : toute l'API est fermée", () => {
+  it("GET /api/details/[kind] → 401", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue(null);
+    const response = await detailsGet(new Request("http://localhost/api/details/passages"), { params: Promise.resolve({ kind: "passages" }) });
+    expect(response.status).toBe(401);
+    expectDatabaseUntouched();
+  });
+
   it.each([...supervisorRoutes, ...adminRoutes])("%s → 401", async (_name, call) => {
     vi.mocked(getCurrentUser).mockResolvedValue(null);
     const response = await call();

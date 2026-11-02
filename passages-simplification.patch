@@ -1,0 +1,4044 @@
+diff --git a/app/api/passages/route.ts b/app/api/passages/route.ts
+new file mode 100644
+index 0000000..436eefd
+--- /dev/null
++++ b/app/api/passages/route.ts
+@@ -0,0 +1,225 @@
++import { NextResponse } from "next/server";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import {
++  checkPayment,
++  isPaymentMethod,
++  parseCents,
++  toDecimal,
++} from "@/lib/payment-rules";
++
++// Enregistre un passage ET son paiement en une seule opération :
++// pas de paiement valide, pas de passage.
++export async function POST(request: Request) {
++  const user = await getCurrentUser();
++
++  if (!user) {
++    return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
++  }
++
++  if (user.role !== "SUPERVISOR") {
++    return NextResponse.json({ message: "Accès réservé aux régisseurs." }, { status: 403 });
++  }
++
++  try {
++    const profile = await prisma.supervisor.findUnique({
++      where: { userId: user.id },
++      select: { id: true, locationId: true },
++    });
++
++    if (!profile?.locationId) {
++      return NextResponse.json({ message: "Votre compte doit être affecté à un lieu." }, { status: 403 });
++    }
++
++    const locationId = profile.locationId;
++    const body: unknown = await request.json().catch(() => null);
++    const data = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
++    const text = (key: string) =>
++      typeof data[key] === "string" ? (data[key] as string).trim() : "";
++
++    const productName = text("productName");
++    const productType = text("productType");
++    const origin = text("origin");
++    const destination = text("destination");
++    const vehicleInfo = text("vehicleInfo");
++    const driverName = text("driverName");
++    const notes = text("notes");
++    const tonnageText = text("tonnage");
++    const assignedAtText = text("assignedAt");
++    const method = text("paymentMethod");
++    const reference = text("reference");
++    const dueText = text("amountDue");
++    const receivedText = text("amountReceived");
++
++    if (!productName || !productType || !tonnageText || !origin || !destination) {
++      return NextResponse.json(
++        { message: "Produit, type, tonnage, origine et destination sont obligatoires." },
++        { status: 400 },
++      );
++    }
++
++    if (
++      productName.length > 150 || productType.length > 100 ||
++      origin.length > 150 || destination.length > 150 ||
++      vehicleInfo.length > 200 || driverName.length > 150 ||
++      notes.length > 2000 || reference.length > 150
++    ) {
++      return NextResponse.json({ message: "Un champ est trop long." }, { status: 400 });
++    }
++
++    if (!/^\d{1,8}(?:\.\d{1,2})?$/.test(tonnageText) || Number(tonnageText) <= 0) {
++      return NextResponse.json({ message: "Tonnage invalide." }, { status: 400 });
++    }
++
++    if (!isPaymentMethod(method)) {
++      return NextResponse.json({ message: "Mode de paiement invalide." }, { status: 400 });
++    }
++
++    const dueCents = parseCents(dueText);
++    if (dueCents === null || dueCents <= 0) {
++      return NextResponse.json(
++        { message: "Le montant à payer doit être positif, avec au maximum deux décimales." },
++        { status: 400 },
++      );
++    }
++
++    const receivedCents = parseCents(receivedText);
++    if (receivedCents === null || receivedCents <= 0) {
++      return NextResponse.json({ message: "Montant reçu invalide." }, { status: 400 });
++    }
++
++    const payment = checkPayment({ method, reference, dueCents, receivedCents });
++    if (!payment.ok) {
++      return NextResponse.json(
++        {
++          message:
++            payment.error === "INSUFFICIENT"
++              ? "Passage refusé : le montant reçu est inférieur au montant à payer."
++              : "Pour ce mode, le montant reçu doit être exact et une référence est obligatoire.",
++        },
++        { status: 400 },
++      );
++    }
++
++    let assignedAt: Date | undefined;
++    if (assignedAtText) {
++      assignedAt = /^\d{4}-\d{2}-\d{2}$/.test(assignedAtText)
++        ? new Date(`${assignedAtText}T12:00:00.000Z`)
++        : undefined;
++
++      if (!assignedAt || Number.isNaN(assignedAt.getTime()) ||
++          assignedAt.toISOString().slice(0, 10) !== assignedAtText) {
++        return NextResponse.json({ message: "Date invalide." }, { status: 400 });
++      }
++    }
++
++    const amountDue = toDecimal(dueCents);
++    const amountReceived = toDecimal(receivedCents);
++    const changeReturned = toDecimal(payment.changeCents);
++
++    const passage = await prisma.$transaction(async (tx) => {
++      const product = await tx.product.create({
++        data: { name: productName, type: productType, tonnage: tonnageText },
++        select: { id: true },
++      });
++
++      const created = await tx.passage.create({
++        data: {
++          productId: product.id,
++          supervisorId: profile.id,
++          locationId,
++          origin,
++          destination,
++          vehicleInfo: vehicleInfo || null,
++          driverName: driverName || null,
++          notes: notes || null,
++          ...(assignedAt ? { assignedAt } : {}),
++          payment: {
++            create: {
++              recordedById: user.id,
++              paymentMethod: method,
++              reference: reference || null,
++              amountDue,
++              amountReceived,
++              changeReturned,
++            },
++          },
++        },
++        select: {
++          id: true,
++          assignedAt: true,
++          origin: true,
++          destination: true,
++          product: { select: { name: true, type: true, tonnage: true } },
++          payment: {
++            select: {
++              id: true,
++              paymentMethod: true,
++              reference: true,
++              amountDue: true,
++              amountReceived: true,
++              changeReturned: true,
++            },
++          },
++        },
++      });
++
++      await tx.auditLog.create({
++        data: {
++          userId: user.id,
++          action: "CREATE",
++          entityType: "Passage",
++          entityId: created.id,
++          details: {
++            locationId,
++            productName,
++            tonnage: tonnageText,
++            origin,
++            destination,
++          },
++        },
++      });
++
++      await tx.auditLog.create({
++        data: {
++          userId: user.id,
++          action: "CREATE",
++          entityType: "Payment",
++          entityId: created.payment?.id ?? null,
++          details: {
++            passageId: created.id,
++            locationId,
++            paymentMethod: method,
++            reference: reference || null,
++            amountDue,
++            amountReceived,
++            changeReturned,
++          },
++        },
++      });
++
++      return created;
++    });
++
++    return NextResponse.json(
++      {
++        ok: true,
++        message: "Passage et paiement enregistrés.",
++        passage: {
++          ...passage,
++          product: { ...passage.product, tonnage: String(passage.product.tonnage) },
++          payment: passage.payment && {
++            ...passage.payment,
++            amountDue: String(passage.payment.amountDue),
++            amountReceived: String(passage.payment.amountReceived),
++            changeReturned: String(passage.payment.changeReturned),
++          },
++        },
++      },
++      { status: 201 },
++    );
++  } catch (error) {
++    console.error("Passage creation failed:", error);
++    return NextResponse.json({ message: "Impossible d'enregistrer le passage." }, { status: 500 });
++  }
++}
+diff --git a/app/dashboard/audit-table.tsx b/app/dashboard/audit-table.tsx
+new file mode 100644
+index 0000000..3cab329
+--- /dev/null
++++ b/app/dashboard/audit-table.tsx
+@@ -0,0 +1,85 @@
++import {
++  ROLE_LABELS,
++  actionLabel,
++  describeAudit,
++  entityLabel,
++} from "@/lib/audit";
++import type { fetchAuditRows } from "@/lib/audit-rows";
++
++const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
++  dateStyle: "short",
++  timeStyle: "medium",
++  timeZone: "Indian/Antananarivo",
++});
++
++type Rows = Awaited<ReturnType<typeof fetchAuditRows>>;
++
++// Tableau d'opérations (journal d'audit, activité d'un régisseur, activité d'un lieu).
++export default function AuditTable({
++  rows,
++  locationNames,
++  showAuthor = true,
++}: {
++  rows: Rows["rows"];
++  locationNames: Rows["locationNames"];
++  showAuthor?: boolean;
++}) {
++  return (
++    <div className="overflow-x-auto">
++      <table className="w-full text-left text-sm">
++        <thead className="border-b text-slate-600">
++          <tr>
++            <th className="px-3 py-3">Date</th>
++            {showAuthor && <th className="px-3 py-3">Auteur</th>}
++            <th className="px-3 py-3">Action</th>
++            <th className="px-3 py-3">Enregistrement</th>
++            <th className="px-3 py-3">Détails</th>
++          </tr>
++        </thead>
++        <tbody className="divide-y">
++          {rows.map((log) => {
++            const lines = describeAudit(log.entityType, log.action, log.details, {
++              locations: locationNames,
++            });
++
++            return (
++              <tr key={log.id} className="align-top">
++                <td className="whitespace-nowrap px-3 py-4">{dateFormatter.format(log.createdAt)}</td>
++                {showAuthor && (
++                  <td className="px-3 py-4">
++                    <p className="font-medium">
++                      {log.user.firstName} {log.user.lastName}
++                    </p>
++                    <p className="text-xs text-slate-700">
++                      {ROLE_LABELS[log.user.role] ?? log.user.role} — {log.user.email}
++                    </p>
++                  </td>
++                )}
++                <td className="px-3 py-4">{actionLabel(log.action)}</td>
++                <td className="px-3 py-4">
++                  <p>{entityLabel(log.entityType)}</p>
++                  {log.entityId && (
++                    <p className="font-mono text-xs text-slate-700" title={log.entityId}>
++                      …{log.entityId.slice(-8)}
++                    </p>
++                  )}
++                </td>
++                <td className="px-3 py-4">
++                  {lines.length === 0 ? (
++                    <span className="text-slate-600">—</span>
++                  ) : (
++                    <ul className="space-y-0.5">
++                      {lines.map((line) => (
++                        <li key={line}>{line}</li>
++                      ))}
++                    </ul>
++                  )}
++                </td>
++              </tr>
++            );
++          })}
++        </tbody>
++      </table>
++    </div>
++  );
++}
+diff --git a/app/dashboard/audit/page.tsx b/app/dashboard/audit/page.tsx
+index aea1b0c..8faf0ad 100644
+--- a/app/dashboard/audit/page.tsx
++++ b/app/dashboard/audit/page.tsx
+@@ -8,21 +8,13 @@ import {
+   AUDIT_PAGE_SIZE,
+   ENTITY_LABELS,
+   PERIOD_OPTIONS,
+-  ROLE_LABELS,
+-  actionLabel,
+   buildAuditWhere,
+-  describeAudit,
+-  entityLabel,
+ } from "@/lib/audit";
++import { fetchAuditRows } from "@/lib/audit-rows";
++import AuditTable from "../audit-table";
+ import ListFilters from "../list-filters";
+ import { readChoice, readParam, type SearchParams } from "../search-params";
+ 
+-const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
+-  dateStyle: "short",
+-  timeStyle: "medium",
+-  timeZone: "Indian/Antananarivo",
+-});
+-
+ export default function AuditPage({
+   searchParams,
+ }: {
+@@ -61,60 +53,11 @@ async function AuditContent({
+     pageCount,
+   );
+ 
+-  const [logs, locations] = await Promise.all([
+-    prisma.auditLog.findMany({
+-      where,
+-      orderBy: { createdAt: "desc" },
+-      skip: (page - 1) * AUDIT_PAGE_SIZE,
+-      take: AUDIT_PAGE_SIZE,
+-      select: {
+-        id: true,
+-        action: true,
+-        entityType: true,
+-        entityId: true,
+-        details: true,
+-        createdAt: true,
+-        user: {
+-          select: { firstName: true, lastName: true, email: true, role: true },
+-        },
+-      },
+-    }),
+-    prisma.location.findMany({ select: { id: true, name: true } }),
+-  ]);
+-
+-  const locationNames = Object.fromEntries(
+-    locations.map((location) => [location.id, location.name]),
+-  );
+-
+-  // Anciens logs de paiement (créés avant l'ajout du montant dans les détails) :
+-  // on relit le paiement lui-même, qui n'est jamais modifié après création.
+-  const legacyPaymentIds = logs
+-    .filter((log) => {
+-      const details = log.details as Record<string, unknown> | null;
+-      return (
+-        log.entityType === "Payment" &&
+-        log.action === "CREATE" &&
+-        log.entityId &&
+-        details?.amountReceived === undefined
+-      );
+-    })
+-    .map((log) => log.entityId as string);
+-
+-  const legacyPayments =
+-    legacyPaymentIds.length > 0
+-      ? await prisma.payment.findMany({
+-          where: { id: { in: legacyPaymentIds } },
+-          select: {
+-            id: true,
+-            amountDue: true,
+-            amountReceived: true,
+-            changeReturned: true,
+-            paymentMethod: true,
+-            reference: true,
+-          },
+-        })
+-      : [];
+-  const legacyById = new Map(legacyPayments.map((payment) => [payment.id, payment]));
++  const { rows, locationNames } = await fetchAuditRows({
++    where,
++    skip: (page - 1) * AUDIT_PAGE_SIZE,
++    take: AUDIT_PAGE_SIZE,
++  });
+ 
+   function hrefForPage(target: number) {
+     const query = new URLSearchParams();
+@@ -169,79 +112,10 @@ async function AuditContent({
+           ]}
+         />
+ 
+-        {logs.length === 0 ? (
++        {rows.length === 0 ? (
+           <p className="text-slate-600">Aucune opération ne correspond à ces critères.</p>
+         ) : (
+-          <div className="overflow-x-auto">
+-            <table className="w-full text-left text-sm">
+-              <thead className="border-b text-slate-600">
+-                <tr>
+-                  <th className="px-3 py-3">Date</th>
+-                  <th className="px-3 py-3">Auteur</th>
+-                  <th className="px-3 py-3">Action</th>
+-                  <th className="px-3 py-3">Enregistrement</th>
+-                  <th className="px-3 py-3">Détails</th>
+-                </tr>
+-              </thead>
+-              <tbody className="divide-y">
+-                {logs.map((log) => {
+-                  const legacy = log.entityId ? legacyById.get(log.entityId) : undefined;
+-                  const base = (log.details && typeof log.details === "object" && !Array.isArray(log.details)
+-                    ? log.details
+-                    : {}) as Record<string, unknown>;
+-                  const details = legacy
+-                    ? {
+-                        ...base,
+-                        amountDue: String(legacy.amountDue),
+-                        amountReceived: String(legacy.amountReceived),
+-                        changeReturned: String(legacy.changeReturned),
+-                        paymentMethod: legacy.paymentMethod,
+-                        reference: legacy.reference,
+-                      }
+-                    : base;
+-                  const lines = describeAudit(log.entityType, log.action, details, {
+-                    locations: locationNames,
+-                  });
+-
+-                  return (
+-                    <tr key={log.id} className="align-top">
+-                      <td className="whitespace-nowrap px-3 py-4">
+-                        {dateFormatter.format(log.createdAt)}
+-                      </td>
+-                      <td className="px-3 py-4">
+-                        <p className="font-medium">
+-                          {log.user.firstName} {log.user.lastName}
+-                        </p>
+-                        <p className="text-xs text-slate-700">
+-                          {ROLE_LABELS[log.user.role] ?? log.user.role} — {log.user.email}
+-                        </p>
+-                      </td>
+-                      <td className="px-3 py-4">{actionLabel(log.action)}</td>
+-                      <td className="px-3 py-4">
+-                        <p>{entityLabel(log.entityType)}</p>
+-                        {log.entityId && (
+-                          <p className="font-mono text-xs text-slate-700" title={log.entityId}>
+-                            …{log.entityId.slice(-8)}
+-                          </p>
+-                        )}
+-                      </td>
+-                      <td className="px-3 py-4">
+-                        {lines.length === 0 ? (
+-                          <span className="text-slate-600">—</span>
+-                        ) : (
+-                          <ul className="space-y-0.5">
+-                            {lines.map((line) => (
+-                              <li key={line}>{line}</li>
+-                            ))}
+-                          </ul>
+-                        )}
+-                      </td>
+-                    </tr>
+-                  );
+-                })}
+-              </tbody>
+-            </table>
+-          </div>
++          <AuditTable rows={rows} locationNames={locationNames} />
+         )}
+ 
+         {pageCount > 1 && (
+diff --git a/app/dashboard/details-drawer.tsx b/app/dashboard/details-drawer.tsx
+index 107c6c8..1279b58 100644
+--- a/app/dashboard/details-drawer.tsx
++++ b/app/dashboard/details-drawer.tsx
+@@ -59,6 +59,13 @@ const BADGES: Record<Badge, { className: string; Icon: LucideIcon }> = {
+ };
+ 
+ function CellView({ cell }: { cell: Cell }) {
++  if (cell.href) {
++    return (
++      <Link href={cell.href} className="font-medium text-blue-700 underline-offset-2 hover:underline">
++        {cell.t}
++      </Link>
++    );
++  }
+   if (!cell.badge) return <>{cell.t}</>;
+   const { className, Icon } = BADGES[cell.badge];
+   return (
+diff --git a/app/dashboard/location-stats.tsx b/app/dashboard/location-stats.tsx
+index a4f6078..5dbb081 100644
+--- a/app/dashboard/location-stats.tsx
++++ b/app/dashboard/location-stats.tsx
+@@ -1,11 +1,6 @@
++import Link from "next/link";
+ import { prisma } from "@/lib/prisma";
+-
+-function money(value: unknown) {
+-  return `${Number(value ?? 0).toLocaleString("fr-FR", {
+-    minimumFractionDigits: 2,
+-    maximumFractionDigits: 2,
+-  })} MGA`;
+-}
++import { formatMGA } from "@/lib/audit";
+ 
+ export default async function LocationStats() {
+   const locations = await prisma.location.findMany({
+@@ -13,73 +8,67 @@ export default async function LocationStats() {
+     select: {
+       id: true,
+       name: true,
+-      _count: {
+-        select: {
+-          supervisors: true,
+-          drivers: true,
+-          vehicles: true,
+-          assignments: true,
+-        },
+-      },
++      _count: { select: { supervisors: true, passages: true } },
+     },
+   });
+ 
+   const rows = await Promise.all(
+     locations.map(async (location) => {
+-      const totals = await prisma.payment.aggregate({
+-        where: {
+-          assignment: { is: { locationId: location.id } },
+-        },
+-        _count: { _all: true },
+-        _sum: { amountReceived: true },
+-      });
++      const [tonnage, payments] = await Promise.all([
++        prisma.product.aggregate({
++          where: { passage: { is: { locationId: location.id } } },
++          _sum: { tonnage: true },
++        }),
++        prisma.payment.aggregate({
++          where: { passage: { is: { locationId: location.id } } },
++          _sum: { amountReceived: true },
++        }),
++      ]);
+ 
+       return {
+         ...location,
+-        paymentCount: totals._count._all,
+-        amountReceived: totals._sum.amountReceived,
++        tonnage: tonnage._sum.tonnage,
++        amountReceived: payments._sum.amountReceived,
+       };
+-    })
++    }),
+   );
+ 
+   return (
+     <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+-      <h2 className="mb-2 text-xl font-semibold text-slate-900">
+-        Statistiques par lieu
+-      </h2>
+-      <p className="mb-5 text-sm text-slate-600">
+-        Vue globale de chaque lieu d&apos;affectation.
++      <h2 className="mb-2 text-xl font-semibold text-slate-900">Statistiques par lieu</h2>
++      <p className="mb-5 text-sm text-slate-700">
++        Cliquez sur un lieu pour voir tout ce qui y a été fait.
+       </p>
+ 
+       {rows.length === 0 ? (
+-        <p className="text-slate-600">Aucun lieu enregistré.</p>
++        <p className="text-slate-700">Aucun lieu enregistré.</p>
+       ) : (
+         <div className="overflow-x-auto">
+           <table className="w-full text-left text-sm">
+-            <thead className="border-b border-slate-200 text-slate-600">
++            <thead className="border-b border-slate-200 text-slate-700">
+               <tr>
+                 <th className="px-3 py-3 font-medium">Lieu</th>
+-                <th className="px-3 py-3 font-medium">Régisseurs</th>
+-                <th className="px-3 py-3 font-medium">Chauffeurs</th>
+-                <th className="px-3 py-3 font-medium">Véhicules</th>
+-                <th className="px-3 py-3 font-medium">Transports</th>
+-                <th className="px-3 py-3 font-medium">Paiements</th>
+-                <th className="px-3 py-3 font-medium">Montant reçu</th>
++                <th className="px-3 py-3 text-right font-medium">Régisseurs</th>
++                <th className="px-3 py-3 text-right font-medium">Passages</th>
++                <th className="px-3 py-3 text-right font-medium">Tonnage</th>
++                <th className="px-3 py-3 text-right font-medium">Montant reçu</th>
+               </tr>
+             </thead>
+             <tbody className="divide-y divide-slate-100">
+               {rows.map((location) => (
+-                <tr key={location.id} className="hover:bg-slate-50">
+-                  <td className="px-3 py-4 font-medium text-slate-900">
+-                    {location.name}
++                <tr key={location.id} className="hover:bg-blue-50">
++                  <td className="px-3 py-4 font-medium">
++                    <Link href={`/dashboard/locations/${location.id}`} className="text-blue-700 hover:underline">
++                      {location.name}
++                    </Link>
+                   </td>
+-                  <td className="px-3 py-4">{location._count.supervisors}</td>
+-                  <td className="px-3 py-4">{location._count.drivers}</td>
+-                  <td className="px-3 py-4">{location._count.vehicles}</td>
+-                  <td className="px-3 py-4">{location._count.assignments}</td>
+-                  <td className="px-3 py-4">{location.paymentCount}</td>
+-                  <td className="px-3 py-4 whitespace-nowrap font-medium">
+-                    {money(location.amountReceived)}
++                  <td className="px-3 py-4 text-right">{location._count.supervisors}</td>
++                  <td className="px-3 py-4 text-right">{location._count.passages}</td>
++                  <td className="whitespace-nowrap px-3 py-4 text-right">
++                    {Number(location.tonnage ?? 0).toLocaleString("fr-FR")} t
++                  </td>
++                  <td className="whitespace-nowrap px-3 py-4 text-right font-medium">
++                    {formatMGA(location.amountReceived ?? 0)}
+                   </td>
+                 </tr>
+               ))}
+@@ -89,4 +78,4 @@ export default async function LocationStats() {
+       )}
+     </section>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/dashboard/locations/[id]/page.tsx b/app/dashboard/locations/[id]/page.tsx
+new file mode 100644
+index 0000000..f52c22f
+--- /dev/null
++++ b/app/dashboard/locations/[id]/page.tsx
+@@ -0,0 +1,159 @@
++import { Suspense } from "react";
++import Link from "next/link";
++import { notFound, redirect } from "next/navigation";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import { formatMGA } from "@/lib/audit";
++import { fetchAuditRows } from "@/lib/audit-rows";
++import { FICHE_PAGE_SIZE, PASSAGE_ROW_SELECT } from "@/lib/passage-rows";
++import AuditTable from "../../audit-table";
++import PassagesTable from "../../passages-table";
++import Pager from "../../pager";
++
++type Props = {
++  params: Promise<{ id: string }>;
++  searchParams: Promise<{ page?: string | string[] }>;
++};
++
++export default function LocationSheetPage(props: Props) {
++  return (
++    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
++      <Suspense fallback={<p>Chargement...</p>}>
++        <LocationSheet {...props} />
++      </Suspense>
++    </main>
++  );
++}
++
++function Stat({ label, value }: { label: string; value: string | number }) {
++  return (
++    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
++      <p className="text-sm font-medium text-slate-700">{label}</p>
++      <p className="mt-2 break-words text-2xl font-bold text-slate-900">{value}</p>
++    </div>
++  );
++}
++
++async function LocationSheet({ params, searchParams }: Props) {
++  const user = await getCurrentUser();
++  if (!user) redirect("/login");
++  if (user.role !== "ADMIN") redirect("/dashboard");
++
++  const { id } = await params;
++  const query = await searchParams;
++  const requestedPage = Number.parseInt(String(Array.isArray(query.page) ? query.page[0] : query.page ?? "1"), 10);
++
++  const location = await prisma.location.findUnique({
++    where: { id },
++    select: { id: true, name: true, createdAt: true },
++  });
++
++  if (!location) notFound();
++
++  const [total, tonnage, payments, supervisors] = await Promise.all([
++    prisma.passage.count({ where: { locationId: id } }),
++    prisma.product.aggregate({ where: { passage: { is: { locationId: id } } }, _sum: { tonnage: true } }),
++    prisma.payment.aggregate({
++      where: { passage: { is: { locationId: id } } },
++      _sum: { amountReceived: true },
++    }),
++    prisma.supervisor.findMany({
++      where: { locationId: id },
++      orderBy: { user: { lastName: "asc" } },
++      select: {
++        id: true,
++        user: { select: { firstName: true, lastName: true, email: true, isActive: true } },
++        _count: { select: { passages: true } },
++      },
++    }),
++  ]);
++
++  const pageCount = Math.max(1, Math.ceil(total / FICHE_PAGE_SIZE));
++  const page = Math.min(Math.max(Number.isFinite(requestedPage) ? requestedPage : 1, 1), pageCount);
++
++  const [passages, activity] = await Promise.all([
++    prisma.passage.findMany({
++      where: { locationId: id },
++      orderBy: { assignedAt: "desc" },
++      skip: (page - 1) * FICHE_PAGE_SIZE,
++      take: FICHE_PAGE_SIZE,
++      select: PASSAGE_ROW_SELECT,
++    }),
++    // Tout ce qui a été fait dans ce lieu : passages, paiements, comptes créés ou déplacés...
++    fetchAuditRows({
++      where: {
++        OR: [
++          { details: { path: ["locationId"], equals: id } },
++          { entityType: "Location", entityId: id },
++        ],
++      },
++      take: 25,
++    }),
++  ]);
++
++  return (
++    <div className="mx-auto max-w-7xl">
++      <Link href="/dashboard/locations" className="text-sm font-medium text-blue-700 hover:underline">
++        &larr; Retour aux lieux
++      </Link>
++
++      <header className="my-6">
++        <h1 className="text-3xl font-bold text-slate-900">{location.name}</h1>
++        <p className="mt-2 text-slate-700">
++          Ce qui a été fait dans ce lieu : les produits qui y sont passés, par qui, d&apos;où et vers où.
++        </p>
++      </header>
++
++      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
++        <Stat label="Régisseurs" value={supervisors.length} />
++        <Stat label="Passages" value={total} />
++        <Stat label="Tonnage cumulé" value={`${Number(tonnage._sum.tonnage ?? 0).toLocaleString("fr-FR")} t`} />
++        <Stat label="Montant reçu" value={formatMGA(payments._sum.amountReceived ?? 0)} />
++      </div>
++
++      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
++        <h2 className="mb-5 text-xl font-semibold text-slate-900">Régisseurs du lieu</h2>
++        {supervisors.length === 0 ? (
++          <p className="text-slate-700">Aucun régisseur n&apos;est affecté à ce lieu.</p>
++        ) : (
++          <ul className="divide-y">
++            {supervisors.map((item) => (
++              <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
++                <div>
++                  <Link href={`/dashboard/supervisors/${item.id}`} className="font-medium text-blue-700 hover:underline">
++                    {item.user.firstName} {item.user.lastName}
++                  </Link>
++                  <p className="text-sm text-slate-700">
++                    {item.user.email} — compte {item.user.isActive ? "actif" : "désactivé"}
++                  </p>
++                </div>
++                <p className="text-sm text-slate-700">{item._count.passages} passage{item._count.passages > 1 ? "s" : ""}</p>
++              </li>
++            ))}
++          </ul>
++        )}
++      </section>
++
++      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
++        <h2 className="mb-5 text-xl font-semibold text-slate-900">Passages dans ce lieu</h2>
++        {passages.length === 0 ? (
++          <p className="text-slate-700">Aucun produit n&apos;est encore passé par ce lieu.</p>
++        ) : (
++          <>
++            <PassagesTable rows={passages} showLocation={false} />
++            <Pager basePath={`/dashboard/locations/${id}`} page={page} pageCount={pageCount} />
++          </>
++        )}
++      </section>
++
++      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
++        <h2 className="mb-5 text-xl font-semibold text-slate-900">Activité récente du lieu</h2>
++        {activity.rows.length === 0 ? (
++          <p className="text-slate-700">Aucune opération enregistrée.</p>
++        ) : (
++          <AuditTable rows={activity.rows} locationNames={activity.locationNames} />
++        )}
++      </section>
++    </div>
++  );
++}
+diff --git a/app/dashboard/locations/page.tsx b/app/dashboard/locations/page.tsx
+index abc6ca8..47c35c4 100644
+--- a/app/dashboard/locations/page.tsx
++++ b/app/dashboard/locations/page.tsx
+@@ -34,9 +34,7 @@ async function LocationsContent() {
+       _count: {
+         select: {
+           supervisors: true,
+-          drivers: true,
+-          vehicles: true,
+-          assignments: true,
++          passages: true,
+         },
+       },
+     },
+@@ -78,21 +76,19 @@ async function LocationsContent() {
+                     <tr>
+                       <th className="px-3 py-3">Lieu</th>
+                       <th className="px-3 py-3">Régisseurs</th>
+-                      <th className="px-3 py-3">Chauffeurs</th>
+-                      <th className="px-3 py-3">Véhicules</th>
+-                      <th className="px-3 py-3">Transports</th>
++                      <th className="px-3 py-3">Passages</th>
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-slate-100">
+                     {locations.map((location) => (
+                       <tr key={location.id}>
+-                        <td className="px-3 py-4 font-medium text-slate-900">
+-                          {location.name}
++                        <td className="px-3 py-4 font-medium">
++                          <Link href={`/dashboard/locations/${location.id}`} className="text-blue-700 hover:underline">
++                            {location.name}
++                          </Link>
+                         </td>
+                         <td className="px-3 py-4">{location._count.supervisors}</td>
+-                        <td className="px-3 py-4">{location._count.drivers}</td>
+-                        <td className="px-3 py-4">{location._count.vehicles}</td>
+-                        <td className="px-3 py-4">{location._count.assignments}</td>
++                        <td className="px-3 py-4">{location._count.passages}</td>
+                       </tr>
+                     ))}
+                   </tbody>
+diff --git a/app/dashboard/page.tsx b/app/dashboard/page.tsx
+index 8491a4e..39161be 100644
+--- a/app/dashboard/page.tsx
++++ b/app/dashboard/page.tsx
+@@ -3,40 +3,17 @@ import Link from "next/link";
+ import { redirect } from "next/navigation";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
++import { formatMGA } from "@/lib/audit";
+ import LocationStats from "./location-stats";
+ import LogoutButton from "./logout-button";
+-import { StatCard, StatusTile } from "./stat-card";
++import { StatCard } from "./stat-card";
+ 
+-const statusLabels: Record<string, string> = {
+-  PLANNED: "Planifié",
+-  IN_PROGRESS: "En cours",
+-  COMPLETED: "Terminé",
+-  CANCELLED: "Annulé",
+-};
++const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
++  dateStyle: "short",
++  timeZone: "Indian/Antananarivo",
++});
+ 
+-function money(value: unknown) {
+-  return `${Number(value ?? 0).toLocaleString("fr-FR", {
+-    minimumFractionDigits: 2,
+-    maximumFractionDigits: 2,
+-  })} MGA`;
+-}
+-
+-function ModuleLink({
+-  href,
+-  title,
+-  description,
+-}: {
+-  href: string;
+-  title: string;
+-  description: string;
+-}) {
+-  return (
+-    <Link href={href} className="block rounded-xl border border-slate-200 bg-white p-5 transition hover:border-blue-400 hover:shadow-sm">
+-      <h3 className="font-semibold text-slate-900">{title}</h3>
+-      <p className="mt-2 text-sm text-slate-600">{description}</p>
+-    </Link>
+-  );
+-}
++const tonnageText = (value: unknown) => `${Number(value ?? 0).toLocaleString("fr-FR")} t`;
+ 
+ export default function DashboardPage() {
+   return (
+@@ -62,42 +39,18 @@ async function DashboardContent() {
+   return (
+     <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
+       <h1 className="text-2xl font-bold">Accès non autorisé</h1>
+-      <p className="mt-3 text-slate-600">Contacte l&apos;administrateur pour obtenir les droits nécessaires.</p>
++      <p className="mt-3 text-slate-700">Contactez l&apos;administrateur pour obtenir les droits nécessaires.</p>
+     </section>
+   );
+ }
+ 
+ async function AdminDashboard({ firstName, lastName }: { firstName: string; lastName: string }) {
+-  const [
+-    supervisors,
+-    locations,
+-    drivers,
+-    vehicles,
+-    transports,
+-    products,
+-    payments,
+-    statuses,
+-    outstanding,
+-  ] = await Promise.all([
++  const [supervisors, locations, passages, tonnage, payments] = await Promise.all([
+     prisma.supervisor.count(),
+     prisma.location.count(),
+-    prisma.driver.count(),
+-    prisma.vehicle.count(),
+-    prisma.transportAssignment.count(),
+-    prisma.product.count(),
+-    prisma.payment.aggregate({
+-      _count: { _all: true },
+-      _sum: { amountDue: true, amountReceived: true, changeReturned: true },
+-    }),
+-    prisma.transportAssignment.groupBy({
+-      by: ["status"],
+-      _count: { _all: true },
+-    }),
+-    // Reste à encaisser : transports non annulés et sans paiement.
+-    prisma.transportAssignment.aggregate({
+-      where: { status: { not: "CANCELLED" }, payment: { is: null } },
+-      _sum: { amountDue: true },
+-    }),
++    prisma.passage.count(),
++    prisma.product.aggregate({ _sum: { tonnage: true } }),
++    prisma.payment.aggregate({ _sum: { amountReceived: true, changeReturned: true } }),
+   ]);
+ 
+   return (
+@@ -106,48 +59,32 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
+         <div>
+           <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Administration</p>
+           <h1 className="mt-2 text-3xl font-bold text-slate-900">Statistiques globales</h1>
+-          <p className="mt-2 text-slate-600">Bienvenue, {firstName} {lastName}.</p>
++          <p className="mt-2 text-slate-700">Bienvenue, {firstName} {lastName}.</p>
++        </div>
++        <div className="flex flex-wrap items-center gap-3">
++          <Link href="/dashboard/supervisors" className="rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800">
++            Régisseurs
++          </Link>
++          <Link href="/dashboard/locations" className="rounded-xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-100">
++            Lieux
++          </Link>
++          <Link href="/dashboard/audit" className="rounded-xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-100">
++            Journal d&apos;audit
++          </Link>
++          <LogoutButton />
+         </div>
+-        <Link href="/dashboard/supervisors" className="rounded-lg bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800">
+-          Enregistrer un régisseur</Link>
+-        <Link href="/dashboard/locations" className="rounded-lg border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-100">
+-          Gérer les lieux
+-        </Link>
+-        <Link href="/dashboard/audit" className="rounded-lg border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-100">
+-          Journal d&apos;audit
+-        </Link>
+-      
+-        <LogoutButton />
+       </header>
+ 
+       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+-        <StatCard label="Lieux" value={locations} description="Emplacements enregistrés" kind="locations" />
+-        <StatCard label="Régisseurs" value={supervisors} description="Dans toute l'entreprise" kind="supervisors" />
+-        <StatCard label="Chauffeurs" value={drivers} description="Tous les lieux" kind="drivers" />
+-        <StatCard label="Véhicules" value={vehicles} description="Tous les lieux" kind="vehicles" />
+-        <StatCard label="Transports" value={transports} description="Tous les transports enregistrés" kind="transports" />
+-        <StatCard label="Produits" value={products} description="Fiches produits enregistrées" kind="products" />
+-        <StatCard label="Paiements" value={payments._count._all} description="Opérations de paiement enregistrées" kind="payments" />
+-        <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés" kind="outstanding" />
+-        <StatCard label="Montant reçu" value={money(payments._sum.amountReceived)} description="Total enregistré" kind="received" />
+-        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistré" kind="change" />
++        <StatCard label="Lieux" value={locations} description="Lieux de passage enregistrés" kind="locations" />
++        <StatCard label="Régisseurs" value={supervisors} description="Chacun travaille sur un lieu" kind="supervisors" />
++        <StatCard label="Passages" value={passages} description="Produits passés, tous lieux confondus" kind="passages" />
++        <StatCard label="Tonnage cumulé" value={tonnageText(tonnage._sum.tonnage)} description="Total des produits passés" kind="tonnage" />
++        <StatCard label="Montant reçu" value={formatMGA(payments._sum.amountReceived)} description="Total encaissé" kind="received" />
++        <StatCard label="Monnaie rendue" value={formatMGA(payments._sum.changeReturned)} description="Total rendu en espèces" kind="change" />
+       </div>
+ 
+-            <LocationStats />
+-
+-      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+-        <h2 className="mb-4 text-xl font-semibold">État global des transports</h2>
+-        <div className="flex flex-wrap gap-3">
+-          {statuses.map((item) => (
+-            <StatusTile
+-              key={item.status}
+-              label={statusLabels[item.status] ?? item.status}
+-              count={item._count._all}
+-              kind={`status-${item.status}`}
+-            />
+-          ))}
+-        </div>
+-      </section>
++      <LocationStats />
+     </div>
+   );
+ }
+@@ -163,150 +100,106 @@ async function SupervisorDashboard({
+ }) {
+   const profile = await prisma.supervisor.findUnique({
+     where: { userId },
+-    select: {
+-      locationId: true,
+-      assignedLocation: { select: { name: true } },
+-    },
++    select: { locationId: true, assignedLocation: { select: { name: true } } },
+   });
+ 
+   if (!profile?.locationId) {
+     return (
+       <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
+         <h1 className="text-2xl font-bold">Aucun lieu affecté</h1>
+-        <p className="mt-3 text-slate-600">Contacte l&apos;administrateur pour associer ton compte à un lieu.</p>
++        <p className="mt-3 text-slate-700">Contactez l&apos;administrateur pour associer votre compte à un lieu.</p>
+       </section>
+     );
+   }
+ 
+   const locationId = profile.locationId;
+ 
+-  const [
+-    drivers,
+-    vehicles,
+-    transports,
+-    products,
+-    payments,
+-    statuses,
+-    recentTransports,
+-    tonnage,
+-    outstanding,
+-  ] = await Promise.all([
+-    prisma.driver.count({ where: { locationId } }),
+-    prisma.vehicle.count({ where: { locationId } }),
+-    prisma.transportAssignment.count({ where: { locationId } }),
++  const [passages, tonnage, payments, recent] = await Promise.all([
++    prisma.passage.count({ where: { locationId } }),
+     prisma.product.aggregate({
+-      where: { assignment: { is: { locationId } } },
+-      _count: { _all: true },
++      where: { passage: { is: { locationId } } },
++      _sum: { tonnage: true },
+     }),
+     prisma.payment.aggregate({
+-      where: { assignment: { is: { locationId } } },
+-      _count: { _all: true },
+-      _sum: { amountDue: true, amountReceived: true, changeReturned: true },
++      where: { passage: { is: { locationId } } },
++      _sum: { amountReceived: true, changeReturned: true },
+     }),
+-    prisma.transportAssignment.groupBy({
+-      by: ["status"],
+-      where: { locationId },
+-      _count: { _all: true },
+-    }),
+-    prisma.transportAssignment.findMany({
++    prisma.passage.findMany({
+       where: { locationId },
+       take: 8,
+       orderBy: { assignedAt: "desc" },
+       select: {
+         id: true,
+         assignedAt: true,
+-        status: true,
++        origin: true,
++        destination: true,
+         product: { select: { name: true, tonnage: true } },
+-        vehicle: { select: { licensePlate: true } },
++        payment: { select: { amountDue: true } },
+       },
+     }),
+-    // Tonnage cumulé : les transports annulés ne comptent pas.
+-    prisma.product.aggregate({
+-      where: { assignment: { is: { locationId, status: { not: "CANCELLED" } } } },
+-      _sum: { tonnage: true },
+-    }),
+-    // Reste à encaisser : transports non annulés et sans paiement.
+-    prisma.transportAssignment.aggregate({
+-      where: { locationId, status: { not: "CANCELLED" }, payment: { is: null } },
+-      _sum: { amountDue: true },
+-    }),
+   ]);
+ 
+   return (
+     <div className="mx-auto max-w-7xl">
+-      <header className="mb-8">
+-        <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Espace régisseur</p>
+-        <h1 className="mt-2 text-3xl font-bold text-slate-900">Statistiques du lieu</h1>
+-        <p className="mt-2 text-slate-600">
+-          Bienvenue, {firstName} {lastName}. Lieu partagé : {profile.assignedLocation?.name ?? "Non renseigné"}.
+-        </p>
+-        <p className="mt-1 text-sm text-slate-600">
+-          Les statistiques et les listes comprennent les données partagées par tous les régisseurs affectés à ce lieu.
+-        </p>
+-      
+-        <div className="mt-4"><LogoutButton /></div>
++      <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
++        <div>
++          <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Espace régisseur</p>
++          <h1 className="mt-2 text-3xl font-bold text-slate-900">Statistiques du lieu</h1>
++          <p className="mt-2 text-slate-700">
++            Bienvenue, {firstName} {lastName}. Lieu : {profile.assignedLocation?.name ?? "Non renseigné"}.
++          </p>
++          <p className="mt-1 text-sm text-slate-700">
++            Les chiffres comprennent les passages enregistrés par tous les régisseurs de ce lieu.
++          </p>
++        </div>
++        <div className="flex flex-wrap items-center gap-3">
++          <Link href="/dashboard/passages" className="rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800">
++            Enregistrer un passage
++          </Link>
++          <LogoutButton />
++        </div>
+       </header>
+ 
+-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+-        <StatCard label="Chauffeurs du lieu" value={drivers} description="Tous les chauffeurs affectés à ce lieu" kind="drivers" />
+-        <StatCard label="Véhicules du lieu" value={vehicles} description="Tous les véhicules de ce lieu" kind="vehicles" />
+-        <StatCard label="Transports du lieu" value={transports} description="Tous les transports de ce lieu" kind="transports" />
+-        <StatCard label="Produits" value={products._count._all} description="Produits liés aux transports du lieu" kind="products" />
+-        <StatCard label="Tonnage cumulé" value={`${Number(tonnage._sum.tonnage ?? 0).toLocaleString("fr-FR")} t`} description="Transports non annulés de ce lieu" kind="tonnage" />
+-        <StatCard label="Paiements" value={payments._count._all} description="Paiements de tous les transports du lieu" kind="payments" />
+-        <StatCard label="Reste à encaisser" value={money(outstanding._sum.amountDue)} description="Transports non annulés et non payés du lieu" kind="outstanding" />
+-        <StatCard label="Montant reçu" value={money(payments._sum.amountReceived)} description="Total enregistré pour le lieu" kind="received" />
+-        <StatCard label="Monnaie rendue" value={money(payments._sum.changeReturned)} description="Total enregistré pour le lieu" kind="change" />
++      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
++        <StatCard label="Passages du lieu" value={passages} description="Produits passés par ce lieu" kind="passages" />
++        <StatCard label="Tonnage cumulé" value={tonnageText(tonnage._sum.tonnage)} description="Total des produits passés" kind="tonnage" />
++        <StatCard label="Montant reçu" value={formatMGA(payments._sum.amountReceived)} description="Total encaissé pour le lieu" kind="received" />
++        <StatCard label="Monnaie rendue" value={formatMGA(payments._sum.changeReturned)} description="Total rendu en espèces" kind="change" />
+       </div>
+ 
+       <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+-        <h2 className="mb-4 text-xl font-semibold">État des transports du lieu</h2>
+-        <div className="flex flex-wrap gap-3">
+-          {statuses.map((item) => (
+-            <StatusTile
+-              key={item.status}
+-              label={statusLabels[item.status] ?? item.status}
+-              count={item._count._all}
+-              kind={`status-${item.status}`}
+-            />
+-          ))}
+-        </div>
+-      </section>
+-
+-      <section className="mt-8">
+-        <h2 className="mb-4 text-xl font-semibold">Modules opérationnels</h2>
+-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+-          <ModuleLink href="/dashboard/drivers" title="Chauffeurs" description="Consulter et ajouter les chauffeurs du lieu." />
+-          <ModuleLink href="/dashboard/vehicles" title="Véhicules" description="Consulter et ajouter les véhicules du lieu." />
+-          <ModuleLink href="/dashboard/transports" title="Transports" description="Créer et consulter les transports du lieu." />
+-          <ModuleLink href="/dashboard/payments" title="Paiements" description="Enregistrer et consulter les paiements du lieu." />
++        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
++          <h2 className="text-xl font-semibold text-slate-900">Passages récents</h2>
++          <Link href="/dashboard/passages" className="text-sm font-medium text-blue-700 hover:underline">
++            Voir tout l&apos;historique
++          </Link>
+         </div>
+-      </section>
+ 
+-      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+-        <h2 className="mb-4 text-xl font-semibold">Transports récents du lieu</h2>
+-        {recentTransports.length === 0 ? (
+-          <p className="text-slate-600">Aucun transport enregistré.</p>
++        {recent.length === 0 ? (
++          <p className="text-slate-700">Aucun passage enregistré pour le moment.</p>
+         ) : (
+           <div className="overflow-x-auto">
+             <table className="w-full text-left text-sm">
+-              <thead className="border-b text-slate-600">
++              <thead className="border-b text-slate-700">
+                 <tr>
+                   <th className="px-3 py-3">Date</th>
+                   <th className="px-3 py-3">Produit</th>
+-                  <th className="px-3 py-3">Tonnage</th>
+-                  <th className="px-3 py-3">Véhicule</th>
+-                  <th className="px-3 py-3">Statut</th>
++                  <th className="px-3 py-3 text-right">Tonnage</th>
++                  <th className="px-3 py-3">Trajet</th>
++                  <th className="px-3 py-3 text-right">Montant payé</th>
+                 </tr>
+               </thead>
+               <tbody className="divide-y">
+-                {recentTransports.map((item) => (
++                {recent.map((item) => (
+                   <tr key={item.id}>
+-                    <td className="px-3 py-4">{item.assignedAt.toLocaleDateString("fr-FR")}</td>
++                    <td className="px-3 py-4">{dateFormatter.format(item.assignedAt)}</td>
+                     <td className="px-3 py-4 font-medium">{item.product.name}</td>
+-                    <td className="px-3 py-4">{String(item.product.tonnage)} t</td>
+-                    <td className="px-3 py-4">{item.vehicle.licensePlate}</td>
+-                    <td className="px-3 py-4">{statusLabels[item.status] ?? item.status}</td>
++                    <td className="px-3 py-4 text-right">{tonnageText(item.product.tonnage)}</td>
++                    <td className="px-3 py-4">
++                      {item.origin} <span aria-hidden="true">→</span>
++                      <span className="sr-only"> vers </span> {item.destination}
++                    </td>
++                    <td className="px-3 py-4 text-right">{item.payment ? formatMGA(item.payment.amountDue) : "—"}</td>
+                   </tr>
+                 ))}
+               </tbody>
+@@ -316,4 +209,4 @@ async function SupervisorDashboard({
+       </section>
+     </div>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/dashboard/pager.tsx b/app/dashboard/pager.tsx
+new file mode 100644
+index 0000000..8a58a4c
+--- /dev/null
++++ b/app/dashboard/pager.tsx
+@@ -0,0 +1,25 @@
++import Link from "next/link";
++
++// Précédent / suivant pour les listes des fiches (paramètre ?page=).
++export default function Pager({
++  basePath,
++  page,
++  pageCount,
++}: {
++  basePath: string;
++  page: number;
++  pageCount: number;
++}) {
++  if (pageCount <= 1) return null;
++  const href = (target: number) => (target > 1 ? `${basePath}?page=${target}` : basePath);
++  const linkClass =
++    "rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-100";
++
++  return (
++    <nav className="mt-6 flex items-center justify-between text-sm" aria-label="Pagination">
++      {page > 1 ? <Link href={href(page - 1)} className={linkClass}>&larr; Précédent</Link> : <span />}
++      <span className="text-slate-700">Page {page} sur {pageCount}</span>
++      {page < pageCount ? <Link href={href(page + 1)} className={linkClass}>Suivant &rarr;</Link> : <span />}
++    </nav>
++  );
++}
+diff --git a/app/dashboard/passages-table.tsx b/app/dashboard/passages-table.tsx
+new file mode 100644
+index 0000000..6a36dd9
+--- /dev/null
++++ b/app/dashboard/passages-table.tsx
+@@ -0,0 +1,117 @@
++import Link from "next/link";
++import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
++
++const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
++  dateStyle: "short",
++  timeZone: "Indian/Antananarivo",
++});
++
++type Row = {
++  id: string;
++  assignedAt: Date;
++  origin: string;
++  destination: string;
++  vehicleInfo: string | null;
++  driverName: string | null;
++  product: { name: string; type: string; tonnage: unknown };
++  supervisor: { id: string; user: { firstName: string; lastName: string } };
++  assignedLocation: { id: string; name: string } | null;
++  payment: { paymentMethod: string; reference: string | null; amountDue: unknown } | null;
++};
++
++// Liste de passages pour l'administrateur : qui l'a enregistré, par quel lieu, d'où vers où.
++export default function PassagesTable({
++  rows,
++  showSupervisor = true,
++  showLocation = true,
++}: {
++  rows: Row[];
++  showSupervisor?: boolean;
++  showLocation?: boolean;
++}) {
++  return (
++    <div className="overflow-x-auto">
++      <table className="w-full text-left text-sm">
++        <thead className="border-b text-slate-700">
++          <tr>
++            <th className="px-3 py-3">Date</th>
++            <th className="px-3 py-3">Produit</th>
++            <th className="px-3 py-3 text-right">Tonnage</th>
++            <th className="px-3 py-3">Origine</th>
++            {showLocation && <th className="px-3 py-3">Lieu de passage</th>}
++            <th className="px-3 py-3">Destination</th>
++            <th className="px-3 py-3">Véhicule / chauffeur</th>
++            <th className="px-3 py-3 text-right">Montant payé</th>
++            <th className="px-3 py-3">Mode</th>
++            {showSupervisor && <th className="px-3 py-3">Enregistré par</th>}
++          </tr>
++        </thead>
++        <tbody className="divide-y">
++          {rows.map((item) => (
++            <tr key={item.id} className="align-top hover:bg-blue-50">
++              <td className="whitespace-nowrap px-3 py-4">{dateFormatter.format(item.assignedAt)}</td>
++              <td className="px-3 py-4">
++                <p className="font-medium text-slate-900">{item.product.name}</p>
++                <p className="text-xs text-slate-700">{item.product.type}</p>
++              </td>
++              <td className="whitespace-nowrap px-3 py-4 text-right">
++                {Number(item.product.tonnage).toLocaleString("fr-FR")} t
++              </td>
++              <td className="px-3 py-4">{item.origin}</td>
++              {showLocation && (
++                <td className="px-3 py-4">
++                  {item.assignedLocation ? (
++                    <Link
++                      href={`/dashboard/locations/${item.assignedLocation.id}`}
++                      className="font-medium text-blue-700 hover:underline"
++                    >
++                      {item.assignedLocation.name}
++                    </Link>
++                  ) : (
++                    "—"
++                  )}
++                </td>
++              )}
++              <td className="px-3 py-4">{item.destination}</td>
++              <td className="px-3 py-4">
++                {item.vehicleInfo || item.driverName ? (
++                  <>
++                    {item.vehicleInfo && <p>{item.vehicleInfo}</p>}
++                    {item.driverName && <p className="text-xs text-slate-700">{item.driverName}</p>}
++                  </>
++                ) : (
++                  <span className="text-slate-600">—</span>
++                )}
++              </td>
++              <td className="whitespace-nowrap px-3 py-4 text-right">
++                {item.payment ? formatMGA(item.payment.amountDue) : "—"}
++              </td>
++              <td className="px-3 py-4">
++                {item.payment ? (
++                  <>
++                    {PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod}
++                    {item.payment.reference && (
++                      <p className="text-xs text-slate-700">{item.payment.reference}</p>
++                    )}
++                  </>
++                ) : (
++                  "—"
++                )}
++              </td>
++              {showSupervisor && (
++                <td className="px-3 py-4">
++                  <Link
++                    href={`/dashboard/supervisors/${item.supervisor.id}`}
++                    className="font-medium text-blue-700 hover:underline"
++                  >
++                    {item.supervisor.user.firstName} {item.supervisor.user.lastName}
++                  </Link>
++                </td>
++              )}
++            </tr>
++          ))}
++        </tbody>
++      </table>
++    </div>
++  );
++}
+diff --git a/app/dashboard/passages/page.tsx b/app/dashboard/passages/page.tsx
+new file mode 100644
+index 0000000..4da031c
+--- /dev/null
++++ b/app/dashboard/passages/page.tsx
+@@ -0,0 +1,213 @@
++import { Suspense } from "react";
++import Link from "next/link";
++import { redirect } from "next/navigation";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
++import ListFilters from "../list-filters";
++import { readChoice, readParam, type SearchParams } from "../search-params";
++import PassageForm from "./passage-form";
++
++const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
++  dateStyle: "short",
++  timeZone: "Indian/Antananarivo",
++});
++
++export default function PassagesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
++  return (
++    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
++      <Suspense fallback={<p>Chargement...</p>}>
++        <PassagesContent searchParams={searchParams} />
++      </Suspense>
++    </main>
++  );
++}
++
++async function PassagesContent({ searchParams }: { searchParams: Promise<SearchParams> }) {
++  const user = await getCurrentUser();
++  if (!user) redirect("/login");
++  if (user.role !== "SUPERVISOR") redirect("/dashboard");
++
++  const profile = await prisma.supervisor.findUnique({
++    where: { userId: user.id },
++    select: { locationId: true, assignedLocation: { select: { name: true } } },
++  });
++
++  if (!profile?.locationId) {
++    return (
++      <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
++        <h1 className="text-2xl font-bold">Aucun lieu affecté</h1>
++        <p className="mt-3 text-slate-700">Contactez l&apos;administrateur pour associer votre compte à un lieu.</p>
++      </section>
++    );
++  }
++
++  const params = await searchParams;
++  const q = readParam(params, "q");
++  const method = readChoice(params, "mode", Object.keys(PAYMENT_METHOD_LABELS));
++  const words = q.split(/\s+/).filter(Boolean).slice(0, 5);
++  const has = (word: string) => ({ contains: word, mode: "insensitive" as const });
++
++  const where = {
++    locationId: profile.locationId,
++    ...(method ? { payment: { is: { paymentMethod: method as "CASH" } } } : {}),
++    ...(words.length > 0
++      ? {
++          AND: words.map((word) => ({
++            OR: [
++              { product: { name: has(word) } },
++              { product: { type: has(word) } },
++              { origin: has(word) },
++              { destination: has(word) },
++              { vehicleInfo: has(word) },
++              { driverName: has(word) },
++              { supervisor: { user: { lastName: has(word) } } },
++              { supervisor: { user: { firstName: has(word) } } },
++            ],
++          })),
++        }
++      : {}),
++  };
++
++  const [total, passages] = await Promise.all([
++    prisma.passage.count({ where }),
++    prisma.passage.findMany({
++      where,
++      orderBy: { assignedAt: "desc" },
++      take: 100,
++      select: {
++        id: true,
++        assignedAt: true,
++        origin: true,
++        destination: true,
++        vehicleInfo: true,
++        driverName: true,
++        notes: true,
++        product: { select: { name: true, type: true, tonnage: true } },
++        supervisor: { select: { user: { select: { firstName: true, lastName: true } } } },
++        payment: { select: { paymentMethod: true, reference: true, amountDue: true, changeReturned: true } },
++      },
++    }),
++  ]);
++
++  const filtered = q !== "" || method !== "";
++
++  return (
++    <div className="mx-auto max-w-7xl">
++      <Link href="/dashboard" className="text-sm font-medium text-blue-700 hover:underline">
++        &larr; Retour au tableau de bord
++      </Link>
++
++      <header className="my-6">
++        <h1 className="text-3xl font-bold text-slate-900">Passages</h1>
++        <p className="mt-2 text-slate-700">
++          Lieu : {profile.assignedLocation?.name ?? "Non renseigné"}. Un passage n&apos;est enregistré
++          qu&apos;avec son paiement : sans paiement, le produit ne passe pas.
++        </p>
++      </header>
++
++      <div className="grid gap-6 xl:grid-cols-[440px_1fr]">
++        <section className="h-fit rounded-2xl bg-white p-6 shadow-sm">
++          <h2 className="mb-4 text-xl font-semibold text-slate-900">Nouveau passage</h2>
++          <PassageForm />
++        </section>
++
++        <section className="min-w-0 rounded-2xl bg-white p-6 shadow-sm">
++          <h2 className="mb-5 text-xl font-semibold text-slate-900">
++            Historique des passages ({total})
++          </h2>
++
++          <ListFilters
++            action="/dashboard/passages"
++            q={q}
++            placeholder="Produit, origine, destination, chauffeur..."
++            filters={[
++              {
++                name: "mode",
++                label: "Mode de paiement",
++                value: method,
++                options: Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label })),
++              },
++            ]}
++          />
++
++          {passages.length === 0 ? (
++            <p className="text-slate-700">
++              {filtered ? "Aucun passage ne correspond à ces critères." : "Aucun passage enregistré pour le moment."}
++            </p>
++          ) : (
++            <div className="overflow-x-auto">
++              <table className="w-full text-left text-sm">
++                <thead className="border-b text-slate-700">
++                  <tr>
++                    <th className="px-3 py-3">Date</th>
++                    <th className="px-3 py-3">Produit</th>
++                    <th className="px-3 py-3 text-right">Tonnage</th>
++                    <th className="px-3 py-3">Trajet</th>
++                    <th className="px-3 py-3">Véhicule / chauffeur</th>
++                    <th className="px-3 py-3 text-right">Montant payé</th>
++                    <th className="px-3 py-3">Mode</th>
++                    <th className="px-3 py-3">Enregistré par</th>
++                  </tr>
++                </thead>
++                <tbody className="divide-y">
++                  {passages.map((item) => (
++                    <tr key={item.id} className="align-top">
++                      <td className="whitespace-nowrap px-3 py-4">{dateFormatter.format(item.assignedAt)}</td>
++                      <td className="px-3 py-4">
++                        <p className="font-medium text-slate-900">{item.product.name}</p>
++                        <p className="text-xs text-slate-700">{item.product.type}</p>
++                      </td>
++                      <td className="whitespace-nowrap px-3 py-4 text-right">
++                        {Number(item.product.tonnage).toLocaleString("fr-FR")} t
++                      </td>
++                      <td className="px-3 py-4">
++                        {item.origin} <span aria-hidden="true">→</span>
++                        <span className="sr-only"> vers </span> {item.destination}
++                      </td>
++                      <td className="px-3 py-4">
++                        {item.vehicleInfo || item.driverName ? (
++                          <>
++                            {item.vehicleInfo && <p>{item.vehicleInfo}</p>}
++                            {item.driverName && <p className="text-xs text-slate-700">{item.driverName}</p>}
++                          </>
++                        ) : (
++                          <span className="text-slate-600">—</span>
++                        )}
++                      </td>
++                      <td className="whitespace-nowrap px-3 py-4 text-right">
++                        {item.payment ? formatMGA(item.payment.amountDue) : "—"}
++                      </td>
++                      <td className="px-3 py-4">
++                        {item.payment ? (
++                          <>
++                            {PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod}
++                            {item.payment.reference && (
++                              <p className="text-xs text-slate-700">{item.payment.reference}</p>
++                            )}
++                          </>
++                        ) : (
++                          "—"
++                        )}
++                      </td>
++                      <td className="px-3 py-4">
++                        {item.supervisor.user.firstName} {item.supervisor.user.lastName}
++                      </td>
++                    </tr>
++                  ))}
++                </tbody>
++              </table>
++            </div>
++          )}
++
++          {total > passages.length && (
++            <p className="mt-4 text-sm text-slate-700">
++              Les {passages.length} passages les plus récents sont affichés sur {total}. Affinez la recherche
++              pour retrouver les autres.
++            </p>
++          )}
++        </section>
++      </div>
++    </div>
++  );
++}
+diff --git a/app/dashboard/passages/passage-form.tsx b/app/dashboard/passages/passage-form.tsx
+new file mode 100644
+index 0000000..ad16519
+--- /dev/null
++++ b/app/dashboard/passages/passage-form.tsx
+@@ -0,0 +1,212 @@
++"use client";
++
++import { useState, type FormEvent } from "react";
++import { useRouter } from "next/navigation";
++import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
++
++const inputClass =
++  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100";
++const labelClass = "mb-1 block text-sm font-medium text-slate-800";
++const sectionClass = "border-b border-slate-200 pb-2 pt-3 font-semibold text-slate-900";
++
++function Field({
++  id,
++  label,
++  hint,
++  children,
++}: {
++  id: string;
++  label: string;
++  hint?: string;
++  children: React.ReactNode;
++}) {
++  return (
++    <div>
++      <label htmlFor={id} className={labelClass}>
++        {label}
++      </label>
++      {children}
++      {hint && <p className="mt-1 text-sm text-slate-600">{hint}</p>}
++    </div>
++  );
++}
++
++export default function PassageForm() {
++  const router = useRouter();
++  const [error, setError] = useState("");
++  const [success, setSuccess] = useState("");
++  const [loading, setLoading] = useState(false);
++  const [method, setMethod] = useState("CASH");
++  const [due, setDue] = useState("");
++  const [received, setReceived] = useState("");
++
++  const isCash = method === "CASH";
++  // Hors espèces, le montant reçu est forcément le montant à payer.
++  const receivedValue = isCash ? received : due;
++  const dueNumber = Number(due);
++  const receivedNumber = Number(receivedValue);
++  const hasAmounts = due !== "" && receivedValue !== "" && dueNumber > 0 && receivedNumber > 0;
++  const change = hasAmounts && isCash ? receivedNumber - dueNumber : 0;
++
++  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
++    event.preventDefault();
++    setError("");
++    setSuccess("");
++    setLoading(true);
++
++    const form = event.currentTarget;
++    const values = {
++      ...Object.fromEntries(new FormData(form).entries()),
++      paymentMethod: method,
++      amountDue: due,
++      amountReceived: receivedValue,
++    };
++
++    try {
++      const response = await fetch("/api/passages", {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify(values),
++      });
++      const result = await response.json().catch(() => ({}));
++
++      if (!response.ok) {
++        setError(result.message ?? "Enregistrement impossible.");
++        return;
++      }
++
++      setSuccess(
++        change > 0
++          ? `Passage enregistré. Monnaie à rendre : ${formatMGA(change)}.`
++          : "Passage et paiement enregistrés.",
++      );
++      form.reset();
++      setMethod("CASH");
++      setDue("");
++      setReceived("");
++      router.refresh();
++    } catch {
++      setError("Impossible de contacter le serveur.");
++    } finally {
++      setLoading(false);
++    }
++  }
++
++  return (
++    <form onSubmit={handleSubmit} className="space-y-4">
++      <h3 className={sectionClass}>Produit</h3>
++
++      <Field id="productName" label="Nom du produit">
++        <input id="productName" name="productName" required maxLength={150} className={inputClass} />
++      </Field>
++      <Field id="productType" label="Type de produit">
++        <input id="productType" name="productType" required maxLength={100} className={inputClass} />
++      </Field>
++      <Field id="tonnage" label="Tonnage (tonnes)">
++        <input
++          id="tonnage" name="tonnage" type="number" inputMode="decimal"
++          min="0.01" max="99999999.99" step="0.01" required className={inputClass}
++        />
++      </Field>
++
++      <h3 className={sectionClass}>Trajet</h3>
++
++      <Field id="origin" label="D'où vient le produit" hint="Lieu de départ.">
++        <input id="origin" name="origin" required maxLength={150} className={inputClass} />
++      </Field>
++      <Field id="destination" label="Où va le produit" hint="Lieu d'arrivée. Le passage est rattaché à votre lieu.">
++        <input id="destination" name="destination" required maxLength={150} className={inputClass} />
++      </Field>
++
++      <h3 className={sectionClass}>Véhicule et chauffeur (facultatif)</h3>
++
++      <Field id="vehicleInfo" label="Description du véhicule" hint="Par exemple : camion benne blanc, plaque 1234 TAA.">
++        <input id="vehicleInfo" name="vehicleInfo" maxLength={200} className={inputClass} />
++      </Field>
++      <Field id="driverName" label="Nom du chauffeur">
++        <input id="driverName" name="driverName" maxLength={150} className={inputClass} />
++      </Field>
++
++      <h3 className={sectionClass}>Paiement</h3>
++
++      <Field id="amountDue" label="Montant à payer (MGA)">
++        <input
++          id="amountDue" type="number" inputMode="decimal" min="0.01" step="0.01" required
++          value={due} onChange={(event) => setDue(event.target.value)} className={inputClass}
++        />
++      </Field>
++
++      <Field id="paymentMethod" label="Mode de paiement">
++        <select
++          id="paymentMethod" value={method} onChange={(event) => setMethod(event.target.value)}
++          className={inputClass}
++        >
++          {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
++            <option key={value} value={value}>{label}</option>
++          ))}
++        </select>
++      </Field>
++
++      <Field
++        id="amountReceived"
++        label="Montant reçu (MGA)"
++        hint={isCash ? undefined : "Hors espèces, le paiement doit être exact."}
++      >
++        <input
++          id="amountReceived" type="number" inputMode="decimal" min="0.01" step="0.01" required
++          readOnly={!isCash} value={receivedValue} onChange={(event) => setReceived(event.target.value)}
++          className={`${inputClass} ${isCash ? "" : "bg-slate-100"}`}
++        />
++      </Field>
++
++      {!isCash && (
++        <Field id="reference" label="Référence du paiement" hint="Numéro de virement, de chèque ou de transaction.">
++          <input id="reference" name="reference" required maxLength={150} className={inputClass} />
++        </Field>
++      )}
++
++      {hasAmounts && isCash && (
++        <p
++          role="status"
++          className={`rounded-xl px-4 py-3 text-sm font-medium ${
++            change < 0 ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"
++          }`}
++        >
++          {change < 0
++            ? `Montant insuffisant : il manque ${formatMGA(-change)}. Le passage ne peut pas être enregistré.`
++            : change === 0
++              ? "Montant exact, aucune monnaie à rendre."
++              : `Monnaie à rendre : ${formatMGA(change)}.`}
++        </p>
++      )}
++
++      <h3 className={sectionClass}>Autres informations (facultatif)</h3>
++
++      <Field id="assignedAt" label="Date du passage" hint="Laissez vide pour utiliser la date d'aujourd'hui.">
++        <input id="assignedAt" name="assignedAt" type="date" className={inputClass} />
++      </Field>
++      <Field id="notes" label="Observations">
++        <textarea id="notes" name="notes" maxLength={2000} rows={2} className={inputClass} />
++      </Field>
++
++      {error && (
++        <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
++          {error}
++        </p>
++      )}
++      {success && (
++        <p role="status" className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
++          {success}
++        </p>
++      )}
++
++      <button
++        type="submit"
++        disabled={loading || (isCash && hasAmounts && change < 0)}
++        className="w-full rounded-xl bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
++      >
++        {loading ? "Enregistrement..." : "Enregistrer le passage et le paiement"}
++      </button>
++    </form>
++  );
++}
+diff --git a/app/dashboard/supervisors/[id]/page.tsx b/app/dashboard/supervisors/[id]/page.tsx
+new file mode 100644
+index 0000000..550bc7f
+--- /dev/null
++++ b/app/dashboard/supervisors/[id]/page.tsx
+@@ -0,0 +1,149 @@
++import { Suspense } from "react";
++import Link from "next/link";
++import { notFound, redirect } from "next/navigation";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import { formatMGA } from "@/lib/audit";
++import { fetchAuditRows } from "@/lib/audit-rows";
++import { FICHE_PAGE_SIZE, PASSAGE_ROW_SELECT } from "@/lib/passage-rows";
++import AuditTable from "../../audit-table";
++import PassagesTable from "../../passages-table";
++import Pager from "../../pager";
++
++type Props = {
++  params: Promise<{ id: string }>;
++  searchParams: Promise<{ page?: string | string[] }>;
++};
++
++export default function SupervisorSheetPage(props: Props) {
++  return (
++    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
++      <Suspense fallback={<p>Chargement...</p>}>
++        <SupervisorSheet {...props} />
++      </Suspense>
++    </main>
++  );
++}
++
++function Stat({ label, value }: { label: string; value: string | number }) {
++  return (
++    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
++      <p className="text-sm font-medium text-slate-700">{label}</p>
++      <p className="mt-2 break-words text-2xl font-bold text-slate-900">{value}</p>
++    </div>
++  );
++}
++
++async function SupervisorSheet({ params, searchParams }: Props) {
++  const user = await getCurrentUser();
++  if (!user) redirect("/login");
++  if (user.role !== "ADMIN") redirect("/dashboard");
++
++  const { id } = await params;
++  const query = await searchParams;
++  const requestedPage = Number.parseInt(String(Array.isArray(query.page) ? query.page[0] : query.page ?? "1"), 10);
++
++  const supervisor = await prisma.supervisor.findUnique({
++    where: { id },
++    select: {
++      id: true,
++      userId: true,
++      nationalId: true,
++      address: true,
++      assignedLocation: { select: { id: true, name: true } },
++      user: { select: { firstName: true, lastName: true, email: true, phoneNumber: true, isActive: true } },
++    },
++  });
++
++  if (!supervisor) notFound();
++
++  const [total, tonnage, payments] = await Promise.all([
++    prisma.passage.count({ where: { supervisorId: id } }),
++    prisma.product.aggregate({ where: { passage: { is: { supervisorId: id } } }, _sum: { tonnage: true } }),
++    prisma.payment.aggregate({
++      where: { passage: { is: { supervisorId: id } } },
++      _sum: { amountReceived: true },
++    }),
++  ]);
++
++  const pageCount = Math.max(1, Math.ceil(total / FICHE_PAGE_SIZE));
++  const page = Math.min(Math.max(Number.isFinite(requestedPage) ? requestedPage : 1, 1), pageCount);
++
++  const [passages, activity, accountEvents] = await Promise.all([
++    prisma.passage.findMany({
++      where: { supervisorId: id },
++      orderBy: { assignedAt: "desc" },
++      skip: (page - 1) * FICHE_PAGE_SIZE,
++      take: FICHE_PAGE_SIZE,
++      select: PASSAGE_ROW_SELECT,
++    }),
++    // Tout ce que ce régisseur a fait dans l'application.
++    fetchAuditRows({ where: { userId: supervisor.userId }, take: 20 }),
++    // Ce que l'administrateur a fait sur son compte (lieu, désactivation, mot de passe).
++    fetchAuditRows({ where: { entityType: "Supervisor", entityId: id }, take: 20 }),
++  ]);
++
++  const name = `${supervisor.user.firstName} ${supervisor.user.lastName}`;
++
++  return (
++    <div className="mx-auto max-w-7xl">
++      <Link href="/dashboard/supervisors" className="text-sm font-medium text-blue-700 hover:underline">
++        &larr; Retour aux régisseurs
++      </Link>
++
++      <header className="my-6">
++        <h1 className="text-3xl font-bold text-slate-900">{name}</h1>
++        <p className="mt-2 text-slate-700">
++          {supervisor.user.email}
++          {supervisor.user.phoneNumber ? ` — ${supervisor.user.phoneNumber}` : ""} — CIN {supervisor.nationalId}
++        </p>
++        <p className="mt-1 text-slate-700">
++          Lieu :{" "}
++          {supervisor.assignedLocation ? (
++            <Link href={`/dashboard/locations/${supervisor.assignedLocation.id}`} className="font-medium text-blue-700 hover:underline">
++              {supervisor.assignedLocation.name}
++            </Link>
++          ) : (
++            "non affecté"
++          )}
++          {" — "}
++          Compte {supervisor.user.isActive ? "actif" : "désactivé"}
++        </p>
++      </header>
++
++      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
++        <Stat label="Passages enregistrés" value={total} />
++        <Stat label="Tonnage cumulé" value={`${Number(tonnage._sum.tonnage ?? 0).toLocaleString("fr-FR")} t`} />
++        <Stat label="Montant reçu" value={formatMGA(payments._sum.amountReceived ?? 0)} />
++      </div>
++
++      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
++        <h2 className="mb-5 text-xl font-semibold text-slate-900">Passages enregistrés par {name}</h2>
++        {passages.length === 0 ? (
++          <p className="text-slate-700">Ce régisseur n&apos;a encore enregistré aucun passage.</p>
++        ) : (
++          <>
++            <PassagesTable rows={passages} showSupervisor={false} />
++            <Pager basePath={`/dashboard/supervisors/${id}`} page={page} pageCount={pageCount} />
++          </>
++        )}
++      </section>
++
++      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
++        <h2 className="mb-5 text-xl font-semibold text-slate-900">Activité récente de {name}</h2>
++        {activity.rows.length === 0 ? (
++          <p className="text-slate-700">Aucune opération enregistrée.</p>
++        ) : (
++          <AuditTable rows={activity.rows} locationNames={activity.locationNames} showAuthor={false} />
++        )}
++      </section>
++
++      {accountEvents.rows.length > 0 && (
++        <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
++          <h2 className="mb-5 text-xl font-semibold text-slate-900">Opérations sur ce compte</h2>
++          <AuditTable rows={accountEvents.rows} locationNames={accountEvents.locationNames} />
++        </section>
++      )}
++    </div>
++  );
++}
+diff --git a/app/dashboard/supervisors/page.tsx b/app/dashboard/supervisors/page.tsx
+index e096cfe..04deb96 100644
+--- a/app/dashboard/supervisors/page.tsx
++++ b/app/dashboard/supervisors/page.tsx
+@@ -101,8 +101,10 @@ async function SupervisorsContent() {
+                   <tbody className="divide-y divide-slate-100">
+                     {supervisors.map((item) => (
+                       <tr key={item.id} className="align-top">
+-                        <td className="px-3 py-4 font-medium text-slate-900">
+-                          {item.user.firstName} {item.user.lastName}
++                        <td className="px-3 py-4 font-medium">
++                          <Link href={`/dashboard/supervisors/${item.id}`} className="text-blue-700 hover:underline">
++                            {item.user.firstName} {item.user.lastName}
++                          </Link>
+                         </td>
+                         <td className="px-3 py-4">{item.user.email}</td>
+                         <td className="px-3 py-4">{item.nationalId}</td>
+diff --git a/lib/audit-rows.ts b/lib/audit-rows.ts
+new file mode 100644
+index 0000000..4a3cd26
+--- /dev/null
++++ b/lib/audit-rows.ts
+@@ -0,0 +1,78 @@
++import { prisma } from "@/lib/prisma";
++
++export const AUDIT_SELECT = {
++  id: true,
++  action: true,
++  entityType: true,
++  entityId: true,
++  details: true,
++  createdAt: true,
++  user: { select: { firstName: true, lastName: true, email: true, role: true } },
++} as const;
++
++// Charge des lignes du journal et complète les anciens logs de paiement
++// (créés avant que le montant soit écrit dans les détails) en relisant le paiement lui-même,
++// qui n'est jamais modifié après création.
++export async function fetchAuditRows(args: { where: object; skip?: number; take: number }) {
++  const [logs, locations] = await Promise.all([
++    prisma.auditLog.findMany({
++      where: args.where,
++      orderBy: { createdAt: "desc" },
++      skip: args.skip ?? 0,
++      take: args.take,
++      select: AUDIT_SELECT,
++    }),
++    prisma.location.findMany({ select: { id: true, name: true } }),
++  ]);
++
++  const legacyIds = logs
++    .filter((log) => {
++      const details = log.details as Record<string, unknown> | null;
++      return (
++        log.entityType === "Payment" &&
++        log.action === "CREATE" &&
++        log.entityId &&
++        details?.amountReceived === undefined
++      );
++    })
++    .map((log) => log.entityId as string);
++
++  const payments =
++    legacyIds.length > 0
++      ? await prisma.payment.findMany({
++          where: { id: { in: legacyIds } },
++          select: {
++            id: true,
++            amountDue: true,
++            amountReceived: true,
++            changeReturned: true,
++            paymentMethod: true,
++            reference: true,
++          },
++        })
++      : [];
++  const byId = new Map(payments.map((payment) => [payment.id, payment]));
++
++  const rows = logs.map((log) => {
++    const base = (
++      log.details && typeof log.details === "object" && !Array.isArray(log.details) ? log.details : {}
++    ) as Record<string, unknown>;
++    const legacy = log.entityId ? byId.get(log.entityId) : undefined;
++
++    return {
++      ...log,
++      details: legacy
++        ? {
++            ...base,
++            amountDue: String(legacy.amountDue),
++            amountReceived: String(legacy.amountReceived),
++            changeReturned: String(legacy.changeReturned),
++            paymentMethod: legacy.paymentMethod,
++            reference: legacy.reference,
++          }
++        : base,
++    };
++  });
++
++  return { rows, locationNames: Object.fromEntries(locations.map((l) => [l.id, l.name])) };
++}
+diff --git a/lib/audit.ts b/lib/audit.ts
+index 206a6d7..dbb7616 100644
+--- a/lib/audit.ts
++++ b/lib/audit.ts
+@@ -16,9 +16,10 @@ export const ACTION_LABELS: Record<string, string> = {
+ export const ENTITY_LABELS: Record<string, string> = {
+   Location: "Lieu",
+   Supervisor: "Régisseur",
+-  Driver: "Chauffeur",
+-  Vehicle: "Véhicule",
+-  TransportAssignment: "Transport",
++  Driver: "Chauffeur", // historique : les chauffeurs ne sont plus gérés
++  Vehicle: "Véhicule", // historique : les véhicules ne sont plus gérés
++  Passage: "Passage",
++  TransportAssignment: "Passage", // anciens enregistrements du journal
+   Payment: "Paiement",
+ };
+ 
+@@ -113,6 +114,17 @@ export function describeAudit(
+     if (from && to) {
+       lines.push(`Statut : ${TRANSPORT_STATUS_LABELS[from] ?? from} → ${TRANSPORT_STATUS_LABELS[to] ?? to}`);
+     }
++  } else if (
++    (entityType === "Passage" || entityType === "TransportAssignment") &&
++    action === "CREATE" &&
++    (details.origin !== undefined || details.productName !== undefined)
++  ) {
++    const product = str(details.productName);
++    const tonnage = details.tonnage !== undefined ? ` (${Number(details.tonnage).toLocaleString("fr-FR")} t)` : "";
++    if (product) lines.push(`Produit : ${product}${tonnage}`);
++    const origin = str(details.origin) ?? "—";
++    const destination = str(details.destination) ?? "—";
++    lines.push(`Trajet : ${origin} → ${destination}`);
+   } else if (action === "SET_TRANSPORT_AMOUNT" || (entityType === "TransportAssignment" && action === "CREATE")) {
+     if (details.amountDue !== undefined) lines.push(`Montant officiel : ${formatMGA(details.amountDue)}`);
+   } else if (action === "CHANGE_LOCATION") {
+diff --git a/lib/details-types.ts b/lib/details-types.ts
+index 0b6d785..52b8ca9 100644
+--- a/lib/details-types.ts
++++ b/lib/details-types.ts
+@@ -6,6 +6,7 @@ export type Cell = {
+   t: string; // texte affiché
+   s?: number | string; // valeur de tri (nombre, date...) si différente du texte
+   badge?: Badge; // affiche une pastille avec icône + libellé
++  href?: string; // rend le texte cliquable (fiche d'un régisseur ou d'un lieu)
+ };
+ 
+ export type Column = { key: string; label: string; align?: "right" };
+diff --git a/lib/details.ts b/lib/details.ts
+index b4ba214..5f96dd9 100644
+--- a/lib/details.ts
++++ b/lib/details.ts
+@@ -1,37 +1,23 @@
+ import { prisma } from "@/lib/prisma";
+-import {
+-  PAYMENT_METHOD_LABELS,
+-  TRANSPORT_STATUS_LABELS,
+-  formatMGA,
+-} from "@/lib/audit";
+-import type { Badge, Cell, Column, DetailsResult, DetailsRow } from "@/lib/details-types";
++import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
++import type { Cell, Column, DetailsResult, DetailsRow } from "@/lib/details-types";
+ 
+ export const DETAIL_LIMIT = 200;
+ 
+-const STATUS_KEYS = Object.keys(TRANSPORT_STATUS_LABELS);
+-
+-export const SIMPLE_KINDS = [
++export const DETAIL_KINDS = [
+   "locations",
+   "supervisors",
+-  "drivers",
+-  "vehicles",
+-  "transports",
+-  "products",
++  "passages",
+   "tonnage",
+-  "payments",
+   "received",
+   "change",
+-  "outstanding",
+ ] as const;
+ 
+ // Ces deux listes n'ont pas de sens pour un régisseur (un seul lieu, pas d'autres comptes).
+ const ADMIN_ONLY = new Set<string>(["locations", "supervisors"]);
+ 
+ export function isDetailKind(kind: string): boolean {
+-  return (
+-    (SIMPLE_KINDS as readonly string[]).includes(kind) ||
+-    (kind.startsWith("status-") && STATUS_KEYS.includes(kind.slice(7)))
+-  );
++  return (DETAIL_KINDS as readonly string[]).includes(kind);
+ }
+ 
+ export function isAdminOnlyKind(kind: string): boolean {
+@@ -68,20 +54,13 @@ const fullName = (p?: { firstName: string; lastName: string } | null) =>
+ const activeBadge = (isActive: boolean): Cell =>
+   isActive ? text("Actif", { badge: "ok" }) : text("Inactif", { badge: "muted" });
+ 
+-const STATUS_BADGES: Record<string, Badge> = {
+-  PLANNED: "info",
+-  IN_PROGRESS: "warn",
+-  COMPLETED: "ok",
+-  CANCELLED: "bad",
+-};
+-const statusCell = (status: string): Cell =>
+-  text(TRANSPORT_STATUS_LABELS[status] ?? status, { badge: STATUS_BADGES[status] ?? "muted" });
+-
+ const col = (key: string, label: string, align?: "right"): Column => ({ key, label, align });
+ const locationColumn = (admin: boolean): Column[] => (admin ? [col("location", "Lieu")] : []);
+ const withLocation = (admin: boolean, name?: string | null): Record<string, Cell> =>
+   admin ? { location: text(name ?? "—") } : {};
+ 
++const tonnageText = (value: unknown) => `${Number(value ?? 0).toLocaleString("fr-FR")} t`;
++
+ export async function getDetails(
+   kind: string,
+   scope: DetailScope,
+@@ -90,11 +69,8 @@ export async function getDetails(
+   const { admin } = scope;
+   const list = words(rawQuery);
+   const loc = scope.locationId ? { locationId: scope.locationId } : {};
+-  // Filtre « transport du lieu » pour les tables liées (produits, paiements).
+-  const viaAssignment = (extra: object = {}) =>
+-    scope.locationId || Object.keys(extra).length > 0
+-      ? { assignment: { is: { ...loc, ...extra } } }
+-      : {};
++  // Filtre « passage du lieu » pour les paiements.
++  const viaPassage = scope.locationId ? { passage: { is: { locationId: scope.locationId } } } : {};
+ 
+   const locations = admin
+     ? await prisma.location.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } })
+@@ -114,9 +90,9 @@ export async function getDetails(
+     truncated: count > rows.length,
+     columns,
+     rows,
+-    // Les pages « complètes » des chauffeurs, véhicules, transports et paiements
+-    // sont réservées aux régisseurs.
+-    href: admin && !["locations", "supervisors"].includes(kind) ? null : href,
++    // La page « Passages » est réservée aux régisseurs ; l'administrateur a les fiches
++    // des lieux et des régisseurs.
++    href: admin && !ADMIN_ONLY.has(kind) ? null : href,
+     locations,
+   });
+ 
+@@ -136,7 +112,7 @@ export async function getDetails(
+           select: {
+             id: true,
+             name: true,
+-            _count: { select: { supervisors: true, drivers: true, vehicles: true, assignments: true } },
++            _count: { select: { supervisors: true, passages: true } },
+           },
+         }),
+       ]);
+@@ -147,18 +123,14 @@ export async function getDetails(
+         [
+           col("name", "Lieu"),
+           col("supervisors", "Régisseurs", "right"),
+-          col("drivers", "Chauffeurs", "right"),
+-          col("vehicles", "Véhicules", "right"),
+-          col("transports", "Transports", "right"),
++          col("passages", "Passages", "right"),
+         ],
+         rows.map((r) => ({
+           id: r.id,
+           cells: {
+-            name: text(r.name),
++            name: text(r.name, { href: `/dashboard/locations/${r.id}` }),
+             supervisors: num(r._count.supervisors, String(r._count.supervisors)),
+-            drivers: num(r._count.drivers, String(r._count.drivers)),
+-            vehicles: num(r._count.vehicles, String(r._count.vehicles)),
+-            transports: num(r._count.assignments, String(r._count.assignments)),
++            passages: num(r._count.passages, String(r._count.passages)),
+           },
+         })),
+         "/dashboard/locations",
+@@ -166,9 +138,8 @@ export async function getDetails(
+     }
+ 
+     case "supervisors": {
+-      const base = loc;
+       const where = {
+-        ...base,
++        ...loc,
+         ...andWords(list, (w) => [
+           { user: { firstName: has(w) } },
+           { user: { lastName: has(w) } },
+@@ -178,7 +149,7 @@ export async function getDetails(
+       };
+       const [count, total, rows] = await Promise.all([
+         prisma.supervisor.count({ where }),
+-        prisma.supervisor.count({ where: base }),
++        prisma.supervisor.count({ where: loc }),
+         prisma.supervisor.findMany({
+           where,
+           orderBy: { user: { lastName: "asc" } },
+@@ -188,6 +159,7 @@ export async function getDetails(
+             nationalId: true,
+             assignedLocation: { select: { name: true } },
+             user: { select: { firstName: true, lastName: true, email: true, isActive: true } },
++            _count: { select: { passages: true } },
+           },
+         }),
+       ]);
+@@ -195,199 +167,33 @@ export async function getDetails(
+         "Régisseurs",
+         String(total),
+         count,
+-        [col("name", "Nom"), col("email", "Email"), col("nationalId", "CIN"), ...locationColumn(admin), col("status", "Compte")],
+-        rows.map((r) => ({
+-          id: r.id,
+-          cells: {
+-            name: text(fullName(r.user)),
+-            email: text(r.user.email),
+-            nationalId: text(r.nationalId),
+-            ...withLocation(admin, r.assignedLocation?.name),
+-            status: activeBadge(r.user.isActive),
+-          },
+-        })),
+-        "/dashboard/supervisors",
+-      );
+-    }
+-
+-    case "drivers": {
+-      const where = {
+-        ...loc,
+-        ...andWords(list, (w) => [
+-          { firstName: has(w) },
+-          { lastName: has(w) },
+-          { nationalId: has(w) },
+-          { licenseNumber: has(w) },
+-          { phoneNumber: has(w) },
+-        ]),
+-      };
+-      const [count, total, rows] = await Promise.all([
+-        prisma.driver.count({ where }),
+-        prisma.driver.count({ where: loc }),
+-        prisma.driver.findMany({
+-          where,
+-          orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+-          take: DETAIL_LIMIT,
+-          select: {
+-            id: true,
+-            firstName: true,
+-            lastName: true,
+-            nationalId: true,
+-            licenseNumber: true,
+-            phoneNumber: true,
+-            isActive: true,
+-            assignedLocation: { select: { name: true } },
+-          },
+-        }),
+-      ]);
+-      return finish(
+-        "Chauffeurs",
+-        String(total),
+-        count,
+         [
+           col("name", "Nom"),
++          col("email", "Email"),
+           col("nationalId", "CIN"),
+-          col("license", "Permis"),
+-          col("phone", "Téléphone"),
+           ...locationColumn(admin),
+-          col("status", "Statut"),
++          col("passages", "Passages", "right"),
++          col("status", "Compte"),
+         ],
+         rows.map((r) => ({
+           id: r.id,
+           cells: {
+-            name: text(fullName(r)),
++            name: text(fullName(r.user), { href: `/dashboard/supervisors/${r.id}` }),
++            email: text(r.user.email),
+             nationalId: text(r.nationalId),
+-            license: text(r.licenseNumber),
+-            phone: text(r.phoneNumber ?? "—"),
+-            ...withLocation(admin, r.assignedLocation?.name),
+-            status: activeBadge(r.isActive),
+-          },
+-        })),
+-        "/dashboard/drivers",
+-      );
+-    }
+-
+-    case "vehicles": {
+-      const where = {
+-        ...loc,
+-        ...andWords(list, (w) => [
+-          { licensePlate: has(w) },
+-          { vehicleType: has(w) },
+-          { driver: { firstName: has(w) } },
+-          { driver: { lastName: has(w) } },
+-        ]),
+-      };
+-      const [count, total, rows] = await Promise.all([
+-        prisma.vehicle.count({ where }),
+-        prisma.vehicle.count({ where: loc }),
+-        prisma.vehicle.findMany({
+-          where,
+-          orderBy: { licensePlate: "asc" },
+-          take: DETAIL_LIMIT,
+-          select: {
+-            id: true,
+-            licensePlate: true,
+-            vehicleType: true,
+-            isActive: true,
+-            driver: { select: { firstName: true, lastName: true } },
+-            assignedLocation: { select: { name: true } },
+-          },
+-        }),
+-      ]);
+-      return finish(
+-        "Véhicules",
+-        String(total),
+-        count,
+-        [
+-          col("plate", "Immatriculation"),
+-          col("type", "Type"),
+-          col("driver", "Chauffeur"),
+-          ...locationColumn(admin),
+-          col("status", "Statut"),
+-        ],
+-        rows.map((r) => ({
+-          id: r.id,
+-          cells: {
+-            plate: text(r.licensePlate),
+-            type: text(r.vehicleType),
+-            driver: text(fullName(r.driver)),
+             ...withLocation(admin, r.assignedLocation?.name),
+-            status: activeBadge(r.isActive),
+-          },
+-        })),
+-        "/dashboard/vehicles",
+-      );
+-    }
+-
+-    case "products":
+-    case "tonnage": {
+-      // Le tonnage cumulé ne compte pas les transports annulés.
+-      const base = kind === "tonnage" ? viaAssignment({ status: { not: "CANCELLED" } }) : viaAssignment();
+-      const where = {
+-        AND: [
+-          base,
+-          andWords(list, (w) => [{ name: has(w) }, { type: has(w) }]),
+-        ],
+-      };
+-      const [count, sum, total, rows] = await Promise.all([
+-        prisma.product.count({ where }),
+-        prisma.product.aggregate({ where: base, _sum: { tonnage: true } }),
+-        prisma.product.count({ where: base }),
+-        prisma.product.findMany({
+-          where,
+-          orderBy: { createdAt: "desc" },
+-          take: DETAIL_LIMIT,
+-          select: {
+-            id: true,
+-            name: true,
+-            type: true,
+-            tonnage: true,
+-            assignment: {
+-              select: {
+-                assignedAt: true,
+-                status: true,
+-                vehicle: { select: { licensePlate: true } },
+-                assignedLocation: { select: { name: true } },
+-              },
+-            },
+-          },
+-        }),
+-      ]);
+-      const tonnageText = (v: unknown) => `${Number(v ?? 0).toLocaleString("fr-FR")} t`;
+-      return finish(
+-        kind === "tonnage" ? "Tonnage cumulé" : "Produits",
+-        kind === "tonnage" ? tonnageText(sum._sum.tonnage) : String(total),
+-        count,
+-        [
+-          col("name", "Produit"),
+-          col("type", "Type"),
+-          col("tonnage", "Tonnage", "right"),
+-          col("transport", "Transport lié"),
+-          ...locationColumn(admin),
+-          col("status", "Statut"),
+-        ],
+-        rows.map((r) => ({
+-          id: r.id,
+-          cells: {
+-            name: text(r.name),
+-            type: text(r.type),
+-            tonnage: num(r.tonnage, tonnageText(r.tonnage)),
+-            transport: r.assignment
+-              ? { t: `${dateFormatter.format(r.assignment.assignedAt)} · ${r.assignment.vehicle.licensePlate}`, s: r.assignment.assignedAt.getTime() }
+-              : text("—"),
+-            ...withLocation(admin, r.assignment?.assignedLocation?.name),
+-            status: r.assignment ? statusCell(r.assignment.status) : text("—"),
++            passages: num(r._count.passages, String(r._count.passages)),
++            status: activeBadge(r.user.isActive),
+           },
+         })),
+-        "/dashboard/transports",
++        "/dashboard/supervisors",
+       );
+     }
+ 
+-    case "payments":
+     case "received":
+     case "change": {
+       const base = {
+-        ...viaAssignment(),
++        ...viaPassage,
+         ...(kind === "change" ? { changeReturned: { gt: 0 } } : {}),
+       };
+       const where = {
+@@ -395,8 +201,9 @@ export async function getDetails(
+           base,
+           andWords(list, (w) => [
+             { reference: has(w) },
+-            { assignment: { product: { name: has(w) } } },
+-            { assignment: { vehicle: { licensePlate: has(w) } } },
++            { passage: { product: { name: has(w) } } },
++            { passage: { origin: has(w) } },
++            { passage: { destination: has(w) } },
+             { recordedBy: { firstName: has(w) } },
+             { recordedBy: { lastName: has(w) } },
+           ]),
+@@ -406,7 +213,6 @@ export async function getDetails(
+         prisma.payment.count({ where }),
+         prisma.payment.aggregate({
+           where: base,
+-          _count: { _all: true },
+           _sum: { amountReceived: true, changeReturned: true },
+         }),
+         prisma.payment.findMany({
+@@ -422,29 +228,25 @@ export async function getDetails(
+             amountReceived: true,
+             changeReturned: true,
+             recordedBy: { select: { firstName: true, lastName: true } },
+-            assignment: {
++            passage: {
+               select: {
++                origin: true,
++                destination: true,
+                 product: { select: { name: true } },
+-                vehicle: { select: { licensePlate: true } },
+                 assignedLocation: { select: { name: true } },
+               },
+             },
+           },
+         }),
+       ]);
+-      const total =
+-        kind === "received"
+-          ? formatMGA(agg._sum.amountReceived ?? 0)
+-          : kind === "change"
+-            ? formatMGA(agg._sum.changeReturned ?? 0)
+-            : String(agg._count._all);
+       return finish(
+-        kind === "received" ? "Montant reçu" : kind === "change" ? "Monnaie rendue" : "Paiements",
+-        total,
++        kind === "received" ? "Montant reçu" : "Monnaie rendue",
++        formatMGA((kind === "received" ? agg._sum.amountReceived : agg._sum.changeReturned) ?? 0),
+         count,
+         [
+           col("date", "Date"),
+-          col("transport", "Transport"),
++          col("product", "Produit"),
++          col("route", "Trajet"),
+           col("method", "Mode"),
+           col("due", "Dû", "right"),
+           col("received", "Reçu", "right"),
+@@ -456,7 +258,8 @@ export async function getDetails(
+           id: r.id,
+           cells: {
+             date: date(r.createdAt),
+-            transport: text(`${r.assignment.product.name} · ${r.assignment.vehicle.licensePlate}`),
++            product: text(r.passage.product.name),
++            route: text(`${r.passage.origin} → ${r.passage.destination}`),
+             method: text(
+               `${PAYMENT_METHOD_LABELS[r.paymentMethod] ?? r.paymentMethod}${r.reference ? ` (${r.reference})` : ""}`,
+             ),
+@@ -464,92 +267,83 @@ export async function getDetails(
+             received: num(r.amountReceived, formatMGA(r.amountReceived)),
+             change: num(r.changeReturned, formatMGA(r.changeReturned)),
+             by: text(fullName(r.recordedBy)),
+-            ...withLocation(admin, r.assignment.assignedLocation?.name),
++            ...withLocation(admin, r.passage.assignedLocation?.name),
+           },
+         })),
+-        "/dashboard/payments",
++        "/dashboard/passages",
+       );
+     }
+ 
+     default: {
+-      // transports, outstanding, status-XXX
+-      const statusFilter = kind.startsWith("status-") ? kind.slice(7) : null;
+-      const base = {
+-        ...loc,
+-        ...(statusFilter ? { status: statusFilter as "PLANNED" } : {}),
+-        ...(kind === "outstanding"
+-          ? { status: { not: "CANCELLED" as const }, payment: { is: null }, amountDue: { not: null } }
+-          : {}),
+-      };
++      // passages, tonnage : la même liste de passages, avec un total différent.
+       const where = {
+         AND: [
+-          base,
++          loc,
+           andWords(list, (w) => [
+             { product: { name: has(w) } },
+-            { vehicle: { licensePlate: has(w) } },
+-            { driver: { firstName: has(w) } },
+-            { driver: { lastName: has(w) } },
+-            { vehicle: { driver: { lastName: has(w) } } },
++            { product: { type: has(w) } },
++            { origin: has(w) },
++            { destination: has(w) },
++            { vehicleInfo: has(w) },
++            { driverName: has(w) },
++            { supervisor: { user: { lastName: has(w) } } },
++            { supervisor: { user: { firstName: has(w) } } },
+           ]),
+         ],
+       };
+       const [count, total, sum, rows] = await Promise.all([
+-        prisma.transportAssignment.count({ where }),
+-        prisma.transportAssignment.count({ where: base }),
+-        prisma.transportAssignment.aggregate({ where: base, _sum: { amountDue: true } }),
+-        prisma.transportAssignment.findMany({
++        prisma.passage.count({ where }),
++        prisma.passage.count({ where: loc }),
++        prisma.product.aggregate({
++          where: scope.locationId ? { passage: { is: { locationId: scope.locationId } } } : {},
++          _sum: { tonnage: true },
++        }),
++        prisma.passage.findMany({
+           where,
+           orderBy: { assignedAt: "desc" },
+           take: DETAIL_LIMIT,
+           select: {
+             id: true,
+             assignedAt: true,
+-            status: true,
+-            amountDue: true,
+-            product: { select: { name: true, tonnage: true } },
+-            vehicle: { select: { licensePlate: true, driver: { select: { firstName: true, lastName: true } } } },
+-            driver: { select: { firstName: true, lastName: true } },
++            origin: true,
++            destination: true,
++            product: { select: { name: true, type: true, tonnage: true } },
++            supervisor: { select: { user: { select: { firstName: true, lastName: true } } } },
+             assignedLocation: { select: { name: true } },
+-            payment: { select: { id: true } },
++            payment: { select: { paymentMethod: true, amountDue: true } },
+           },
+         }),
+       ]);
+-      const title = statusFilter
+-        ? `Transports : ${TRANSPORT_STATUS_LABELS[statusFilter]}`
+-        : kind === "outstanding"
+-          ? "Reste à encaisser"
+-          : "Transports";
+       return finish(
+-        title,
+-        kind === "outstanding" ? formatMGA(sum._sum.amountDue ?? 0) : String(total),
++        kind === "tonnage" ? "Tonnage cumulé" : "Passages",
++        kind === "tonnage" ? tonnageText(sum._sum.tonnage) : String(total),
+         count,
+         [
+           col("date", "Date"),
+           col("product", "Produit"),
+           col("tonnage", "Tonnage", "right"),
+-          col("vehicle", "Véhicule"),
+-          col("driver", "Chauffeur"),
+-          col("amount", "Montant", "right"),
+-          col("status", "Statut"),
+-          col("payment", "Paiement"),
++          col("origin", "Origine"),
+           ...locationColumn(admin),
++          col("destination", "Destination"),
++          col("amount", "Montant payé", "right"),
++          col("method", "Mode"),
++          col("by", "Enregistré par"),
+         ],
+         rows.map((r) => ({
+           id: r.id,
+           cells: {
+             date: date(r.assignedAt),
+             product: text(r.product.name),
+-            tonnage: num(r.product.tonnage, `${Number(r.product.tonnage).toLocaleString("fr-FR")} t`),
+-            vehicle: text(r.vehicle.licensePlate),
+-            // Chauffeur au moment du transport, sinon celui du véhicule (anciens transports).
+-            driver: text(fullName(r.driver ?? r.vehicle.driver)),
+-            amount: r.amountDue === null ? text("Non fixé") : num(r.amountDue, formatMGA(r.amountDue)),
+-            status: statusCell(r.status),
+-            payment: r.payment ? text("Payé", { badge: "ok" }) : text("Non payé", { badge: "warn" }),
++            tonnage: num(r.product.tonnage, tonnageText(r.product.tonnage)),
++            origin: text(r.origin),
+             ...withLocation(admin, r.assignedLocation?.name),
++            destination: text(r.destination),
++            amount: r.payment ? num(r.payment.amountDue, formatMGA(r.payment.amountDue)) : text("—"),
++            method: text(r.payment ? (PAYMENT_METHOD_LABELS[r.payment.paymentMethod] ?? r.payment.paymentMethod) : "—"),
++            by: text(fullName(r.supervisor.user)),
+           },
+         })),
+-        "/dashboard/transports",
++        "/dashboard/passages",
+       );
+     }
+   }
+diff --git a/lib/passage-rows.ts b/lib/passage-rows.ts
+new file mode 100644
+index 0000000..376647a
+--- /dev/null
++++ b/lib/passage-rows.ts
+@@ -0,0 +1,15 @@
++// Sélection commune pour afficher des passages (fiches des régisseurs et des lieux).
++export const PASSAGE_ROW_SELECT = {
++  id: true,
++  assignedAt: true,
++  origin: true,
++  destination: true,
++  vehicleInfo: true,
++  driverName: true,
++  product: { select: { name: true, type: true, tonnage: true } },
++  supervisor: { select: { id: true, user: { select: { firstName: true, lastName: true } } } },
++  assignedLocation: { select: { id: true, name: true } },
++  payment: { select: { paymentMethod: true, reference: true, amountDue: true } },
++} as const;
++
++export const FICHE_PAGE_SIZE = 20;
+diff --git a/lib/payment-rules.ts b/lib/payment-rules.ts
+new file mode 100644
+index 0000000..770636f
+--- /dev/null
++++ b/lib/payment-rules.ts
+@@ -0,0 +1,42 @@
++// Règles de paiement d'un passage (montants en centimes pour éviter les erreurs d'arrondi).
++
++export const PAYMENT_METHODS = ["CASH", "BANK_TRANSFER", "CHECK", "MOBILE_MONEY", "OTHER"] as const;
++export type PaymentMethodValue = (typeof PAYMENT_METHODS)[number];
++
++export function isPaymentMethod(value: string): value is PaymentMethodValue {
++  return (PAYMENT_METHODS as readonly string[]).includes(value);
++}
++
++// "12500.50" -> 1250050 ; null si le texte n'est pas un montant valide (2 décimales max).
++export function parseCents(value: string): number | null {
++  if (!/^\d{1,12}(?:\.\d{1,2})?$/.test(value)) return null;
++  const [whole, fraction = ""] = value.split(".");
++  return Number(whole) * 100 + Number((fraction + "00").slice(0, 2));
++}
++
++export function toDecimal(cents: number): string {
++  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
++}
++
++export type PaymentCheck =
++  | { ok: true; changeCents: number }
++  | { ok: false; error: "INSUFFICIENT" | "EXACT_REQUIRED" };
++
++// Espèces : le montant reçu couvre au moins le montant dû, la monnaie est rendue.
++// Autres modes : montant exact et référence obligatoire. Jamais de paiement partiel.
++export function checkPayment(input: {
++  method: PaymentMethodValue;
++  reference: string;
++  dueCents: number;
++  receivedCents: number;
++}): PaymentCheck {
++  if (input.method === "CASH") {
++    if (input.receivedCents < input.dueCents) return { ok: false, error: "INSUFFICIENT" };
++    return { ok: true, changeCents: input.receivedCents - input.dueCents };
++  }
++
++  if (!input.reference || input.receivedCents !== input.dueCents) {
++    return { ok: false, error: "EXACT_REQUIRED" };
++  }
++  return { ok: true, changeCents: 0 };
++}
+diff --git a/prisma/migrations/20261029090000_passages_simplification/migration.sql b/prisma/migrations/20261029090000_passages_simplification/migration.sql
+new file mode 100644
+index 0000000..90706c7
+--- /dev/null
++++ b/prisma/migrations/20261029090000_passages_simplification/migration.sql
+@@ -0,0 +1,44 @@
++-- Simplification : un « passage » de produit n'existe que s'il est payé.
++-- Plus de statuts, plus de véhicules ni de chauffeurs gérés (simple description sur le passage).
++-- ATTENTION : cette migration supprime définitivement les transports non payés,
++-- les chauffeurs et les véhicules (leurs informations sont recopiées en texte sur chaque passage).
++
++-- 1. Un transport sans paiement n'a jamais eu lieu : on l'écarte, avec son produit.
++DELETE FROM "TransportAssignment" AS ta
++WHERE NOT EXISTS (SELECT 1 FROM "Payment" AS p WHERE p."assignmentId" = ta."id");
++
++DELETE FROM "Product" AS pr
++WHERE NOT EXISTS (SELECT 1 FROM "TransportAssignment" AS ta WHERE ta."productId" = pr."id");
++
++-- 2. Nouvelles colonnes : trajet et informations libres.
++ALTER TABLE "TransportAssignment"
++  ADD COLUMN "origin" TEXT NOT NULL DEFAULT 'Non renseignée',
++  ADD COLUMN "destination" TEXT NOT NULL DEFAULT 'Non renseignée',
++  ADD COLUMN "vehicleInfo" TEXT,
++  ADD COLUMN "driverName" TEXT;
++
++ALTER TABLE "TransportAssignment"
++  ALTER COLUMN "origin" DROP DEFAULT,
++  ALTER COLUMN "destination" DROP DEFAULT;
++
++-- 3. Reprise de l'existant : véhicule et chauffeur recopiés en texte sur chaque passage.
++UPDATE "TransportAssignment" AS ta
++SET "vehicleInfo" = v."vehicleType" || ' — ' || v."licensePlate",
++    "driverName" = (
++      SELECT d."firstName" || ' ' || d."lastName"
++      FROM "Driver" AS d
++      WHERE d."id" = COALESCE(ta."driverId", v."driverId")
++    )
++FROM "Vehicle" AS v
++WHERE v."id" = ta."vehicleId";
++
++-- 4. Suppression de ce qui n'existe plus (les clés étrangères et index partent avec les colonnes).
++ALTER TABLE "TransportAssignment"
++  DROP COLUMN "vehicleId",
++  DROP COLUMN "driverId",
++  DROP COLUMN "status",
++  DROP COLUMN "amountDue";
++
++DROP TABLE "Vehicle";
++DROP TABLE "Driver";
++DROP TYPE "TransportStatus";
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+index 2f3dd03..f66d550 100644
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -23,13 +23,6 @@ enum PaymentMethod {
+   OTHER
+ }
+ 
+-enum TransportStatus {
+-  PLANNED
+-  IN_PROGRESS
+-  COMPLETED
+-  CANCELLED
+-}
+-
+ model User {
+   id           String   @id @default(cuid())
+   firstName    String
+@@ -60,11 +53,8 @@ model Supervisor {
+   createdAt  DateTime @default(now())
+   updatedAt  DateTime @updatedAt
+ 
+-  user        User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+-  assignments TransportAssignment[]
+-
+-  drivers  Driver[]  @relation("SupervisorDrivers")
+-  vehicles Vehicle[] @relation("SupervisorVehicles")
++  user     User      @relation(fields: [userId], references: [id], onDelete: Restrict)
++  passages Passage[]
+ 
+   locationId       String?
+   assignedLocation Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+@@ -73,52 +63,6 @@ model Supervisor {
+   @@index([location])
+ }
+ 
+-model Driver {
+-  id            String   @id @default(cuid())
+-  firstName     String
+-  lastName      String
+-  nationalId    String   @unique
+-  phoneNumber   String?
+-  licenseNumber String   @unique
+-  isActive      Boolean  @default(true)
+-  createdAt     DateTime @default(now())
+-  updatedAt     DateTime @updatedAt
+-
+-  vehicles    Vehicle[]
+-  assignments TransportAssignment[] @relation("AssignmentDriver")
+-
+-  supervisorId String?
+-  supervisor   Supervisor? @relation("SupervisorDrivers", fields: [supervisorId], references: [id], onDelete: Restrict)
+-
+-  locationId       String?
+-  assignedLocation Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+-
+-  @@index([locationId])
+-  @@index([supervisorId])
+-  @@index([lastName, firstName])
+-}
+-
+-model Vehicle {
+-  id           String   @id @default(cuid())
+-  vehicleType  String
+-  licensePlate String   @unique
+-  driverId     String
+-  isActive     Boolean  @default(true)
+-  createdAt    DateTime @default(now())
+-  updatedAt    DateTime @updatedAt
+-
+-  driver       Driver                @relation(fields: [driverId], references: [id], onDelete: Restrict)
+-  assignments  TransportAssignment[]
+-  supervisorId String?
+-  supervisor   Supervisor?           @relation("SupervisorVehicles", fields: [supervisorId], references: [id], onDelete: Restrict)
+-
+-  locationId       String?
+-  assignedLocation Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+-
+-  @@index([locationId])
+-  @@index([supervisorId])
+-}
+-
+ model Product {
+   id          String   @id @default(cuid())
+   name        String
+@@ -127,40 +71,36 @@ model Product {
+   description String?
+   createdAt   DateTime @default(now())
+ 
+-  assignment TransportAssignment?
++  passage Passage?
+ }
+ 
+-model TransportAssignment {
+-  id           String          @id @default(cuid())
++// Un passage : un produit qui passe par le lieu d'un régisseur, du lieu d'origine
++// vers la destination. Il n'existe que s'il est payé : le paiement est enregistré
++// en même temps (pas de statut, pas de « reste à payer »).
++model Passage {
++  id           String   @id @default(cuid())
+   supervisorId String
+-  productId    String          @unique
+-  vehicleId    String
+-  assignedAt   DateTime        @default(now())
+-  status       TransportStatus @default(PLANNED)
++  productId    String   @unique
++  assignedAt   DateTime @default(now())
++  origin       String
++  destination  String
++  vehicleInfo  String? // description libre du véhicule (facultatif)
++  driverName   String? // nom libre du chauffeur (facultatif)
+   notes        String?
+-  createdAt    DateTime        @default(now())
+-  updatedAt    DateTime        @updatedAt
++  createdAt    DateTime @default(now())
++  updatedAt    DateTime @updatedAt
+ 
+   supervisor Supervisor @relation(fields: [supervisorId], references: [id], onDelete: Restrict)
+   product    Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
+-  vehicle    Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+   payment    Payment?
+ 
+   locationId       String?
+   assignedLocation Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+ 
+-  amountDue Decimal? @db.Decimal(14, 2)
+-
+-  // Chauffeur au moment du transport : conserve l'historique si le vehicule change de chauffeur.
+-  driverId String?
+-  driver   Driver? @relation("AssignmentDriver", fields: [driverId], references: [id], onDelete: Restrict)
+-
+   @@index([locationId])
+   @@index([supervisorId])
+-  @@index([vehicleId])
+-  @@index([driverId])
+   @@index([assignedAt])
+-  @@index([status])
++  @@map("TransportAssignment")
+ }
+ 
+ model Payment {
+@@ -174,7 +114,7 @@ model Payment {
+   changeReturned Decimal       @default(0) @db.Decimal(14, 2)
+   createdAt      DateTime      @default(now())
+ 
+-  assignment TransportAssignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
++  passage    Passage             @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+   recordedBy User                @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+ 
+   @@index([assignmentId])
+@@ -207,9 +147,7 @@ model Location {
+   updatedAt      DateTime @updatedAt
+ 
+   supervisors Supervisor[]
+-  drivers     Driver[]
+-  vehicles    Vehicle[]
+-  assignments TransportAssignment[]
++  passages    Passage[]
+ }
+ 
+ model LoginFailure {
+diff --git a/tests/api/access-control.test.ts b/tests/api/access-control.test.ts
+index fd827ac..cf1001c 100644
+--- a/tests/api/access-control.test.ts
++++ b/tests/api/access-control.test.ts
+@@ -4,18 +4,13 @@ import { getCurrentUser } from "@/lib/auth";
+ import { resetFakePrisma, type FakePrisma } from "../helpers/fake-prisma";
+ import { ADMIN, SUPERVISOR, jsonRequest, params } from "../helpers/http";
+ 
+-import { POST as driversPost } from "@/app/api/drivers/route";
+-import { PUT as driversPut, PATCH as driversPatch } from "@/app/api/drivers/[id]/route";
+-import { POST as vehiclesPost } from "@/app/api/vehicles/route";
+-import { PUT as vehiclesPut, PATCH as vehiclesPatch } from "@/app/api/vehicles/[id]/route";
+-import { POST as transportsPost } from "@/app/api/transports/route";
+-import { PATCH as transportsPatch } from "@/app/api/transports/[id]/route";
+-import { POST as paymentsPost } from "@/app/api/payments/route";
++import { POST as passagesPost } from "@/app/api/passages/route";
+ import { POST as locationsPost } from "@/app/api/locations/route";
+ import { POST as supervisorsPost } from "@/app/api/supervisors/route";
+ import { PATCH as supervisorsPatch } from "@/app/api/supervisors/[id]/route";
+ import { POST as supervisorsPassword } from "@/app/api/supervisors/[id]/password/route";
+ import { GET as dbTest } from "@/app/api/db-test/route";
++import { GET as detailsGet } from "@/app/api/details/[kind]/route";
+ 
+ vi.mock("@/lib/prisma", async () => {
+   const { createFakePrisma } = await import("../helpers/fake-prisma");
+@@ -29,20 +24,11 @@ type Call = () => Promise<Response>;
+ 
+ const body = { x: "y" };
+ const post = (url: string) => jsonRequest(url, "POST", body);
+-const put = (url: string) => jsonRequest(url, "PUT", body);
+ const patch = (url: string) => jsonRequest(url, "PATCH", body);
+ 
+-// Routes réservées aux régisseurs : formulaires opérationnels.
++// Routes réservées aux régisseurs : enregistrement d'un passage et de son paiement.
+ const supervisorRoutes: Array<[string, Call]> = [
+-  ["POST /api/drivers", () => driversPost(post("/api/drivers"))],
+-  ["PUT /api/drivers/[id]", () => driversPut(put("/api/drivers/x"), params())],
+-  ["PATCH /api/drivers/[id]", () => driversPatch(patch("/api/drivers/x"), params())],
+-  ["POST /api/vehicles", () => vehiclesPost(post("/api/vehicles"))],
+-  ["PUT /api/vehicles/[id]", () => vehiclesPut(put("/api/vehicles/x"), params())],
+-  ["PATCH /api/vehicles/[id]", () => vehiclesPatch(patch("/api/vehicles/x"), params())],
+-  ["POST /api/transports", () => transportsPost(post("/api/transports"))],
+-  ["PATCH /api/transports/[id]", () => transportsPatch(patch("/api/transports/x"), params())],
+-  ["POST /api/payments", () => paymentsPost(post("/api/payments"))],
++  ["POST /api/passages", () => passagesPost(post("/api/passages"))],
+ ];
+ 
+ // Routes réservées à l'administrateur : lieux et comptes.
+@@ -70,6 +56,13 @@ beforeEach(() => {
+ });
+ 
+ describe("utilisateur non connecté : toute l'API est fermée", () => {
++  it("GET /api/details/[kind] → 401", async () => {
++    vi.mocked(getCurrentUser).mockResolvedValue(null);
++    const response = await detailsGet(new Request("http://localhost/api/details/passages"), { params: Promise.resolve({ kind: "passages" }) });
++    expect(response.status).toBe(401);
++    expectDatabaseUntouched();
++  });
++
+   it.each([...supervisorRoutes, ...adminRoutes])("%s → 401", async (_name, call) => {
+     vi.mocked(getCurrentUser).mockResolvedValue(null);
+     const response = await call();
+diff --git a/tests/api/passages.test.ts b/tests/api/passages.test.ts
+new file mode 100644
+index 0000000..7121942
+--- /dev/null
++++ b/tests/api/passages.test.ts
+@@ -0,0 +1,195 @@
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import { POST } from "@/app/api/passages/route";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import { auditEntries, resetFakePrisma, type FakePrisma } from "../helpers/fake-prisma";
++import { ADMIN, SUPERVISOR, jsonRequest, read } from "../helpers/http";
++
++vi.mock("@/lib/prisma", async () => {
++  const { createFakePrisma } = await import("../helpers/fake-prisma");
++  return { prisma: createFakePrisma() };
++});
++vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn() }));
++
++const db = prisma as unknown as FakePrisma;
++
++const valid = {
++  productName: "Riz blanc",
++  productType: "Céréale",
++  tonnage: "8.5",
++  origin: "Antsirabe",
++  destination: "Toamasina",
++  amountDue: "40000",
++  paymentMethod: "CASH",
++  amountReceived: "40000",
++};
++
++const send = (body: Record<string, unknown>) =>
++  POST(jsonRequest("/api/passages", "POST", { ...valid, ...body }));
++
++beforeEach(() => {
++  resetFakePrisma(db);
++  vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
++  db.supervisor.findUnique.mockResolvedValue({ id: "sup-1", locationId: "loc-1" });
++  db.product.create.mockResolvedValue({ id: "prod-1" });
++  db.passage.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
++    id: "pas-1",
++    assignedAt: new Date("2026-10-29T12:00:00Z"),
++    origin: data.origin,
++    destination: data.destination,
++    product: { name: "Riz blanc", type: "Céréale", tonnage: "8.50" },
++    payment: { id: "pay-1", ...(data.payment as { create: Record<string, unknown> }).create },
++  }));
++});
++
++const created = () => db.passage.create.mock.calls[0][0].data;
++const nothingWritten = () => {
++  expect(db.$transaction).not.toHaveBeenCalled();
++  expect(db.passage.create).not.toHaveBeenCalled();
++  expect(db.product.create).not.toHaveBeenCalled();
++};
++
++describe("accès", () => {
++  it("refuse un utilisateur non connecté", async () => {
++    vi.mocked(getCurrentUser).mockResolvedValue(null);
++    expect((await read(await send({}))).status).toBe(401);
++    nothingWritten();
++  });
++
++  it("refuse l'administrateur et les rôles non prévus", async () => {
++    for (const user of [ADMIN, { ...SUPERVISOR, role: "CASHIER" as const }]) {
++      vi.mocked(getCurrentUser).mockResolvedValue(user);
++      expect((await read(await send({}))).status).toBe(403);
++    }
++    nothingWritten();
++  });
++
++  it("refuse un régisseur sans lieu", async () => {
++    db.supervisor.findUnique.mockResolvedValue({ id: "sup-1", locationId: null });
++    expect((await read(await send({}))).status).toBe(403);
++    nothingWritten();
++  });
++});
++
++describe("un passage n'existe qu'avec son paiement", () => {
++  it("espèces avec monnaie : tout est créé ensemble", async () => {
++    const { status } = await read(await send({ amountReceived: "50000" }));
++
++    expect(status).toBe(201);
++    expect(db.$transaction).toHaveBeenCalledTimes(1);
++    expect(created()).toMatchObject({
++      productId: "prod-1",
++      supervisorId: "sup-1",
++      locationId: "loc-1",
++      origin: "Antsirabe",
++      destination: "Toamasina",
++      payment: {
++        create: {
++          recordedById: SUPERVISOR.id,
++          paymentMethod: "CASH",
++          amountDue: "40000.00",
++          amountReceived: "50000.00",
++          changeReturned: "10000.00",
++        },
++      },
++    });
++  });
++
++  it("virement exact avec référence", async () => {
++    const { status } = await read(
++      await send({ paymentMethod: "BANK_TRANSFER", reference: "VIR-1", amountReceived: "40000" }),
++    );
++    expect(status).toBe(201);
++    expect(created().payment).toMatchObject({
++      create: { paymentMethod: "BANK_TRANSFER", reference: "VIR-1", changeReturned: "0.00" },
++    });
++  });
++
++  it.each([
++    ["espèces insuffisantes", { amountReceived: "39999.99" }],
++    ["virement sans référence", { paymentMethod: "BANK_TRANSFER", amountReceived: "40000" }],
++    ["virement supérieur au montant", { paymentMethod: "MOBILE_MONEY", reference: "R", amountReceived: "40001" }],
++    ["chèque incomplet", { paymentMethod: "CHECK", reference: "R", amountReceived: "30000" }],
++  ])("sans paiement valide, pas de passage : %s", async (_label, body) => {
++    const { status } = await read(await send(body));
++    expect(status).toBe(400);
++    nothingWritten();
++  });
++
++  it("si l'enregistrement échoue, rien n'est confirmé", async () => {
++    vi.spyOn(console, "error").mockImplementation(() => {});
++    db.passage.create.mockRejectedValue(new Error("base indisponible"));
++    expect((await read(await send({}))).status).toBe(500);
++    expect(db.auditLog.create).not.toHaveBeenCalled();
++  });
++});
++
++describe("validation", () => {
++  it.each(["productName", "productType", "tonnage", "origin", "destination"])(
++    "refuse l'absence de %s",
++    async (field) => {
++      expect((await read(await send({ [field]: "" }))).status).toBe(400);
++      nothingWritten();
++    },
++  );
++
++  it.each([
++    ["tonnage nul", { tonnage: "0" }],
++    ["tonnage négatif", { tonnage: "-2" }],
++    ["tonnage non numérique", { tonnage: "beaucoup" }],
++    ["montant à payer nul", { amountDue: "0", amountReceived: "0" }],
++    ["montant à payer à 3 décimales", { amountDue: "10.123" }],
++    ["montant reçu absent", { amountReceived: "" }],
++    ["mode inconnu", { paymentMethod: "BITCOIN" }],
++    ["date invalide", { assignedAt: "2026-02-31" }],
++    ["format de date invalide", { assignedAt: "29/10/2026" }],
++    ["champ trop long", { origin: "x".repeat(151) }],
++  ])("refuse : %s", async (_label, body) => {
++    expect((await read(await send(body))).status).toBe(400);
++    nothingWritten();
++  });
++
++  it("véhicule et chauffeur sont facultatifs", async () => {
++    await send({});
++    expect(created()).toMatchObject({ vehicleInfo: null, driverName: null });
++
++    resetFakePrisma(db);
++    vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
++    db.supervisor.findUnique.mockResolvedValue({ id: "sup-1", locationId: "loc-1" });
++    db.product.create.mockResolvedValue({ id: "prod-2" });
++    db.passage.create.mockResolvedValue({ id: "p", assignedAt: new Date(), product: { tonnage: "1" }, payment: null });
++    await send({ vehicleInfo: " Camion benne blanc ", driverName: " Jean " });
++    expect(created()).toMatchObject({ vehicleInfo: "Camion benne blanc", driverName: "Jean" });
++  });
++
++  it("utilise la date fournie", async () => {
++    await send({ assignedAt: "2026-10-15" });
++    expect(created().assignedAt).toEqual(new Date("2026-10-15T12:00:00.000Z"));
++  });
++
++  it("le lieu vient toujours du profil, jamais de la requête", async () => {
++    await send({ locationId: "loc-pirate", supervisorId: "sup-pirate" });
++    expect(created()).toMatchObject({ locationId: "loc-1", supervisorId: "sup-1" });
++  });
++});
++
++describe("traçabilité", () => {
++  it("journalise le passage (trajet) et le paiement (montants, mode)", async () => {
++    await send({ amountReceived: "50000" });
++
++    const entries = auditEntries(db);
++    expect(entries.map((e) => `${e.action} ${e.entityType}`)).toEqual(["CREATE Passage", "CREATE Payment"]);
++    expect(entries[0]).toMatchObject({
++      userId: SUPERVISOR.id,
++      entityId: "pas-1",
++      details: { locationId: "loc-1", productName: "Riz blanc", origin: "Antsirabe", destination: "Toamasina" },
++    });
++    expect(entries[1].details).toMatchObject({
++      passageId: "pas-1",
++      paymentMethod: "CASH",
++      amountDue: "40000.00",
++      amountReceived: "50000.00",
++      changeReturned: "10000.00",
++    });
++  });
++});
+diff --git a/tests/api/supervisors-admin.test.ts b/tests/api/supervisors-admin.test.ts
+index 49f0f2d..38f03bd 100644
+--- a/tests/api/supervisors-admin.test.ts
++++ b/tests/api/supervisors-admin.test.ts
+@@ -109,10 +109,8 @@ describe("changement de lieu (non-régression)", () => {
+       location: "Tamatave",
+     });
+     expect(auditEntries(db)[0]).toMatchObject({ action: "CHANGE_LOCATION" });
+-    // aucun transport, véhicule ou chauffeur n'est déplacé
+-    expect(db.transportAssignment.update).not.toHaveBeenCalled();
+-    expect(db.vehicle.update).not.toHaveBeenCalled();
+-    expect(db.driver.update).not.toHaveBeenCalled();
++    // l'historique des passages reste attaché au lieu où ils ont eu lieu
++    expect(db.passage.update).not.toHaveBeenCalled();
+   });
+ });
+ 
+diff --git a/tests/helpers/fake-prisma.ts b/tests/helpers/fake-prisma.ts
+index a3bdd69..25bb163 100644
+--- a/tests/helpers/fake-prisma.ts
++++ b/tests/helpers/fake-prisma.ts
+@@ -6,11 +6,9 @@ import { vi, type Mock } from "vitest";
+ const MODELS = [
+   "user",
+   "supervisor",
+-  "driver",
+-  "vehicle",
+   "location",
+   "product",
+-  "transportAssignment",
++  "passage",
+   "payment",
+   "auditLog",
+   "loginFailure",
+diff --git a/tests/integration/details.test.ts b/tests/integration/details.test.ts
+index 2da8580..2a294c1 100644
+--- a/tests/integration/details.test.ts
++++ b/tests/integration/details.test.ts
+@@ -20,89 +20,67 @@ async function call(kind: string, query = "") {
+   return { status: response.status, body: (await response.json()) as DetailsResult & { message?: string } };
+ }
+ 
+-// Données :  Lieu A (Tana)                         Lieu B (Tamatave)
+-//   T1 terminé  payé  40 000  2,5 t  (reçu 50 000)   T5 terminé payé 70 000  6 t (mobile money)
+-//   T2 planifié       30 000  3 t
+-//   T3 annulé         20 000  4 t
+-//   T4 en cours       25 000  1,5 t
+-async function addTransport(opts: {
+-  w: World; side: "A" | "B"; name: string; tonnage: string; amountDue: string; status: string;
+-  payment?: { method: "CASH" | "MOBILE_MONEY"; received: string; change: string; reference?: string };
++async function addPassage(opts: {
++  side: "A" | "B"; name: string; tonnage: string; origin: string; destination: string;
++  due: string; received: string; change: string; method?: "CASH" | "BANK_TRANSFER" | "MOBILE_MONEY"; reference?: string;
++  vehicleInfo?: string;
+ }) {
+   const a = opts.side === "A";
+-  const supervisor = a ? opts.w.supA1 : opts.w.supB;
+-  const vehicleId = a
+-    ? opts.w.vehicle.id
+-    : (await prisma.vehicle.findFirstOrThrow({ where: { locationId: opts.w.locB.id } })).id;
+-  const driverId = a ? opts.w.driver1.id : opts.w.driverB.id;
+-
+-  const product = await prisma.product.create({
+-    data: { name: opts.name, type: "Test", tonnage: opts.tonnage },
+-  });
++  const supervisor = a ? w.supA1 : w.supB;
++  const product = await prisma.product.create({ data: { name: opts.name, type: "Test", tonnage: opts.tonnage } });
+ 
+-  return prisma.transportAssignment.create({
++  return prisma.passage.create({
+     data: {
+       productId: product.id,
+       supervisorId: supervisor.profile.id,
+-      locationId: a ? opts.w.locA.id : opts.w.locB.id,
+-      vehicleId,
+-      driverId,
+-      status: opts.status as "PLANNED",
+-      amountDue: opts.amountDue,
+-      ...(opts.payment
+-        ? {
+-            payment: {
+-              create: {
+-                recordedById: supervisor.user.id,
+-                paymentMethod: opts.payment.method,
+-                reference: opts.payment.reference ?? null,
+-                amountDue: opts.amountDue,
+-                amountReceived: opts.payment.received,
+-                changeReturned: opts.payment.change,
+-              },
+-            },
+-          }
+-        : {}),
++      locationId: a ? w.locA.id : w.locB.id,
++      origin: opts.origin,
++      destination: opts.destination,
++      vehicleInfo: opts.vehicleInfo ?? null,
++      payment: {
++        create: {
++          recordedById: supervisor.user.id,
++          paymentMethod: opts.method ?? "CASH",
++          reference: opts.reference ?? null,
++          amountDue: opts.due,
++          amountReceived: opts.received,
++          changeReturned: opts.change,
++        },
++      },
+     },
+   });
+ }
+ 
++// Lieu A (Tana) : Riz 2,5 t (50 000 reçus pour 40 000), Ciment 3 t (30 000), Farine 1,5 t (25 000 virement)
++// Lieu B (Tamatave) : Sucre 6 t (70 000 mobile money)
+ beforeAll(() => assertTestDatabase());
+ afterAll(() => prisma.$disconnect());
+ 
+ beforeEach(async () => {
+   await resetDatabase();
+   w = await seed();
+-  await prisma.vehicle.create({
+-    data: {
+-      vehicleType: "Camion", licensePlate: "2000 BBB", driverId: w.driverB.id,
+-      locationId: w.locB.id, supervisorId: w.supB.profile.id,
+-    },
+-  });
+-  await addTransport({ w, side: "A", name: "Riz", tonnage: "2.5", amountDue: "40000", status: "COMPLETED",
+-    payment: { method: "CASH", received: "50000", change: "10000" } });
+-  await addTransport({ w, side: "A", name: "Ciment", tonnage: "3", amountDue: "30000", status: "PLANNED" });
+-  await addTransport({ w, side: "A", name: "Girofle", tonnage: "4", amountDue: "20000", status: "CANCELLED" });
+-  await addTransport({ w, side: "A", name: "Farine", tonnage: "1.5", amountDue: "25000", status: "IN_PROGRESS" });
+-  await addTransport({ w, side: "B", name: "Sucre", tonnage: "6", amountDue: "70000", status: "COMPLETED",
+-    payment: { method: "MOBILE_MONEY", received: "70000", change: "0", reference: "MVOLA-1" } });
++  await addPassage({ side: "A", name: "Riz", tonnage: "2.5", origin: "Antsirabe", destination: "Toamasina", due: "40000", received: "50000", change: "10000", vehicleInfo: "Camion blanc" });
++  await addPassage({ side: "A", name: "Ciment", tonnage: "3", origin: "Moramanga", destination: "Tana", due: "30000", received: "30000", change: "0" });
++  await addPassage({ side: "A", name: "Farine", tonnage: "1.5", origin: "Ambatolampy", destination: "Mahajanga", due: "25000", received: "25000", change: "0", method: "BANK_TRANSFER", reference: "VIR-1" });
++  await addPassage({ side: "B", name: "Sucre", tonnage: "6", origin: "Brickaville", destination: "Tana", due: "70000", received: "70000", change: "0", method: "MOBILE_MONEY", reference: "MVOLA-1" });
+ });
+ 
+ describe("accès", () => {
+   it("refuse un utilisateur non connecté", async () => {
+     as(null);
+-    expect((await call("transports")).status).toBe(401);
++    expect((await call("passages")).status).toBe(401);
+   });
+ 
+-  it("répond 404 pour un type de détail inconnu", async () => {
++  it("répond 404 pour les anciens types de détail (plus de statuts, chauffeurs, véhicules)", async () => {
+     as(w.admin);
+-    expect((await call("nimportequoi")).status).toBe(404);
+-    expect((await call("status-EXPLOSE")).status).toBe(404);
++    for (const kind of ["drivers", "vehicles", "outstanding", "status-PLANNED", "payments", "products", "transports", "nimportequoi"]) {
++      expect((await call(kind)).status).toBe(404);
++    }
+   });
+ 
+   it("refuse les rôles non prévus", async () => {
+     as({ ...w.supA1.user, role: "CASHIER" });
+-    expect((await call("transports")).status).toBe(403);
++    expect((await call("passages")).status).toBe(403);
+   });
+ 
+   it("les listes Lieux et Régisseurs sont réservées à l'administrateur", async () => {
+@@ -115,116 +93,98 @@ describe("accès", () => {
+ describe("administrateur : tous les lieux", () => {
+   beforeEach(() => as(w.admin));
+ 
+-  it("transports : 5 au total, colonne Lieu, pas de page complète", async () => {
+-    const { status, body } = await call("transports");
++  it("passages : 4 au total, avec lieu, origine, destination et enregistreur", async () => {
++    const { status, body } = await call("passages");
+     expect(status).toBe(200);
+-    expect(body.total).toBe("5");
+-    expect(body.rows).toHaveLength(5);
+-    expect(body.columns.map((c) => c.key)).toContain("location");
++    expect(body.total).toBe("4");
++    expect(body.columns.map((c) => c.key)).toEqual(
++      expect.arrayContaining(["product", "origin", "location", "destination", "by"]),
++    );
+     expect(body.href).toBeNull();
+     expect(body.locations?.map((l) => l.name).sort()).toEqual(["Tamatave", "Tana"]);
+-  });
+ 
+-  it("filtre par lieu et par recherche", async () => {
+-    expect((await call("transports", `?locationId=${w.locB.id}`)).body.rows).toHaveLength(1);
+-    expect((await call("transports", `?locationId=${w.locA.id}`)).body.rows).toHaveLength(4);
+-    const search = await call("transports", "?q=ciment");
++    const riz = body.rows.find((r) => r.cells.product.t === "Riz");
++    expect(riz?.cells).toMatchObject({
++      origin: { t: "Antsirabe" },
++      destination: { t: "Toamasina" },
++      location: { t: "Tana" },
++    });
++    expect(riz?.cells.by.t).toBe("a1 Test");
++  });
++
++  it("filtre par lieu et recherche dans l'origine, la destination ou le véhicule", async () => {
++    expect((await call("passages", `?locationId=${w.locB.id}`)).body.rows).toHaveLength(1);
++    expect((await call("passages", `?locationId=${w.locA.id}`)).body.rows).toHaveLength(3);
++    expect((await call("passages", "?q=moramanga")).body.count).toBe(1);
++    expect((await call("passages", "?q=mahajanga")).body.count).toBe(1);
++    expect((await call("passages", "?q=camion")).body.count).toBe(1);
++    const search = await call("passages", "?q=ciment");
+     expect(search.body.count).toBe(1);
+-    expect(search.body.total).toBe("5"); // le total reste celui de la carte
+-  });
+-
+-  it("reste à encaisser : ni annulés, ni payés", async () => {
+-    const { body } = await call("outstanding");
+-    expect(body.rows).toHaveLength(2);
+-    expect(body.total).toMatch(/^55.000,00 MGA$/);
+-    expect(body.title).toBe("Reste à encaisser");
++    expect(search.body.total).toBe("4");
+   });
+ 
+-  it("montant reçu, monnaie rendue et paiements", async () => {
+-    expect((await call("received")).body.total).toMatch(/^120.000,00 MGA$/);
++  it("montant reçu, monnaie rendue et tonnage cumulé", async () => {
++    expect((await call("received")).body.total).toMatch(/^175.000,00 MGA$/);
+     const change = await call("change");
+     expect(change.body.total).toMatch(/^10.000,00 MGA$/);
+     expect(change.body.rows).toHaveLength(1);
+-    const payments = await call("payments");
+-    expect(payments.body.total).toBe("2");
+-    expect(payments.body.rows[0].cells.method.t).toMatch(/Espèces|Mobile money/);
+-  });
+-
+-  it("tonnage cumulé exclut les transports annulés, produits les compte", async () => {
++    expect(change.body.rows[0].cells.route.t).toBe("Antsirabe → Toamasina");
+     const tonnage = await call("tonnage");
+     expect(tonnage.body.total).toBe("13 t");
+-    expect(tonnage.body.rows).toHaveLength(4);
+-    expect((await call("products")).body.total).toBe("5");
++    expect(tonnage.body.title).toBe("Tonnage cumulé");
+   });
+ 
+-  it("répartition par statut", async () => {
+-    const { body } = await call("status-CANCELLED");
+-    expect(body.title).toBe("Transports : Annulé");
+-    expect(body.rows).toHaveLength(1);
+-    expect(body.rows[0].cells.status.badge).toBe("bad");
+-  });
+-
+-  it("lieux et régisseurs, avec lien vers la page complète", async () => {
++  it("lieux et régisseurs : noms cliquables vers leur fiche", async () => {
+     const locations = await call("locations");
+     expect(locations.body.total).toBe("2");
+     const tana = locations.body.rows.find((r) => r.cells.name.t === "Tana");
+-    expect(tana?.cells.transports.t).toBe("4");
++    expect(tana?.cells.passages.t).toBe("3");
++    expect(tana?.cells.name.href).toBe(`/dashboard/locations/${tana?.id}`);
+     expect(locations.body.href).toBe("/dashboard/locations");
+ 
+     const supervisors = await call("supervisors");
+     expect(supervisors.body.total).toBe("3");
+-    expect(supervisors.body.href).toBe("/dashboard/supervisors");
+-  });
+-
+-  it("chauffeurs et véhicules : recherche par nom ou immatriculation", async () => {
+-    expect((await call("drivers", "?q=Chauffeur1")).body.count).toBe(1);
+-    expect((await call("vehicles", "?q=2000")).body.count).toBe(1);
++    const a1 = supervisors.body.rows.find((r) => r.cells.name.t === "a1 Test");
++    expect(a1?.cells.passages.t).toBe("3");
++    expect(a1?.cells.name.href).toBe(`/dashboard/supervisors/${a1?.id}`);
+   });
+ });
+ 
+ describe("régisseur : uniquement son lieu", () => {
+-  it("ne voit que les données de son lieu, sans colonne Lieu", async () => {
++  it("ne voit que les passages de son lieu, sans colonne Lieu", async () => {
+     as(w.supA1.user);
+-    const { body } = await call("transports");
+-    expect(body.total).toBe("4");
++    const { body } = await call("passages");
++    expect(body.total).toBe("3");
+     expect(body.columns.map((c) => c.key)).not.toContain("location");
+     expect(body.locations).toBeNull();
+-    expect(body.href).toBe("/dashboard/transports");
++    expect(body.href).toBe("/dashboard/passages");
+   });
+ 
+-  it("le même lieu est partagé entre les régisseurs du lieu", async () => {
++  it("le lieu est partagé entre les régisseurs du lieu", async () => {
+     as(w.supA2.user);
+-    expect((await call("transports")).body.total).toBe("4");
++    expect((await call("passages")).body.total).toBe("3");
+   });
+ 
+   it("ignore un locationId envoyé pour voir un autre lieu", async () => {
+     as(w.supA1.user);
+-    const { body } = await call("transports", `?locationId=${w.locB.id}`);
+-    expect(body.total).toBe("4");
+-    expect(body.rows.every((r) => r.cells.product.t !== "Sucre")).toBe(true);
++    const { body } = await call("passages", `?locationId=${w.locB.id}`);
++    expect(body.total).toBe("3");
++    expect(body.rows.some((r) => r.cells.product.t === "Sucre")).toBe(false);
+   });
+ 
+   it("un régisseur d'un autre lieu ne voit rien du lieu A", async () => {
+     as(w.supB.user);
+-    const { body } = await call("transports");
++    const { body } = await call("passages");
+     expect(body.total).toBe("1");
+     expect(body.rows[0].cells.product.t).toBe("Sucre");
+     expect((await call("received")).body.total).toMatch(/^70.000,00 MGA$/);
+-    expect((await call("outstanding")).body.total).toMatch(/^0,00 MGA$/);
+     expect((await call("tonnage")).body.total).toBe("6 t");
++    expect((await call("change")).body.total).toMatch(/^0,00 MGA$/);
+   });
+ 
+   it("montants du lieu A", async () => {
+     as(w.supA1.user);
+-    expect((await call("received")).body.total).toMatch(/^50.000,00 MGA$/);
+-    expect((await call("outstanding")).body.total).toMatch(/^55.000,00 MGA$/);
++    expect((await call("received")).body.total).toMatch(/^105.000,00 MGA$/);
+     expect((await call("tonnage")).body.total).toBe("7 t");
+   });
+-
+-  it("le chauffeur affiché est celui du transport, même après un changement de chauffeur", async () => {
+-    as(w.supA1.user);
+-    await prisma.vehicle.update({ where: { id: w.vehicle.id }, data: { driverId: w.driver2.id } });
+-    const { body } = await call("transports");
+-    expect(body.rows.every((r) => r.cells.driver.t === "Chauffeur1 Test")).toBe(true);
+-  });
+ });
+diff --git a/tests/integration/setup.ts b/tests/integration/setup.ts
+index 5feca28..bbdfb4d 100644
+--- a/tests/integration/setup.ts
++++ b/tests/integration/setup.ts
+@@ -17,7 +17,7 @@ export function assertTestDatabase() {
+ export async function resetDatabase() {
+   assertTestDatabase();
+   await prisma.$executeRawUnsafe(
+-    `TRUNCATE "AuditLog","Payment","TransportAssignment","Product","Vehicle","Driver","Supervisor","LoginFailure","User","Location" RESTART IDENTITY CASCADE`,
++    `TRUNCATE "AuditLog","Payment","TransportAssignment","Product","Supervisor","LoginFailure","User","Location" RESTART IDENTITY CASCADE`,
+   );
+ }
+ 
+@@ -57,34 +57,6 @@ export async function seed() {
+   const supA2 = await supervisor("a2@test.mg", "CIN-A2", locA.id, locA.name);
+   const supB = await supervisor("b1@test.mg", "CIN-B1", locB.id, locB.name);
+ 
+-  const driver = (n: number, locationId: string, supervisorId: string, isActive = true) =>
+-    prisma.driver.create({
+-      data: {
+-        firstName: `Chauffeur${n}`,
+-        lastName: "Test",
+-        nationalId: `DRV-${n}`,
+-        licenseNumber: `LIC-${n}`,
+-        isActive,
+-        locationId,
+-        supervisorId,
+-      },
+-    });
+-
+-  const driver1 = await driver(1, locA.id, supA1.profile.id);
+-  const driver2 = await driver(2, locA.id, supA1.profile.id);
+-  const driverInactive = await driver(3, locA.id, supA1.profile.id, false);
+-  const driverB = await driver(4, locB.id, supB.profile.id);
+-
+-  const vehicle = await prisma.vehicle.create({
+-    data: {
+-      vehicleType: "Camion",
+-      licensePlate: "1000 AAA",
+-      driverId: driver1.id,
+-      locationId: locA.id,
+-      supervisorId: supA1.profile.id,
+-    },
+-  });
+-
+   return {
+     locA, locB,
+     admin: {
+@@ -92,7 +64,5 @@ export async function seed() {
+       role: "ADMIN" as const, designation: null, isActive: true,
+     },
+     supA1, supA2, supB,
+-    driver1, driver2, driverInactive, driverB,
+-    vehicle,
+   };
+ }
+diff --git a/tests/integration/workflows.test.ts b/tests/integration/workflows.test.ts
+index 53b95d4..4d921f3 100644
+--- a/tests/integration/workflows.test.ts
++++ b/tests/integration/workflows.test.ts
+@@ -2,10 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
+ import { buildAuditWhere } from "@/lib/audit";
+-import { POST as createTransport } from "@/app/api/transports/route";
+-import { PATCH as patchTransport } from "@/app/api/transports/[id]/route";
+-import { POST as createPayment } from "@/app/api/payments/route";
+-import { PUT as updateVehicle } from "@/app/api/vehicles/[id]/route";
++import { POST as createPassage } from "@/app/api/passages/route";
+ import { PATCH as patchSupervisor } from "@/app/api/supervisors/[id]/route";
+ import { POST as resetPassword } from "@/app/api/supervisors/[id]/password/route";
+ import { assertTestDatabase, resetDatabase, seed } from "./setup";
+@@ -19,33 +16,28 @@ let w: World;
+ const as = (user: Awaited<ReturnType<typeof getCurrentUser>>) =>
+   vi.mocked(getCurrentUser).mockResolvedValue(user);
+ 
+-async function newTransport(user: World["supA1"]["user"], vehicleId: string, amountDue = "40000") {
+-  as(user);
+-  const response = await createTransport(
+-    jsonRequest("/api/transports", "POST", {
+-      productName: "Riz",
++const passage = (body: Record<string, unknown> = {}) =>
++  createPassage(
++    jsonRequest("/api/passages", "POST", {
++      productName: "Riz blanc",
+       productType: "Céréale",
+-      tonnage: "2.5",
+-      amountDue,
+-      vehicleId,
+-    }),
+-  );
+-  expect(response.status).toBe(201);
+-  return ((await response.json()) as { transport: { id: string } }).transport.id;
+-}
+-
+-const pay = (assignmentId: string, body: Record<string, unknown> = {}) =>
+-  createPayment(
+-    jsonRequest("/api/payments", "POST", {
+-      assignmentId,
++      tonnage: "8.5",
++      origin: "Antsirabe",
++      destination: "Toamasina",
++      vehicleInfo: "Camion benne blanc",
++      driverName: "Jean",
++      amountDue: "40000",
+       paymentMethod: "CASH",
+       amountReceived: "40000",
+       ...body,
+     }),
+   );
+ 
+-const setStatus = (id: string, status: string) =>
+-  patchTransport(jsonRequest(`/api/transports/${id}`, "PATCH", { status }), params(id));
++const counts = async () => ({
++  products: await prisma.product.count(),
++  passages: await prisma.passage.count(),
++  payments: await prisma.payment.count(),
++});
+ 
+ beforeAll(() => assertTestDatabase());
+ afterAll(() => prisma.$disconnect());
+@@ -55,151 +47,103 @@ beforeEach(async () => {
+   w = await seed();
+ });
+ 
+-describe("historique après changement de chauffeur", () => {
+-  it("les anciens transports gardent leur chauffeur, les nouveaux prennent le nouveau", async () => {
+-    const oldTransport = await newTransport(w.supA1.user, w.vehicle.id);
+-
++describe("un passage n'existe qu'avec son paiement", () => {
++  it("crée produit, passage, paiement et journal d'un seul coup", async () => {
+     as(w.supA1.user);
+-    const response = await updateVehicle(
+-      jsonRequest(`/api/vehicles/${w.vehicle.id}`, "PUT", {
+-        vehicleType: "Camion",
+-        licensePlate: "1000 AAA",
+-        driverId: w.driver2.id,
+-      }),
+-      params(w.vehicle.id),
+-    );
+-    expect(response.status).toBe(200);
+-
+-    const newTransportId = await newTransport(w.supA1.user, w.vehicle.id);
++    const response = await passage({ amountReceived: "50000" });
++    expect(response.status).toBe(201);
+ 
+-    const [oldRow, newRow, vehicle] = await Promise.all([
+-      prisma.transportAssignment.findUniqueOrThrow({ where: { id: oldTransport } }),
+-      prisma.transportAssignment.findUniqueOrThrow({ where: { id: newTransportId } }),
+-      prisma.vehicle.findUniqueOrThrow({ where: { id: w.vehicle.id } }),
++    const row = await prisma.passage.findFirstOrThrow({
++      include: { product: true, payment: true, assignedLocation: true },
++    });
++    expect(row).toMatchObject({
++      origin: "Antsirabe",
++      destination: "Toamasina",
++      vehicleInfo: "Camion benne blanc",
++      driverName: "Jean",
++      supervisorId: w.supA1.profile.id,
++      locationId: w.locA.id,
++    });
++    expect(row.assignedLocation?.name).toBe("Tana");
++    expect(String(row.product.tonnage)).toBe("8.5");
++    expect(row.payment).toMatchObject({ paymentMethod: "CASH", recordedById: w.supA1.user.id });
++    expect(String(row.payment?.changeReturned)).toBe("10000");
++
++    const logs = await prisma.auditLog.findMany({ orderBy: { createdAt: "asc" } });
++    expect(logs.map((log) => `${log.action} ${log.entityType}`).sort()).toEqual([
++      "CREATE Passage",
++      "CREATE Payment",
+     ]);
+-
+-    expect(vehicle.driverId).toBe(w.driver2.id);
+-    expect(oldRow.driverId).toBe(w.driver1.id);
+-    expect(newRow.driverId).toBe(w.driver2.id);
+-
+-    const log = await prisma.auditLog.findFirstOrThrow({ where: { action: "CHANGE_DRIVER" } });
+-    expect(log.details).toMatchObject({ previousDriverId: w.driver1.id, newDriverId: w.driver2.id });
++    const paymentLog = logs.find((log) => log.entityType === "Payment");
++    expect(paymentLog?.details).toMatchObject({ amountReceived: "50000.00", changeReturned: "10000.00" });
+   });
+ 
+-  it("refuse un chauffeur inactif ou d'un autre lieu et ne change rien", async () => {
++  it("sans paiement valide, rien n'est enregistré (pas même le produit)", async () => {
+     as(w.supA1.user);
+ 
+-    for (const driverId of [w.driverInactive.id, w.driverB.id]) {
+-      const response = await updateVehicle(
+-        jsonRequest(`/api/vehicles/${w.vehicle.id}`, "PUT", {
+-          vehicleType: "Camion",
+-          licensePlate: "1000 AAA",
+-          driverId,
+-        }),
+-        params(w.vehicle.id),
+-      );
+-      expect(response.status).toBe(403);
+-    }
+-
+-    const vehicle = await prisma.vehicle.findUniqueOrThrow({ where: { id: w.vehicle.id } });
+-    expect(vehicle.driverId).toBe(w.driver1.id);
+-  });
+-});
++    expect((await passage({ amountReceived: "39999" })).status).toBe(400);
++    expect((await passage({ paymentMethod: "BANK_TRANSFER", reference: "" })).status).toBe(400);
++    expect((await passage({ paymentMethod: "CHECK", reference: "C-1", amountReceived: "40001" })).status).toBe(400);
+ 
+-describe("isolation des lieux", () => {
+-  it("deux régisseurs du même lieu partagent les transports", async () => {
+-    const id = await newTransport(w.supA1.user, w.vehicle.id);
+-    as(w.supA2.user);
+-    expect((await setStatus(id, "IN_PROGRESS")).status).toBe(200);
++    expect(await counts()).toEqual({ products: 0, passages: 0, payments: 0 });
++    expect(await prisma.auditLog.count()).toBe(0);
+   });
+ 
+-  it("un régisseur d'un autre lieu ne peut ni modifier, ni payer, ni changer le véhicule", async () => {
+-    const id = await newTransport(w.supA1.user, w.vehicle.id);
++  it("le passage est rattaché au lieu du régisseur qui l'enregistre", async () => {
++    as(w.supA1.user);
++    await passage({ productName: "Riz" });
+     as(w.supB.user);
++    await passage({ productName: "Sucre" });
++    as(w.supA2.user);
++    await passage({ productName: "Farine" });
+ 
+-    expect((await setStatus(id, "IN_PROGRESS")).status).toBe(404);
+-    expect((await pay(id)).status).toBe(404);
+-
+-    const response = await updateVehicle(
+-      jsonRequest(`/api/vehicles/${w.vehicle.id}`, "PUT", { vehicleType: "Pirate", licensePlate: "HACK" }),
+-      params(w.vehicle.id),
+-    );
+-    expect(response.status).toBe(404);
+-    expect((await prisma.vehicle.findUniqueOrThrow({ where: { id: w.vehicle.id } })).vehicleType).toBe("Camion");
++    const rows = await prisma.passage.findMany({ include: { product: true } });
++    const byProduct = Object.fromEntries(rows.map((r) => [r.product.name, r.locationId]));
++    expect(byProduct).toEqual({ Riz: w.locA.id, Sucre: w.locB.id, Farine: w.locA.id });
+   });
+-});
+ 
+-describe("paiements et concurrence", () => {
+-  it("deux paiements simultanés du même transport : un seul est enregistré", async () => {
+-    const id = await newTransport(w.supA1.user, w.vehicle.id);
++  it("ignore un lieu ou un régisseur envoyé dans la requête", async () => {
+     as(w.supA1.user);
+-
+-    const results = await Promise.all([pay(id), pay(id), pay(id)]);
+-    const statuses = results.map((response) => response.status).sort();
+-
+-    expect(statuses).toEqual([201, 409, 409]);
+-    expect(await prisma.payment.count({ where: { assignmentId: id } })).toBe(1);
++    await passage({ locationId: w.locB.id, supervisorId: w.supB.profile.id });
++    const row = await prisma.passage.findFirstOrThrow();
++    expect(row.locationId).toBe(w.locA.id);
++    expect(row.supervisorId).toBe(w.supA1.profile.id);
+   });
+ 
+-  it("paiement espèces avec monnaie rendue, audit complet", async () => {
+-    const id = await newTransport(w.supA1.user, w.vehicle.id);
++  it("des enregistrements simultanés créent chacun leur passage sans se mélanger", async () => {
+     as(w.supA1.user);
+-
+-    const response = await pay(id, { amountReceived: "50000" });
+-    expect(response.status).toBe(201);
+-
+-    const payment = await prisma.payment.findUniqueOrThrow({ where: { assignmentId: id } });
+-    expect(String(payment.amountDue)).toBe("40000");
+-    expect(String(payment.changeReturned)).toBe("10000");
+-
+-    const log = await prisma.auditLog.findFirstOrThrow({ where: { entityType: "Payment" } });
+-    expect(log.details).toMatchObject({
+-      paymentMethod: "CASH",
+-      amountDue: "40000",
+-      amountReceived: "50000",
+-      changeReturned: "10000",
+-    });
+-  });
+-
+-  it("paiement et annulation simultanés : jamais un transport à la fois payé et annulé", async () => {
+-    for (let round = 0; round < 8; round += 1) {
+-      const id = await newTransport(w.supA1.user, w.vehicle.id);
+-      as(w.supA1.user);
+-
+-      await Promise.all([pay(id), setStatus(id, "CANCELLED")]);
+-
+-      const row = await prisma.transportAssignment.findUniqueOrThrow({
+-        where: { id },
+-        include: { payment: true },
+-      });
+-      expect(row.status === "CANCELLED" && row.payment !== null).toBe(false);
+-    }
++    const results = await Promise.all(
++      [1, 2, 3, 4, 5].map((n) => passage({ productName: `Produit ${n}`, amountReceived: "45000" })),
++    );
++    expect(results.map((r) => r.status)).toEqual([201, 201, 201, 201, 201]);
++    expect(await counts()).toEqual({ products: 5, passages: 5, payments: 5 });
+   });
++});
+ 
+-  it("un transport annulé ne peut plus être payé ; un transport payé ne peut plus être annulé", async () => {
+-    const cancelled = await newTransport(w.supA1.user, w.vehicle.id);
+-    const paid = await newTransport(w.supA1.user, w.vehicle.id);
++describe("fiches : retrouver ce qui a été fait", () => {
++  it("l'activité d'un régisseur et celle d'un lieu sont retrouvées dans le journal", async () => {
+     as(w.supA1.user);
++    await passage({ productName: "Riz" });
++    as(w.supB.user);
++    await passage({ productName: "Sucre" });
+ 
+-    expect((await setStatus(cancelled, "CANCELLED")).status).toBe(200);
+-    expect((await pay(cancelled)).status).toBe(404);
+-
+-    expect((await pay(paid)).status).toBe(201);
+-    expect((await setStatus(paid, "CANCELLED")).status).toBe(409);
+-    expect((await pay(paid)).status).toBe(409);
+-  });
+-
+-  it("un paiement non liquide incomplet est refusé", async () => {
+-    const id = await newTransport(w.supA1.user, w.vehicle.id);
+-    as(w.supA1.user);
++    // Ce que fait la fiche d'un régisseur
++    const bySupervisor = await prisma.auditLog.findMany({ where: { userId: w.supA1.user.id } });
++    expect(bySupervisor).toHaveLength(2);
++    expect(bySupervisor.every((log) => log.userId === w.supA1.user.id)).toBe(true);
+ 
+-    const response = await pay(id, {
+-      paymentMethod: "BANK_TRANSFER",
+-      reference: "VIR-1",
+-      amountReceived: "39999.99",
++    // Ce que fait la fiche d'un lieu
++    const inLocationA = await prisma.auditLog.findMany({
++      where: { OR: [{ details: { path: ["locationId"], equals: w.locA.id } }, { entityType: "Location", entityId: w.locA.id }] },
++    });
++    expect(inLocationA).toHaveLength(2);
++    const inLocationB = await prisma.auditLog.findMany({
++      where: { details: { path: ["locationId"], equals: w.locB.id } },
+     });
+-    expect(response.status).toBe(400);
+-    expect(await prisma.payment.count()).toBe(0);
++    expect(inLocationB).toHaveLength(2);
++
++    const passagesOfA = await prisma.passage.count({ where: { supervisorId: w.supA1.profile.id } });
++    expect(passagesOfA).toBe(1);
+   });
+ });
+ 
+@@ -220,7 +164,18 @@ describe("comptes régisseurs", () => {
+     expect(await prisma.auditLog.count({ where: { action: "DEACTIVATE", entityId: w.supA1.profile.id } })).toBe(1);
+   });
+ 
+-  it("réinitialisation : nouveau hash, sessions fermées, blocage de connexion levé, rien de secret dans l'audit", async () => {
++  it("désactiver un régisseur ne supprime rien de son historique", async () => {
++    as(w.supA1.user);
++    await passage();
++    as(w.admin);
++    await patchSupervisor(
++      jsonRequest(`/api/supervisors/${w.supA1.profile.id}`, "PATCH", { isActive: false }),
++      params(w.supA1.profile.id),
++    );
++    expect(await prisma.passage.count({ where: { supervisorId: w.supA1.profile.id } })).toBe(1);
++  });
++
++  it("réinitialisation : nouveau hash, sessions fermées, blocage levé, rien de secret dans l'audit", async () => {
+     await prisma.loginFailure.create({ data: { email: "a1@test.mg", ipAddress: "1.2.3.4" } });
+     as(w.admin);
+     const before = await prisma.user.findUniqueOrThrow({ where: { id: w.supA1.user.id } });
+@@ -246,9 +201,8 @@ describe("comptes régisseurs", () => {
+ 
+ describe("requêtes du journal d'audit", () => {
+   it("les filtres de buildAuditWhere sont acceptés par la vraie base", async () => {
+-    const id = await newTransport(w.supA1.user, w.vehicle.id);
+     as(w.supA1.user);
+-    await pay(id, { amountReceived: "50000" });
++    await passage({ amountReceived: "50000" });
+ 
+     const filters = [
+       { q: "", entityType: "", action: "", period: "" },
+@@ -256,16 +210,13 @@ describe("requêtes du journal d'audit", () => {
+       { q: "A1 test", entityType: "", action: "", period: "30d" },
+       { q: "a1@TEST.mg", entityType: "", action: "", period: "7d" },
+     ];
++    const counts: number[] = [];
++    for (const filter of filters) counts.push(await prisma.auditLog.count({ where: buildAuditWhere(filter) }));
+ 
+-    const counts = [];
+-    for (const filter of filters) {
+-      counts.push(await prisma.auditLog.count({ where: buildAuditWhere(filter) }));
+-    }
+-
+-    expect(counts[0]).toBeGreaterThanOrEqual(2);
++    expect(counts[0]).toBe(2);
+     expect(counts[1]).toBe(1);
+-    expect(counts[2]).toBeGreaterThanOrEqual(2);
+-    expect(counts[3]).toBeGreaterThanOrEqual(2);
+-    expect(await prisma.auditLog.count({ where: buildAuditWhere({ q: "personne-inconnue", entityType: "", action: "", period: "" }) })).toBe(0);
++    expect(counts[2]).toBe(2);
++    expect(counts[3]).toBe(2);
++    expect(await prisma.auditLog.count({ where: buildAuditWhere({ q: "inconnu", entityType: "", action: "", period: "" }) })).toBe(0);
+   });
+ });
+diff --git a/tests/lib/audit.test.ts b/tests/lib/audit.test.ts
+index edea438..0ba5574 100644
+--- a/tests/lib/audit.test.ts
++++ b/tests/lib/audit.test.ts
+@@ -39,6 +39,17 @@ describe("describeAudit", () => {
+     expect(lines.some((line) => line.startsWith("Référence"))).toBe(false);
+   });
+ 
++  it("décrit un passage : produit, tonnage et trajet", () => {
++    expect(
++      describeAudit("Passage", "CREATE", {
++        productName: "Riz blanc",
++        tonnage: "8.5",
++        origin: "Antsirabe",
++        destination: "Toamasina",
++      }),
++    ).toEqual(["Produit : Riz blanc (8,5 t)", "Trajet : Antsirabe → Toamasina"]);
++  });
++
+   it("décrit un changement de statut avec les libellés français", () => {
+     expect(
+       describeAudit("TransportAssignment", "CHANGE_TRANSPORT_STATUS", {
+@@ -89,7 +100,8 @@ describe("libellés", () => {
+   it("traduit les actions et types connus et garde les inconnus tels quels", () => {
+     expect(actionLabel("DEACTIVATE")).toBe("Désactivation");
+     expect(actionLabel("AUTRE")).toBe("AUTRE");
+-    expect(entityLabel("TransportAssignment")).toBe("Transport");
++    expect(entityLabel("Passage")).toBe("Passage");
++    expect(entityLabel("TransportAssignment")).toBe("Passage"); // anciens logs
+     expect(entityLabel("Inconnu")).toBe("Inconnu");
+   });
+ 
+diff --git a/tests/lib/payment-rules.test.ts b/tests/lib/payment-rules.test.ts
+new file mode 100644
+index 0000000..889e0a6
+--- /dev/null
++++ b/tests/lib/payment-rules.test.ts
+@@ -0,0 +1,45 @@
++import { describe, expect, it } from "vitest";
++import { checkPayment, isPaymentMethod, parseCents, toDecimal } from "@/lib/payment-rules";
++
++describe("parseCents / toDecimal", () => {
++  it("convertit un montant en centimes et inversement", () => {
++    expect(parseCents("40000")).toBe(4000000);
++    expect(parseCents("12500.5")).toBe(1250050);
++    expect(parseCents("0.01")).toBe(1);
++    expect(toDecimal(1250050)).toBe("12500.50");
++    expect(toDecimal(5)).toBe("0.05");
++  });
++
++  it.each(["", "abc", "-5", "10.123", "1,5", "1e3", " 5", "1234567890123"])(
++    "refuse %j",
++    (value) => expect(parseCents(value)).toBeNull(),
++  );
++});
++
++describe("checkPayment", () => {
++  const base = { reference: "", dueCents: 4000000 };
++
++  it("espèces : montant exact ou supérieur avec monnaie", () => {
++    expect(checkPayment({ ...base, method: "CASH", receivedCents: 4000000 })).toEqual({ ok: true, changeCents: 0 });
++    expect(checkPayment({ ...base, method: "CASH", receivedCents: 5000000 })).toEqual({ ok: true, changeCents: 1000000 });
++  });
++
++  it("espèces : jamais de paiement partiel", () => {
++    expect(checkPayment({ ...base, method: "CASH", receivedCents: 3999999 })).toEqual({ ok: false, error: "INSUFFICIENT" });
++  });
++
++  it.each(["BANK_TRANSFER", "CHECK", "MOBILE_MONEY", "OTHER"] as const)(
++    "%s : montant exact et référence obligatoires",
++    (method) => {
++      expect(checkPayment({ ...base, method, reference: "REF-1", receivedCents: 4000000 })).toEqual({ ok: true, changeCents: 0 });
++      expect(checkPayment({ ...base, method, reference: "", receivedCents: 4000000 })).toEqual({ ok: false, error: "EXACT_REQUIRED" });
++      expect(checkPayment({ ...base, method, reference: "REF-1", receivedCents: 4000001 })).toEqual({ ok: false, error: "EXACT_REQUIRED" });
++      expect(checkPayment({ ...base, method, reference: "REF-1", receivedCents: 3999999 })).toEqual({ ok: false, error: "EXACT_REQUIRED" });
++    },
++  );
++
++  it("reconnaît les modes de paiement valides", () => {
++    expect(isPaymentMethod("CASH")).toBe(true);
++    expect(isPaymentMethod("BITCOIN")).toBe(false);
++  });
++});

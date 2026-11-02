@@ -17,7 +17,7 @@ export function assertTestDatabase() {
 export async function resetDatabase() {
   assertTestDatabase();
   await prisma.$executeRawUnsafe(
-    `TRUNCATE "AuditLog","Payment","TransportAssignment","Product","Vehicle","Driver","Supervisor","LoginFailure","User","Location" RESTART IDENTITY CASCADE`,
+    `TRUNCATE "AuditLog","Payment","TransportAssignment","Product","Supervisor","LoginFailure","User","Location" RESTART IDENTITY CASCADE`,
   );
 }
 
@@ -57,34 +57,6 @@ export async function seed() {
   const supA2 = await supervisor("a2@test.mg", "CIN-A2", locA.id, locA.name);
   const supB = await supervisor("b1@test.mg", "CIN-B1", locB.id, locB.name);
 
-  const driver = (n: number, locationId: string, supervisorId: string, isActive = true) =>
-    prisma.driver.create({
-      data: {
-        firstName: `Chauffeur${n}`,
-        lastName: "Test",
-        nationalId: `DRV-${n}`,
-        licenseNumber: `LIC-${n}`,
-        isActive,
-        locationId,
-        supervisorId,
-      },
-    });
-
-  const driver1 = await driver(1, locA.id, supA1.profile.id);
-  const driver2 = await driver(2, locA.id, supA1.profile.id);
-  const driverInactive = await driver(3, locA.id, supA1.profile.id, false);
-  const driverB = await driver(4, locB.id, supB.profile.id);
-
-  const vehicle = await prisma.vehicle.create({
-    data: {
-      vehicleType: "Camion",
-      licensePlate: "1000 AAA",
-      driverId: driver1.id,
-      locationId: locA.id,
-      supervisorId: supA1.profile.id,
-    },
-  });
-
   return {
     locA, locB,
     admin: {
@@ -92,7 +64,5 @@ export async function seed() {
       role: "ADMIN" as const, designation: null, isActive: true,
     },
     supA1, supA2, supB,
-    driver1, driver2, driverInactive, driverB,
-    vehicle,
   };
 }

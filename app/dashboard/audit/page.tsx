@@ -8,20 +8,12 @@ import {
   AUDIT_PAGE_SIZE,
   ENTITY_LABELS,
   PERIOD_OPTIONS,
-  ROLE_LABELS,
-  actionLabel,
   buildAuditWhere,
-  describeAudit,
-  entityLabel,
 } from "@/lib/audit";
+import { fetchAuditRows } from "@/lib/audit-rows";
+import AuditTable from "../audit-table";
 import ListFilters from "../list-filters";
 import { readChoice, readParam, type SearchParams } from "../search-params";
-
-const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
-  dateStyle: "short",
-  timeStyle: "medium",
-  timeZone: "Indian/Antananarivo",
-});
 
 export default function AuditPage({
   searchParams,
@@ -61,60 +53,11 @@ async function AuditContent({
     pageCount,
   );
 
-  const [logs, locations] = await Promise.all([
-    prisma.auditLog.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * AUDIT_PAGE_SIZE,
-      take: AUDIT_PAGE_SIZE,
-      select: {
-        id: true,
-        action: true,
-        entityType: true,
-        entityId: true,
-        details: true,
-        createdAt: true,
-        user: {
-          select: { firstName: true, lastName: true, email: true, role: true },
-        },
-      },
-    }),
-    prisma.location.findMany({ select: { id: true, name: true } }),
-  ]);
-
-  const locationNames = Object.fromEntries(
-    locations.map((location) => [location.id, location.name]),
-  );
-
-  // Anciens logs de paiement (créés avant l'ajout du montant dans les détails) :
-  // on relit le paiement lui-même, qui n'est jamais modifié après création.
-  const legacyPaymentIds = logs
-    .filter((log) => {
-      const details = log.details as Record<string, unknown> | null;
-      return (
-        log.entityType === "Payment" &&
-        log.action === "CREATE" &&
-        log.entityId &&
-        details?.amountReceived === undefined
-      );
-    })
-    .map((log) => log.entityId as string);
-
-  const legacyPayments =
-    legacyPaymentIds.length > 0
-      ? await prisma.payment.findMany({
-          where: { id: { in: legacyPaymentIds } },
-          select: {
-            id: true,
-            amountDue: true,
-            amountReceived: true,
-            changeReturned: true,
-            paymentMethod: true,
-            reference: true,
-          },
-        })
-      : [];
-  const legacyById = new Map(legacyPayments.map((payment) => [payment.id, payment]));
+  const { rows, locationNames } = await fetchAuditRows({
+    where,
+    skip: (page - 1) * AUDIT_PAGE_SIZE,
+    take: AUDIT_PAGE_SIZE,
+  });
 
   function hrefForPage(target: number) {
     const query = new URLSearchParams();
@@ -169,79 +112,10 @@ async function AuditContent({
           ]}
         />
 
-        {logs.length === 0 ? (
+        {rows.length === 0 ? (
           <p className="text-slate-600">Aucune opération ne correspond à ces critères.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b text-slate-600">
-                <tr>
-                  <th className="px-3 py-3">Date</th>
-                  <th className="px-3 py-3">Auteur</th>
-                  <th className="px-3 py-3">Action</th>
-                  <th className="px-3 py-3">Enregistrement</th>
-                  <th className="px-3 py-3">Détails</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {logs.map((log) => {
-                  const legacy = log.entityId ? legacyById.get(log.entityId) : undefined;
-                  const base = (log.details && typeof log.details === "object" && !Array.isArray(log.details)
-                    ? log.details
-                    : {}) as Record<string, unknown>;
-                  const details = legacy
-                    ? {
-                        ...base,
-                        amountDue: String(legacy.amountDue),
-                        amountReceived: String(legacy.amountReceived),
-                        changeReturned: String(legacy.changeReturned),
-                        paymentMethod: legacy.paymentMethod,
-                        reference: legacy.reference,
-                      }
-                    : base;
-                  const lines = describeAudit(log.entityType, log.action, details, {
-                    locations: locationNames,
-                  });
-
-                  return (
-                    <tr key={log.id} className="align-top">
-                      <td className="whitespace-nowrap px-3 py-4">
-                        {dateFormatter.format(log.createdAt)}
-                      </td>
-                      <td className="px-3 py-4">
-                        <p className="font-medium">
-                          {log.user.firstName} {log.user.lastName}
-                        </p>
-                        <p className="text-xs text-slate-700">
-                          {ROLE_LABELS[log.user.role] ?? log.user.role} — {log.user.email}
-                        </p>
-                      </td>
-                      <td className="px-3 py-4">{actionLabel(log.action)}</td>
-                      <td className="px-3 py-4">
-                        <p>{entityLabel(log.entityType)}</p>
-                        {log.entityId && (
-                          <p className="font-mono text-xs text-slate-700" title={log.entityId}>
-                            …{log.entityId.slice(-8)}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-3 py-4">
-                        {lines.length === 0 ? (
-                          <span className="text-slate-600">—</span>
-                        ) : (
-                          <ul className="space-y-0.5">
-                            {lines.map((line) => (
-                              <li key={line}>{line}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <AuditTable rows={rows} locationNames={locationNames} />
         )}
 
         {pageCount > 1 && (

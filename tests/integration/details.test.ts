@@ -20,89 +20,67 @@ async function call(kind: string, query = "") {
   return { status: response.status, body: (await response.json()) as DetailsResult & { message?: string } };
 }
 
-// Données :  Lieu A (Tana)                         Lieu B (Tamatave)
-//   T1 terminé  payé  40 000  2,5 t  (reçu 50 000)   T5 terminé payé 70 000  6 t (mobile money)
-//   T2 planifié       30 000  3 t
-//   T3 annulé         20 000  4 t
-//   T4 en cours       25 000  1,5 t
-async function addTransport(opts: {
-  w: World; side: "A" | "B"; name: string; tonnage: string; amountDue: string; status: string;
-  payment?: { method: "CASH" | "MOBILE_MONEY"; received: string; change: string; reference?: string };
+async function addPassage(opts: {
+  side: "A" | "B"; name: string; tonnage: string; origin: string; destination: string;
+  due: string; received: string; change: string; method?: "CASH" | "BANK_TRANSFER" | "MOBILE_MONEY"; reference?: string;
+  vehicleInfo?: string;
 }) {
   const a = opts.side === "A";
-  const supervisor = a ? opts.w.supA1 : opts.w.supB;
-  const vehicleId = a
-    ? opts.w.vehicle.id
-    : (await prisma.vehicle.findFirstOrThrow({ where: { locationId: opts.w.locB.id } })).id;
-  const driverId = a ? opts.w.driver1.id : opts.w.driverB.id;
+  const supervisor = a ? w.supA1 : w.supB;
+  const product = await prisma.product.create({ data: { name: opts.name, type: "Test", tonnage: opts.tonnage } });
 
-  const product = await prisma.product.create({
-    data: { name: opts.name, type: "Test", tonnage: opts.tonnage },
-  });
-
-  return prisma.transportAssignment.create({
+  return prisma.passage.create({
     data: {
       productId: product.id,
       supervisorId: supervisor.profile.id,
-      locationId: a ? opts.w.locA.id : opts.w.locB.id,
-      vehicleId,
-      driverId,
-      status: opts.status as "PLANNED",
-      amountDue: opts.amountDue,
-      ...(opts.payment
-        ? {
-            payment: {
-              create: {
-                recordedById: supervisor.user.id,
-                paymentMethod: opts.payment.method,
-                reference: opts.payment.reference ?? null,
-                amountDue: opts.amountDue,
-                amountReceived: opts.payment.received,
-                changeReturned: opts.payment.change,
-              },
-            },
-          }
-        : {}),
+      locationId: a ? w.locA.id : w.locB.id,
+      origin: opts.origin,
+      destination: opts.destination,
+      vehicleInfo: opts.vehicleInfo ?? null,
+      payment: {
+        create: {
+          recordedById: supervisor.user.id,
+          paymentMethod: opts.method ?? "CASH",
+          reference: opts.reference ?? null,
+          amountDue: opts.due,
+          amountReceived: opts.received,
+          changeReturned: opts.change,
+        },
+      },
     },
   });
 }
 
+// Lieu A (Tana) : Riz 2,5 t (50 000 reçus pour 40 000), Ciment 3 t (30 000), Farine 1,5 t (25 000 virement)
+// Lieu B (Tamatave) : Sucre 6 t (70 000 mobile money)
 beforeAll(() => assertTestDatabase());
 afterAll(() => prisma.$disconnect());
 
 beforeEach(async () => {
   await resetDatabase();
   w = await seed();
-  await prisma.vehicle.create({
-    data: {
-      vehicleType: "Camion", licensePlate: "2000 BBB", driverId: w.driverB.id,
-      locationId: w.locB.id, supervisorId: w.supB.profile.id,
-    },
-  });
-  await addTransport({ w, side: "A", name: "Riz", tonnage: "2.5", amountDue: "40000", status: "COMPLETED",
-    payment: { method: "CASH", received: "50000", change: "10000" } });
-  await addTransport({ w, side: "A", name: "Ciment", tonnage: "3", amountDue: "30000", status: "PLANNED" });
-  await addTransport({ w, side: "A", name: "Girofle", tonnage: "4", amountDue: "20000", status: "CANCELLED" });
-  await addTransport({ w, side: "A", name: "Farine", tonnage: "1.5", amountDue: "25000", status: "IN_PROGRESS" });
-  await addTransport({ w, side: "B", name: "Sucre", tonnage: "6", amountDue: "70000", status: "COMPLETED",
-    payment: { method: "MOBILE_MONEY", received: "70000", change: "0", reference: "MVOLA-1" } });
+  await addPassage({ side: "A", name: "Riz", tonnage: "2.5", origin: "Antsirabe", destination: "Toamasina", due: "40000", received: "50000", change: "10000", vehicleInfo: "Camion blanc" });
+  await addPassage({ side: "A", name: "Ciment", tonnage: "3", origin: "Moramanga", destination: "Tana", due: "30000", received: "30000", change: "0" });
+  await addPassage({ side: "A", name: "Farine", tonnage: "1.5", origin: "Ambatolampy", destination: "Mahajanga", due: "25000", received: "25000", change: "0", method: "BANK_TRANSFER", reference: "VIR-1" });
+  await addPassage({ side: "B", name: "Sucre", tonnage: "6", origin: "Brickaville", destination: "Tana", due: "70000", received: "70000", change: "0", method: "MOBILE_MONEY", reference: "MVOLA-1" });
 });
 
 describe("accès", () => {
   it("refuse un utilisateur non connecté", async () => {
     as(null);
-    expect((await call("transports")).status).toBe(401);
+    expect((await call("passages")).status).toBe(401);
   });
 
-  it("répond 404 pour un type de détail inconnu", async () => {
+  it("répond 404 pour les anciens types de détail (plus de statuts, chauffeurs, véhicules)", async () => {
     as(w.admin);
-    expect((await call("nimportequoi")).status).toBe(404);
-    expect((await call("status-EXPLOSE")).status).toBe(404);
+    for (const kind of ["drivers", "vehicles", "outstanding", "status-PLANNED", "payments", "products", "transports", "nimportequoi"]) {
+      expect((await call(kind)).status).toBe(404);
+    }
   });
 
   it("refuse les rôles non prévus", async () => {
     as({ ...w.supA1.user, role: "CASHIER" });
-    expect((await call("transports")).status).toBe(403);
+    expect((await call("passages")).status).toBe(403);
   });
 
   it("les listes Lieux et Régisseurs sont réservées à l'administrateur", async () => {
@@ -115,116 +93,98 @@ describe("accès", () => {
 describe("administrateur : tous les lieux", () => {
   beforeEach(() => as(w.admin));
 
-  it("transports : 5 au total, colonne Lieu, pas de page complète", async () => {
-    const { status, body } = await call("transports");
+  it("passages : 4 au total, avec lieu, origine, destination et enregistreur", async () => {
+    const { status, body } = await call("passages");
     expect(status).toBe(200);
-    expect(body.total).toBe("5");
-    expect(body.rows).toHaveLength(5);
-    expect(body.columns.map((c) => c.key)).toContain("location");
+    expect(body.total).toBe("4");
+    expect(body.columns.map((c) => c.key)).toEqual(
+      expect.arrayContaining(["product", "origin", "location", "destination", "by"]),
+    );
     expect(body.href).toBeNull();
     expect(body.locations?.map((l) => l.name).sort()).toEqual(["Tamatave", "Tana"]);
+
+    const riz = body.rows.find((r) => r.cells.product.t === "Riz");
+    expect(riz?.cells).toMatchObject({
+      origin: { t: "Antsirabe" },
+      destination: { t: "Toamasina" },
+      location: { t: "Tana" },
+    });
+    expect(riz?.cells.by.t).toBe("a1 Test");
   });
 
-  it("filtre par lieu et par recherche", async () => {
-    expect((await call("transports", `?locationId=${w.locB.id}`)).body.rows).toHaveLength(1);
-    expect((await call("transports", `?locationId=${w.locA.id}`)).body.rows).toHaveLength(4);
-    const search = await call("transports", "?q=ciment");
+  it("filtre par lieu et recherche dans l'origine, la destination ou le véhicule", async () => {
+    expect((await call("passages", `?locationId=${w.locB.id}`)).body.rows).toHaveLength(1);
+    expect((await call("passages", `?locationId=${w.locA.id}`)).body.rows).toHaveLength(3);
+    expect((await call("passages", "?q=moramanga")).body.count).toBe(1);
+    expect((await call("passages", "?q=mahajanga")).body.count).toBe(1);
+    expect((await call("passages", "?q=camion")).body.count).toBe(1);
+    const search = await call("passages", "?q=ciment");
     expect(search.body.count).toBe(1);
-    expect(search.body.total).toBe("5"); // le total reste celui de la carte
+    expect(search.body.total).toBe("4");
   });
 
-  it("reste à encaisser : ni annulés, ni payés", async () => {
-    const { body } = await call("outstanding");
-    expect(body.rows).toHaveLength(2);
-    expect(body.total).toMatch(/^55.000,00 MGA$/);
-    expect(body.title).toBe("Reste à encaisser");
-  });
-
-  it("montant reçu, monnaie rendue et paiements", async () => {
-    expect((await call("received")).body.total).toMatch(/^120.000,00 MGA$/);
+  it("montant reçu, monnaie rendue et tonnage cumulé", async () => {
+    expect((await call("received")).body.total).toMatch(/^175.000,00 MGA$/);
     const change = await call("change");
     expect(change.body.total).toMatch(/^10.000,00 MGA$/);
     expect(change.body.rows).toHaveLength(1);
-    const payments = await call("payments");
-    expect(payments.body.total).toBe("2");
-    expect(payments.body.rows[0].cells.method.t).toMatch(/Espèces|Mobile money/);
-  });
-
-  it("tonnage cumulé exclut les transports annulés, produits les compte", async () => {
+    expect(change.body.rows[0].cells.route.t).toBe("Antsirabe → Toamasina");
     const tonnage = await call("tonnage");
     expect(tonnage.body.total).toBe("13 t");
-    expect(tonnage.body.rows).toHaveLength(4);
-    expect((await call("products")).body.total).toBe("5");
+    expect(tonnage.body.title).toBe("Tonnage cumulé");
   });
 
-  it("répartition par statut", async () => {
-    const { body } = await call("status-CANCELLED");
-    expect(body.title).toBe("Transports : Annulé");
-    expect(body.rows).toHaveLength(1);
-    expect(body.rows[0].cells.status.badge).toBe("bad");
-  });
-
-  it("lieux et régisseurs, avec lien vers la page complète", async () => {
+  it("lieux et régisseurs : noms cliquables vers leur fiche", async () => {
     const locations = await call("locations");
     expect(locations.body.total).toBe("2");
     const tana = locations.body.rows.find((r) => r.cells.name.t === "Tana");
-    expect(tana?.cells.transports.t).toBe("4");
+    expect(tana?.cells.passages.t).toBe("3");
+    expect(tana?.cells.name.href).toBe(`/dashboard/locations/${tana?.id}`);
     expect(locations.body.href).toBe("/dashboard/locations");
 
     const supervisors = await call("supervisors");
     expect(supervisors.body.total).toBe("3");
-    expect(supervisors.body.href).toBe("/dashboard/supervisors");
-  });
-
-  it("chauffeurs et véhicules : recherche par nom ou immatriculation", async () => {
-    expect((await call("drivers", "?q=Chauffeur1")).body.count).toBe(1);
-    expect((await call("vehicles", "?q=2000")).body.count).toBe(1);
+    const a1 = supervisors.body.rows.find((r) => r.cells.name.t === "a1 Test");
+    expect(a1?.cells.passages.t).toBe("3");
+    expect(a1?.cells.name.href).toBe(`/dashboard/supervisors/${a1?.id}`);
   });
 });
 
 describe("régisseur : uniquement son lieu", () => {
-  it("ne voit que les données de son lieu, sans colonne Lieu", async () => {
+  it("ne voit que les passages de son lieu, sans colonne Lieu", async () => {
     as(w.supA1.user);
-    const { body } = await call("transports");
-    expect(body.total).toBe("4");
+    const { body } = await call("passages");
+    expect(body.total).toBe("3");
     expect(body.columns.map((c) => c.key)).not.toContain("location");
     expect(body.locations).toBeNull();
-    expect(body.href).toBe("/dashboard/transports");
+    expect(body.href).toBe("/dashboard/passages");
   });
 
-  it("le même lieu est partagé entre les régisseurs du lieu", async () => {
+  it("le lieu est partagé entre les régisseurs du lieu", async () => {
     as(w.supA2.user);
-    expect((await call("transports")).body.total).toBe("4");
+    expect((await call("passages")).body.total).toBe("3");
   });
 
   it("ignore un locationId envoyé pour voir un autre lieu", async () => {
     as(w.supA1.user);
-    const { body } = await call("transports", `?locationId=${w.locB.id}`);
-    expect(body.total).toBe("4");
-    expect(body.rows.every((r) => r.cells.product.t !== "Sucre")).toBe(true);
+    const { body } = await call("passages", `?locationId=${w.locB.id}`);
+    expect(body.total).toBe("3");
+    expect(body.rows.some((r) => r.cells.product.t === "Sucre")).toBe(false);
   });
 
   it("un régisseur d'un autre lieu ne voit rien du lieu A", async () => {
     as(w.supB.user);
-    const { body } = await call("transports");
+    const { body } = await call("passages");
     expect(body.total).toBe("1");
     expect(body.rows[0].cells.product.t).toBe("Sucre");
     expect((await call("received")).body.total).toMatch(/^70.000,00 MGA$/);
-    expect((await call("outstanding")).body.total).toMatch(/^0,00 MGA$/);
     expect((await call("tonnage")).body.total).toBe("6 t");
+    expect((await call("change")).body.total).toMatch(/^0,00 MGA$/);
   });
 
   it("montants du lieu A", async () => {
     as(w.supA1.user);
-    expect((await call("received")).body.total).toMatch(/^50.000,00 MGA$/);
-    expect((await call("outstanding")).body.total).toMatch(/^55.000,00 MGA$/);
+    expect((await call("received")).body.total).toMatch(/^105.000,00 MGA$/);
     expect((await call("tonnage")).body.total).toBe("7 t");
-  });
-
-  it("le chauffeur affiché est celui du transport, même après un changement de chauffeur", async () => {
-    as(w.supA1.user);
-    await prisma.vehicle.update({ where: { id: w.vehicle.id }, data: { driverId: w.driver2.id } });
-    const { body } = await call("transports");
-    expect(body.rows.every((r) => r.cells.driver.t === "Chauffeur1 Test")).toBe(true);
   });
 });

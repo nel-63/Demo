@@ -6,11 +6,9 @@ import { vi, type Mock } from "vitest";
 const MODELS = [
   "user",
   "supervisor",
-  "driver",
-  "vehicle",
   "location",
   "product",
-  "transportAssignment",
+  "passage",
   "payment",
   "auditLog",
   "loginFailure",

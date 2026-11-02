@@ -1,37 +1,23 @@
 import { prisma } from "@/lib/prisma";
-import {
-  PAYMENT_METHOD_LABELS,
-  TRANSPORT_STATUS_LABELS,
-  formatMGA,
-} from "@/lib/audit";
-import type { Badge, Cell, Column, DetailsResult, DetailsRow } from "@/lib/details-types";
+import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
+import type { Cell, Column, DetailsResult, DetailsRow } from "@/lib/details-types";
 
 export const DETAIL_LIMIT = 200;
 
-const STATUS_KEYS = Object.keys(TRANSPORT_STATUS_LABELS);
-
-export const SIMPLE_KINDS = [
+export const DETAIL_KINDS = [
   "locations",
   "supervisors",
-  "drivers",
-  "vehicles",
-  "transports",
-  "products",
+  "passages",
   "tonnage",
-  "payments",
   "received",
   "change",
-  "outstanding",
 ] as const;
 
 // Ces deux listes n'ont pas de sens pour un régisseur (un seul lieu, pas d'autres comptes).
 const ADMIN_ONLY = new Set<string>(["locations", "supervisors"]);
 
 export function isDetailKind(kind: string): boolean {
-  return (
-    (SIMPLE_KINDS as readonly string[]).includes(kind) ||
-    (kind.startsWith("status-") && STATUS_KEYS.includes(kind.slice(7)))
-  );
+  return (DETAIL_KINDS as readonly string[]).includes(kind);
 }
 
 export function isAdminOnlyKind(kind: string): boolean {
@@ -68,19 +54,12 @@ const fullName = (p?: { firstName: string; lastName: string } | null) =>
 const activeBadge = (isActive: boolean): Cell =>
   isActive ? text("Actif", { badge: "ok" }) : text("Inactif", { badge: "muted" });
 
-const STATUS_BADGES: Record<string, Badge> = {
-  PLANNED: "info",
-  IN_PROGRESS: "warn",
-  COMPLETED: "ok",
-  CANCELLED: "bad",
-};
-const statusCell = (status: string): Cell =>
-  text(TRANSPORT_STATUS_LABELS[status] ?? status, { badge: STATUS_BADGES[status] ?? "muted" });
-
 const col = (key: string, label: string, align?: "right"): Column => ({ key, label, align });
 const locationColumn = (admin: boolean): Column[] => (admin ? [col("location", "Lieu")] : []);
 const withLocation = (admin: boolean, name?: string | null): Record<string, Cell> =>
   admin ? { location: text(name ?? "—") } : {};
+
+const tonnageText = (value: unknown) => `${Number(value ?? 0).toLocaleString("fr-FR")} t`;
 
 export async function getDetails(
   kind: string,
@@ -90,11 +69,8 @@ export async function getDetails(
   const { admin } = scope;
   const list = words(rawQuery);
   const loc = scope.locationId ? { locationId: scope.locationId } : {};
-  // Filtre « transport du lieu » pour les tables liées (produits, paiements).
-  const viaAssignment = (extra: object = {}) =>
-    scope.locationId || Object.keys(extra).length > 0
-      ? { assignment: { is: { ...loc, ...extra } } }
-      : {};
+  // Filtre « passage du lieu » pour les paiements.
+  const viaPassage = scope.locationId ? { passage: { is: { locationId: scope.locationId } } } : {};
 
   const locations = admin
     ? await prisma.location.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } })
@@ -114,9 +90,9 @@ export async function getDetails(
     truncated: count > rows.length,
     columns,
     rows,
-    // Les pages « complètes » des chauffeurs, véhicules, transports et paiements
-    // sont réservées aux régisseurs.
-    href: admin && !["locations", "supervisors"].includes(kind) ? null : href,
+    // La page « Passages » est réservée aux régisseurs ; l'administrateur a les fiches
+    // des lieux et des régisseurs.
+    href: admin && !ADMIN_ONLY.has(kind) ? null : href,
     locations,
   });
 
@@ -136,7 +112,7 @@ export async function getDetails(
           select: {
             id: true,
             name: true,
-            _count: { select: { supervisors: true, drivers: true, vehicles: true, assignments: true } },
+            _count: { select: { supervisors: true, passages: true } },
           },
         }),
       ]);
@@ -147,18 +123,14 @@ export async function getDetails(
         [
           col("name", "Lieu"),
           col("supervisors", "Régisseurs", "right"),
-          col("drivers", "Chauffeurs", "right"),
-          col("vehicles", "Véhicules", "right"),
-          col("transports", "Transports", "right"),
+          col("passages", "Passages", "right"),
         ],
         rows.map((r) => ({
           id: r.id,
           cells: {
-            name: text(r.name),
+            name: text(r.name, { href: `/dashboard/locations/${r.id}` }),
             supervisors: num(r._count.supervisors, String(r._count.supervisors)),
-            drivers: num(r._count.drivers, String(r._count.drivers)),
-            vehicles: num(r._count.vehicles, String(r._count.vehicles)),
-            transports: num(r._count.assignments, String(r._count.assignments)),
+            passages: num(r._count.passages, String(r._count.passages)),
           },
         })),
         "/dashboard/locations",
@@ -166,9 +138,8 @@ export async function getDetails(
     }
 
     case "supervisors": {
-      const base = loc;
       const where = {
-        ...base,
+        ...loc,
         ...andWords(list, (w) => [
           { user: { firstName: has(w) } },
           { user: { lastName: has(w) } },
@@ -178,7 +149,7 @@ export async function getDetails(
       };
       const [count, total, rows] = await Promise.all([
         prisma.supervisor.count({ where }),
-        prisma.supervisor.count({ where: base }),
+        prisma.supervisor.count({ where: loc }),
         prisma.supervisor.findMany({
           where,
           orderBy: { user: { lastName: "asc" } },
@@ -188,6 +159,7 @@ export async function getDetails(
             nationalId: true,
             assignedLocation: { select: { name: true } },
             user: { select: { firstName: true, lastName: true, email: true, isActive: true } },
+            _count: { select: { passages: true } },
           },
         }),
       ]);
@@ -195,14 +167,22 @@ export async function getDetails(
         "Régisseurs",
         String(total),
         count,
-        [col("name", "Nom"), col("email", "Email"), col("nationalId", "CIN"), ...locationColumn(admin), col("status", "Compte")],
+        [
+          col("name", "Nom"),
+          col("email", "Email"),
+          col("nationalId", "CIN"),
+          ...locationColumn(admin),
+          col("passages", "Passages", "right"),
+          col("status", "Compte"),
+        ],
         rows.map((r) => ({
           id: r.id,
           cells: {
-            name: text(fullName(r.user)),
+            name: text(fullName(r.user), { href: `/dashboard/supervisors/${r.id}` }),
             email: text(r.user.email),
             nationalId: text(r.nationalId),
             ...withLocation(admin, r.assignedLocation?.name),
+            passages: num(r._count.passages, String(r._count.passages)),
             status: activeBadge(r.user.isActive),
           },
         })),
@@ -210,184 +190,10 @@ export async function getDetails(
       );
     }
 
-    case "drivers": {
-      const where = {
-        ...loc,
-        ...andWords(list, (w) => [
-          { firstName: has(w) },
-          { lastName: has(w) },
-          { nationalId: has(w) },
-          { licenseNumber: has(w) },
-          { phoneNumber: has(w) },
-        ]),
-      };
-      const [count, total, rows] = await Promise.all([
-        prisma.driver.count({ where }),
-        prisma.driver.count({ where: loc }),
-        prisma.driver.findMany({
-          where,
-          orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-          take: DETAIL_LIMIT,
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            nationalId: true,
-            licenseNumber: true,
-            phoneNumber: true,
-            isActive: true,
-            assignedLocation: { select: { name: true } },
-          },
-        }),
-      ]);
-      return finish(
-        "Chauffeurs",
-        String(total),
-        count,
-        [
-          col("name", "Nom"),
-          col("nationalId", "CIN"),
-          col("license", "Permis"),
-          col("phone", "Téléphone"),
-          ...locationColumn(admin),
-          col("status", "Statut"),
-        ],
-        rows.map((r) => ({
-          id: r.id,
-          cells: {
-            name: text(fullName(r)),
-            nationalId: text(r.nationalId),
-            license: text(r.licenseNumber),
-            phone: text(r.phoneNumber ?? "—"),
-            ...withLocation(admin, r.assignedLocation?.name),
-            status: activeBadge(r.isActive),
-          },
-        })),
-        "/dashboard/drivers",
-      );
-    }
-
-    case "vehicles": {
-      const where = {
-        ...loc,
-        ...andWords(list, (w) => [
-          { licensePlate: has(w) },
-          { vehicleType: has(w) },
-          { driver: { firstName: has(w) } },
-          { driver: { lastName: has(w) } },
-        ]),
-      };
-      const [count, total, rows] = await Promise.all([
-        prisma.vehicle.count({ where }),
-        prisma.vehicle.count({ where: loc }),
-        prisma.vehicle.findMany({
-          where,
-          orderBy: { licensePlate: "asc" },
-          take: DETAIL_LIMIT,
-          select: {
-            id: true,
-            licensePlate: true,
-            vehicleType: true,
-            isActive: true,
-            driver: { select: { firstName: true, lastName: true } },
-            assignedLocation: { select: { name: true } },
-          },
-        }),
-      ]);
-      return finish(
-        "Véhicules",
-        String(total),
-        count,
-        [
-          col("plate", "Immatriculation"),
-          col("type", "Type"),
-          col("driver", "Chauffeur"),
-          ...locationColumn(admin),
-          col("status", "Statut"),
-        ],
-        rows.map((r) => ({
-          id: r.id,
-          cells: {
-            plate: text(r.licensePlate),
-            type: text(r.vehicleType),
-            driver: text(fullName(r.driver)),
-            ...withLocation(admin, r.assignedLocation?.name),
-            status: activeBadge(r.isActive),
-          },
-        })),
-        "/dashboard/vehicles",
-      );
-    }
-
-    case "products":
-    case "tonnage": {
-      // Le tonnage cumulé ne compte pas les transports annulés.
-      const base = kind === "tonnage" ? viaAssignment({ status: { not: "CANCELLED" } }) : viaAssignment();
-      const where = {
-        AND: [
-          base,
-          andWords(list, (w) => [{ name: has(w) }, { type: has(w) }]),
-        ],
-      };
-      const [count, sum, total, rows] = await Promise.all([
-        prisma.product.count({ where }),
-        prisma.product.aggregate({ where: base, _sum: { tonnage: true } }),
-        prisma.product.count({ where: base }),
-        prisma.product.findMany({
-          where,
-          orderBy: { createdAt: "desc" },
-          take: DETAIL_LIMIT,
-          select: {
-            id: true,
-            name: true,
-            type: true,
-            tonnage: true,
-            assignment: {
-              select: {
-                assignedAt: true,
-                status: true,
-                vehicle: { select: { licensePlate: true } },
-                assignedLocation: { select: { name: true } },
-              },
-            },
-          },
-        }),
-      ]);
-      const tonnageText = (v: unknown) => `${Number(v ?? 0).toLocaleString("fr-FR")} t`;
-      return finish(
-        kind === "tonnage" ? "Tonnage cumulé" : "Produits",
-        kind === "tonnage" ? tonnageText(sum._sum.tonnage) : String(total),
-        count,
-        [
-          col("name", "Produit"),
-          col("type", "Type"),
-          col("tonnage", "Tonnage", "right"),
-          col("transport", "Transport lié"),
-          ...locationColumn(admin),
-          col("status", "Statut"),
-        ],
-        rows.map((r) => ({
-          id: r.id,
-          cells: {
-            name: text(r.name),
-            type: text(r.type),
-            tonnage: num(r.tonnage, tonnageText(r.tonnage)),
-            transport: r.assignment
-              ? { t: `${dateFormatter.format(r.assignment.assignedAt)} · ${r.assignment.vehicle.licensePlate}`, s: r.assignment.assignedAt.getTime() }
-              : text("—"),
-            ...withLocation(admin, r.assignment?.assignedLocation?.name),
-            status: r.assignment ? statusCell(r.assignment.status) : text("—"),
-          },
-        })),
-        "/dashboard/transports",
-      );
-    }
-
-    case "payments":
     case "received":
     case "change": {
       const base = {
-        ...viaAssignment(),
+        ...viaPassage,
         ...(kind === "change" ? { changeReturned: { gt: 0 } } : {}),
       };
       const where = {
@@ -395,8 +201,9 @@ export async function getDetails(
           base,
           andWords(list, (w) => [
             { reference: has(w) },
-            { assignment: { product: { name: has(w) } } },
-            { assignment: { vehicle: { licensePlate: has(w) } } },
+            { passage: { product: { name: has(w) } } },
+            { passage: { origin: has(w) } },
+            { passage: { destination: has(w) } },
             { recordedBy: { firstName: has(w) } },
             { recordedBy: { lastName: has(w) } },
           ]),
@@ -406,7 +213,6 @@ export async function getDetails(
         prisma.payment.count({ where }),
         prisma.payment.aggregate({
           where: base,
-          _count: { _all: true },
           _sum: { amountReceived: true, changeReturned: true },
         }),
         prisma.payment.findMany({
@@ -422,29 +228,25 @@ export async function getDetails(
             amountReceived: true,
             changeReturned: true,
             recordedBy: { select: { firstName: true, lastName: true } },
-            assignment: {
+            passage: {
               select: {
+                origin: true,
+                destination: true,
                 product: { select: { name: true } },
-                vehicle: { select: { licensePlate: true } },
                 assignedLocation: { select: { name: true } },
               },
             },
           },
         }),
       ]);
-      const total =
-        kind === "received"
-          ? formatMGA(agg._sum.amountReceived ?? 0)
-          : kind === "change"
-            ? formatMGA(agg._sum.changeReturned ?? 0)
-            : String(agg._count._all);
       return finish(
-        kind === "received" ? "Montant reçu" : kind === "change" ? "Monnaie rendue" : "Paiements",
-        total,
+        kind === "received" ? "Montant reçu" : "Monnaie rendue",
+        formatMGA((kind === "received" ? agg._sum.amountReceived : agg._sum.changeReturned) ?? 0),
         count,
         [
           col("date", "Date"),
-          col("transport", "Transport"),
+          col("product", "Produit"),
+          col("route", "Trajet"),
           col("method", "Mode"),
           col("due", "Dû", "right"),
           col("received", "Reçu", "right"),
@@ -456,7 +258,8 @@ export async function getDetails(
           id: r.id,
           cells: {
             date: date(r.createdAt),
-            transport: text(`${r.assignment.product.name} · ${r.assignment.vehicle.licensePlate}`),
+            product: text(r.passage.product.name),
+            route: text(`${r.passage.origin} → ${r.passage.destination}`),
             method: text(
               `${PAYMENT_METHOD_LABELS[r.paymentMethod] ?? r.paymentMethod}${r.reference ? ` (${r.reference})` : ""}`,
             ),
@@ -464,92 +267,83 @@ export async function getDetails(
             received: num(r.amountReceived, formatMGA(r.amountReceived)),
             change: num(r.changeReturned, formatMGA(r.changeReturned)),
             by: text(fullName(r.recordedBy)),
-            ...withLocation(admin, r.assignment.assignedLocation?.name),
+            ...withLocation(admin, r.passage.assignedLocation?.name),
           },
         })),
-        "/dashboard/payments",
+        "/dashboard/passages",
       );
     }
 
     default: {
-      // transports, outstanding, status-XXX
-      const statusFilter = kind.startsWith("status-") ? kind.slice(7) : null;
-      const base = {
-        ...loc,
-        ...(statusFilter ? { status: statusFilter as "PLANNED" } : {}),
-        ...(kind === "outstanding"
-          ? { status: { not: "CANCELLED" as const }, payment: { is: null }, amountDue: { not: null } }
-          : {}),
-      };
+      // passages, tonnage : la même liste de passages, avec un total différent.
       const where = {
         AND: [
-          base,
+          loc,
           andWords(list, (w) => [
             { product: { name: has(w) } },
-            { vehicle: { licensePlate: has(w) } },
-            { driver: { firstName: has(w) } },
-            { driver: { lastName: has(w) } },
-            { vehicle: { driver: { lastName: has(w) } } },
+            { product: { type: has(w) } },
+            { origin: has(w) },
+            { destination: has(w) },
+            { vehicleInfo: has(w) },
+            { driverName: has(w) },
+            { supervisor: { user: { lastName: has(w) } } },
+            { supervisor: { user: { firstName: has(w) } } },
           ]),
         ],
       };
       const [count, total, sum, rows] = await Promise.all([
-        prisma.transportAssignment.count({ where }),
-        prisma.transportAssignment.count({ where: base }),
-        prisma.transportAssignment.aggregate({ where: base, _sum: { amountDue: true } }),
-        prisma.transportAssignment.findMany({
+        prisma.passage.count({ where }),
+        prisma.passage.count({ where: loc }),
+        prisma.product.aggregate({
+          where: scope.locationId ? { passage: { is: { locationId: scope.locationId } } } : {},
+          _sum: { tonnage: true },
+        }),
+        prisma.passage.findMany({
           where,
           orderBy: { assignedAt: "desc" },
           take: DETAIL_LIMIT,
           select: {
             id: true,
             assignedAt: true,
-            status: true,
-            amountDue: true,
-            product: { select: { name: true, tonnage: true } },
-            vehicle: { select: { licensePlate: true, driver: { select: { firstName: true, lastName: true } } } },
-            driver: { select: { firstName: true, lastName: true } },
+            origin: true,
+            destination: true,
+            product: { select: { name: true, type: true, tonnage: true } },
+            supervisor: { select: { user: { select: { firstName: true, lastName: true } } } },
             assignedLocation: { select: { name: true } },
-            payment: { select: { id: true } },
+            payment: { select: { paymentMethod: true, amountDue: true } },
           },
         }),
       ]);
-      const title = statusFilter
-        ? `Transports : ${TRANSPORT_STATUS_LABELS[statusFilter]}`
-        : kind === "outstanding"
-          ? "Reste à encaisser"
-          : "Transports";
       return finish(
-        title,
-        kind === "outstanding" ? formatMGA(sum._sum.amountDue ?? 0) : String(total),
+        kind === "tonnage" ? "Tonnage cumulé" : "Passages",
+        kind === "tonnage" ? tonnageText(sum._sum.tonnage) : String(total),
         count,
         [
           col("date", "Date"),
           col("product", "Produit"),
           col("tonnage", "Tonnage", "right"),
-          col("vehicle", "Véhicule"),
-          col("driver", "Chauffeur"),
-          col("amount", "Montant", "right"),
-          col("status", "Statut"),
-          col("payment", "Paiement"),
+          col("origin", "Origine"),
           ...locationColumn(admin),
+          col("destination", "Destination"),
+          col("amount", "Montant payé", "right"),
+          col("method", "Mode"),
+          col("by", "Enregistré par"),
         ],
         rows.map((r) => ({
           id: r.id,
           cells: {
             date: date(r.assignedAt),
             product: text(r.product.name),
-            tonnage: num(r.product.tonnage, `${Number(r.product.tonnage).toLocaleString("fr-FR")} t`),
-            vehicle: text(r.vehicle.licensePlate),
-            // Chauffeur au moment du transport, sinon celui du véhicule (anciens transports).
-            driver: text(fullName(r.driver ?? r.vehicle.driver)),
-            amount: r.amountDue === null ? text("Non fixé") : num(r.amountDue, formatMGA(r.amountDue)),
-            status: statusCell(r.status),
-            payment: r.payment ? text("Payé", { badge: "ok" }) : text("Non payé", { badge: "warn" }),
+            tonnage: num(r.product.tonnage, tonnageText(r.product.tonnage)),
+            origin: text(r.origin),
             ...withLocation(admin, r.assignedLocation?.name),
+            destination: text(r.destination),
+            amount: r.payment ? num(r.payment.amountDue, formatMGA(r.payment.amountDue)) : text("—"),
+            method: text(r.payment ? (PAYMENT_METHOD_LABELS[r.payment.paymentMethod] ?? r.payment.paymentMethod) : "—"),
+            by: text(fullName(r.supervisor.user)),
           },
         })),
-        "/dashboard/transports",
+        "/dashboard/passages",
       );
     }
   }

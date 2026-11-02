@@ -39,6 +39,17 @@ describe("describeAudit", () => {
     expect(lines.some((line) => line.startsWith("Référence"))).toBe(false);
   });
 
+  it("décrit un passage : produit, tonnage et trajet", () => {
+    expect(
+      describeAudit("Passage", "CREATE", {
+        productName: "Riz blanc",
+        tonnage: "8.5",
+        origin: "Antsirabe",
+        destination: "Toamasina",
+      }),
+    ).toEqual(["Produit : Riz blanc (8,5 t)", "Trajet : Antsirabe → Toamasina"]);
+  });
+
   it("décrit un changement de statut avec les libellés français", () => {
     expect(
       describeAudit("TransportAssignment", "CHANGE_TRANSPORT_STATUS", {
@@ -89,7 +100,8 @@ describe("libellés", () => {
   it("traduit les actions et types connus et garde les inconnus tels quels", () => {
     expect(actionLabel("DEACTIVATE")).toBe("Désactivation");
     expect(actionLabel("AUTRE")).toBe("AUTRE");
-    expect(entityLabel("TransportAssignment")).toBe("Transport");
+    expect(entityLabel("Passage")).toBe("Passage");
+    expect(entityLabel("TransportAssignment")).toBe("Passage"); // anciens logs
     expect(entityLabel("Inconnu")).toBe("Inconnu");
   });
 

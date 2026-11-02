@@ -101,8 +101,10 @@ async function SupervisorsContent() {
                   <tbody className="divide-y divide-slate-100">
                     {supervisors.map((item) => (
                       <tr key={item.id} className="align-top">
-                        <td className="px-3 py-4 font-medium text-slate-900">
-                          {item.user.firstName} {item.user.lastName}
+                        <td className="px-3 py-4 font-medium">
+                          <Link href={`/dashboard/supervisors/${item.id}`} className="text-blue-700 hover:underline">
+                            {item.user.firstName} {item.user.lastName}
+                          </Link>
                         </td>
                         <td className="px-3 py-4">{item.user.email}</td>
                         <td className="px-3 py-4">{item.nationalId}</td>

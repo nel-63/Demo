@@ -23,13 +23,6 @@ enum PaymentMethod {
   OTHER
 }
 
-enum TransportStatus {
-  PLANNED
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-}
-
 model User {
   id           String   @id @default(cuid())
   firstName    String
@@ -60,63 +53,14 @@ model Supervisor {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  user        User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
-  assignments TransportAssignment[]
-
-  drivers  Driver[]  @relation("SupervisorDrivers")
-  vehicles Vehicle[] @relation("SupervisorVehicles")
+  user     User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  passages Passage[]
 
   locationId       String?
   assignedLocation Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
 
   @@index([locationId])
   @@index([location])
-}
-
-model Driver {
-  id            String   @id @default(cuid())
-  firstName     String
-  lastName      String
-  nationalId    String   @unique
-  phoneNumber   String?
-  licenseNumber String   @unique
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  vehicles    Vehicle[]
-  assignments TransportAssignment[] @relation("AssignmentDriver")
-
-  supervisorId String?
-  supervisor   Supervisor? @relation("SupervisorDrivers", fields: [supervisorId], references: [id], onDelete: Restrict)
-
-  locationId       String?
-  assignedLocation Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
-
-  @@index([locationId])
-  @@index([supervisorId])
-  @@index([lastName, firstName])
-}
-
-model Vehicle {
-  id           String   @id @default(cuid())
-  vehicleType  String
-  licensePlate String   @unique
-  driverId     String
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  driver       Driver                @relation(fields: [driverId], references: [id], onDelete: Restrict)
-  assignments  TransportAssignment[]
-  supervisorId String?
-  supervisor   Supervisor?           @relation("SupervisorVehicles", fields: [supervisorId], references: [id], onDelete: Restrict)
-
-  locationId       String?
-  assignedLocation Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
-
-  @@index([locationId])
-  @@index([supervisorId])
 }
 
 model Product {
@@ -127,40 +71,36 @@ model Product {
   description String?
   createdAt   DateTime @default(now())
 
-  assignment TransportAssignment?
+  passage Passage?
 }
 
-model TransportAssignment {
-  id           String          @id @default(cuid())
+// Un passage : un produit qui passe par le lieu d'un régisseur, du lieu d'origine
+// vers la destination. Il n'existe que s'il est payé : le paiement est enregistré
+// en même temps (pas de statut, pas de « reste à payer »).
+model Passage {
+  id           String   @id @default(cuid())
   supervisorId String
-  productId    String          @unique
-  vehicleId    String
-  assignedAt   DateTime        @default(now())
-  status       TransportStatus @default(PLANNED)
+  productId    String   @unique
+  assignedAt   DateTime @default(now())
+  origin       String
+  destination  String
+  vehicleInfo  String? // description libre du véhicule (facultatif)
+  driverName   String? // nom libre du chauffeur (facultatif)
   notes        String?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   supervisor Supervisor @relation(fields: [supervisorId], references: [id], onDelete: Restrict)
   product    Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
-  vehicle    Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
   payment    Payment?
 
   locationId       String?
   assignedLocation Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
 
-  amountDue Decimal? @db.Decimal(14, 2)
-
-  // Chauffeur au moment du transport : conserve l'historique si le vehicule change de chauffeur.
-  driverId String?
-  driver   Driver? @relation("AssignmentDriver", fields: [driverId], references: [id], onDelete: Restrict)
-
   @@index([locationId])
   @@index([supervisorId])
-  @@index([vehicleId])
-  @@index([driverId])
   @@index([assignedAt])
-  @@index([status])
+  @@map("TransportAssignment")
 }
 
 model Payment {
@@ -174,7 +114,7 @@ model Payment {
   changeReturned Decimal       @default(0) @db.Decimal(14, 2)
   createdAt      DateTime      @default(now())
 
-  assignment TransportAssignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  passage    Passage             @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
   recordedBy User                @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
 
   @@index([assignmentId])
@@ -207,9 +147,7 @@ model Location {
   updatedAt      DateTime @updatedAt
 
   supervisors Supervisor[]
-  drivers     Driver[]
-  vehicles    Vehicle[]
-  assignments TransportAssignment[]
+  passages    Passage[]
 }
 
 model LoginFailure {

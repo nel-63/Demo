@@ -59,6 +59,13 @@ const BADGES: Record<Badge, { className: string; Icon: LucideIcon }> = {
 };
 
 function CellView({ cell }: { cell: Cell }) {
+  if (cell.href) {
+    return (
+      <Link href={cell.href} className="font-medium text-blue-700 underline-offset-2 hover:underline">
+        {cell.t}
+      </Link>
+    );
+  }
   if (!cell.badge) return <>{cell.t}</>;
   const { className, Icon } = BADGES[cell.badge];
   return (

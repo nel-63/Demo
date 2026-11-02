@@ -16,9 +16,10 @@ export const ACTION_LABELS: Record<string, string> = {
 export const ENTITY_LABELS: Record<string, string> = {
   Location: "Lieu",
   Supervisor: "Régisseur",
-  Driver: "Chauffeur",
-  Vehicle: "Véhicule",
-  TransportAssignment: "Transport",
+  Driver: "Chauffeur", // historique : les chauffeurs ne sont plus gérés
+  Vehicle: "Véhicule", // historique : les véhicules ne sont plus gérés
+  Passage: "Passage",
+  TransportAssignment: "Passage", // anciens enregistrements du journal
   Payment: "Paiement",
 };
 
@@ -113,6 +114,17 @@ export function describeAudit(
     if (from && to) {
       lines.push(`Statut : ${TRANSPORT_STATUS_LABELS[from] ?? from} → ${TRANSPORT_STATUS_LABELS[to] ?? to}`);
     }
+  } else if (
+    (entityType === "Passage" || entityType === "TransportAssignment") &&
+    action === "CREATE" &&
+    (details.origin !== undefined || details.productName !== undefined)
+  ) {
+    const product = str(details.productName);
+    const tonnage = details.tonnage !== undefined ? ` (${Number(details.tonnage).toLocaleString("fr-FR")} t)` : "";
+    if (product) lines.push(`Produit : ${product}${tonnage}`);
+    const origin = str(details.origin) ?? "—";
+    const destination = str(details.destination) ?? "—";
+    lines.push(`Trajet : ${origin} → ${destination}`);
   } else if (action === "SET_TRANSPORT_AMOUNT" || (entityType === "TransportAssignment" && action === "CREATE")) {
     if (details.amountDue !== undefined) lines.push(`Montant officiel : ${formatMGA(details.amountDue)}`);
   } else if (action === "CHANGE_LOCATION") {

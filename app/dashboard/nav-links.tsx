@@ -17,6 +17,7 @@ const ADMIN_ITEMS: Item[] = [
   { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard, exact: true },
   { href: "/dashboard/locations", label: "Lieux", icon: MapPin },
   { href: "/dashboard/supervisors", label: "Régisseurs", icon: UserCog },
+  { href: "/dashboard/passages", label: "Passages", icon: Route },
   { href: "/dashboard/audit", label: "Journal d'audit", icon: ShieldCheck },
 ];
 

@@ -6,8 +6,9 @@ import { getCurrentUser } from "@/lib/auth";
 import SupervisorForm from "./supervisor-form";
 import LocationAssignmentForm from "./location-assignment-form";
 import SupervisorAccountActions from "./supervisor-account-actions";
+import { readParam, type SearchParams } from "../search-params";
 
-export default function SupervisorsPage() {
+export default function SupervisorsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   return (
     <Suspense
       fallback={
@@ -16,23 +17,35 @@ export default function SupervisorsPage() {
         </div>
       }
     >
-      <SupervisorsContent />
+      <SupervisorsContent searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function SupervisorsContent() {
+async function SupervisorsContent({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const user = await getCurrentUser();
 
   if (!user) redirect("/login");
   if (user.role !== "ADMIN") redirect("/dashboard");
 
+  const params = await searchParams;
+  const q = readParam(params, "q");
   const [locations, supervisors] = await Promise.all([
     prisma.location.findMany({
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
     prisma.supervisor.findMany({
+      where: q ? {
+        OR: [
+          { nationalId: { contains: q, mode: "insensitive" } },
+          { address: { contains: q, mode: "insensitive" } },
+          { user: { firstName: { contains: q, mode: "insensitive" } } },
+          { user: { lastName: { contains: q, mode: "insensitive" } } },
+          { user: { email: { contains: q, mode: "insensitive" } } },
+          { assignedLocation: { name: { contains: q, mode: "insensitive" } } },
+        ],
+      } : undefined,
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -83,6 +96,10 @@ async function SupervisorsContent() {
               </Link>
             </div>
 
+            <form method="GET" action="/dashboard/supervisors" className="mb-5 flex gap-2">
+              <input name="q" type="search" defaultValue={q} maxLength={100} placeholder="Nom, email, CIN ou lieu…" className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              <button className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white">Rechercher</button>
+            </form>
             {supervisors.length === 0 ? (
               <p className="text-slate-600">Aucun régisseur enregistré.</p>
             ) : (

@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Caisse & Transports",
-  description: "Gestion des transports et des paiements",
+  title: "WWWWW",
+  description: "WWWWW",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

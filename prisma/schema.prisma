@@ -40,6 +40,7 @@ model User {
   supervisorProfile Supervisor?
   recordedPayments  Payment[]   @relation("PaymentRecordedBy")
   auditLogs         AuditLog[]
+  recordRevisions   RecordRevision[]
 
   @@index([lastName, firstName])
 }
@@ -69,9 +70,12 @@ model Product {
   type        String
   tonnage     Decimal  @db.Decimal(10, 2)
   description String?
+  deletedAt   DateTime?
+  deletedById String?
   createdAt   DateTime @default(now())
 
   passage Passage?
+  @@index([deletedAt])
 }
 
 // Un passage : un produit qui passe par le lieu d'un régisseur, du lieu d'origine
@@ -86,7 +90,12 @@ model Passage {
   destination  String
   vehicleInfo  String? // description libre du véhicule (facultatif)
   driverName   String? // nom libre du chauffeur (facultatif)
+  vehicleRegistration String?
+  vehicleCharacteristics String?
+  driverLicenseNumber String?
   notes        String?
+  deletedAt    DateTime?
+  deletedById  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -100,6 +109,7 @@ model Passage {
   @@index([locationId])
   @@index([supervisorId])
   @@index([assignedAt])
+  @@index([deletedAt])
   @@map("TransportAssignment")
 }
 
@@ -113,6 +123,8 @@ model Payment {
   amountReceived Decimal       @db.Decimal(14, 2)
   changeReturned Decimal       @default(0) @db.Decimal(14, 2)
   createdAt      DateTime      @default(now())
+  deletedAt      DateTime?
+  deletedById    String?
 
   passage    Passage             @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
   recordedBy User                @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
@@ -121,6 +133,7 @@ model Payment {
   @@index([recordedById])
   @@index([createdAt])
   @@index([reference])
+  @@index([deletedAt])
 }
 
 model AuditLog {
@@ -137,6 +150,23 @@ model AuditLog {
   @@index([userId])
   @@index([entityType, entityId])
   @@index([createdAt])
+}
+
+model RecordRevision {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  version    Int
+  action     String
+  actorId    String
+  snapshot   Json
+  createdAt  DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@unique([entityType, entityId, version])
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
 }
 
 model Location {

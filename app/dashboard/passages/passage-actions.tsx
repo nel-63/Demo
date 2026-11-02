@@ -6,6 +6,7 @@ import { PAYMENT_METHOD_LABELS } from "@/lib/audit";
 
 type Initial = {
   id: string;
+  assignedAt: string;
   origin: string;
   destination: string;
   vehicleInfo: string | null;
@@ -83,6 +84,7 @@ export default function PassageActions({ initial }: { initial: Initial }) {
           <label className={label}>Nom du produit<input className={field} name="productName" defaultValue={initial.product.name} required maxLength={150}/></label>
           <label className={label}>Type de produit<input className={field} name="productType" defaultValue={initial.product.type} required maxLength={100}/></label>
           <label className={label}>Tonnage (t)<input className={field} name="tonnage" type="number" min="0.01" step="0.01" defaultValue={initial.product.tonnage} required/></label>
+          <label className={label}>Date du passage<input className={field} name="assignedAt" type="date" defaultValue={initial.assignedAt} required/></label>
           <label className={label}>Origine<input className={field} name="origin" defaultValue={initial.origin} required maxLength={150}/></label>
           <label className={label}>Destination<input className={field} name="destination" defaultValue={initial.destination} required maxLength={150}/></label>
           <label className={label}>Immatriculation<input className={field} name="vehicleRegistration" defaultValue={initial.vehicleRegistration ?? ""} maxLength={40}/></label>

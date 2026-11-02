@@ -17,11 +17,11 @@ type Props = {
 
 export default function LocationSheetPage(props: Props) {
   return (
-    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+    <div>
       <Suspense fallback={<p>Chargement...</p>}>
         <LocationSheet {...props} />
       </Suspense>
-    </main>
+    </div>
   );
 }
 
@@ -98,7 +98,7 @@ async function LocationSheet({ params, searchParams }: Props) {
       </Link>
 
       <header className="my-6">
-        <h1 className="text-3xl font-bold text-slate-900">{location.name}</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">{location.name}</h1>
         <p className="mt-2 text-slate-700">
           Ce qui a été fait dans ce lieu : les produits qui y sont passés, par qui, d&apos;où et vers où.
         </p>
@@ -111,7 +111,7 @@ async function LocationSheet({ params, searchParams }: Props) {
         <Stat label="Montant reçu" value={formatMGA(payments._sum.amountReceived ?? 0)} />
       </div>
 
-      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+      <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-5 text-xl font-semibold text-slate-900">Régisseurs du lieu</h2>
         {supervisors.length === 0 ? (
           <p className="text-slate-700">Aucun régisseur n&apos;est affecté à ce lieu.</p>
@@ -134,7 +134,7 @@ async function LocationSheet({ params, searchParams }: Props) {
         )}
       </section>
 
-      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+      <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-5 text-xl font-semibold text-slate-900">Passages dans ce lieu</h2>
         {passages.length === 0 ? (
           <p className="text-slate-700">Aucun produit n&apos;est encore passé par ce lieu.</p>
@@ -146,7 +146,7 @@ async function LocationSheet({ params, searchParams }: Props) {
         )}
       </section>
 
-      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+      <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-5 text-xl font-semibold text-slate-900">Activité récente du lieu</h2>
         {activity.rows.length === 0 ? (
           <p className="text-slate-700">Aucune opération enregistrée.</p>

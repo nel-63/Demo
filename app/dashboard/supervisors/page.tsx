@@ -11,9 +11,9 @@ export default function SupervisorsPage() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+        <div>
           <p className="text-slate-600">Chargement...</p>
-        </main>
+        </div>
       }
     >
       <SupervisorsContent />
@@ -54,26 +54,26 @@ async function SupervisorsContent() {
   ]);
 
   return (
-    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+    <div>
       <div className="mx-auto max-w-7xl">
         <Link href="/dashboard" className="text-sm font-medium text-blue-700 hover:underline">
           &larr; Retour au tableau de bord
         </Link>
 
         <header className="my-6">
-          <h1 className="text-3xl font-bold text-slate-900">Gestion des régisseurs</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Gestion des régisseurs</h1>
           <p className="mt-2 text-slate-600">
             Les régisseurs affectés au même lieu partagent les données opérationnelles de ce lieu.
           </p>
         </header>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[400px_1fr]">
-          <section className="h-fit rounded-2xl bg-white p-6 shadow-sm">
+          <section className="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-5 text-xl font-semibold">Nouveau régisseur</h2>
             <SupervisorForm locations={locations} />
           </section>
 
-          <section className="rounded-2xl bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-semibold">
                 Régisseurs enregistrés ({supervisors.length})
@@ -135,6 +135,6 @@ async function SupervisorsContent() {
           </section>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

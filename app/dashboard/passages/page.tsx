@@ -15,11 +15,11 @@ const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
 
 export default function PassagesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   return (
-    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+    <div>
       <Suspense fallback={<p>Chargement...</p>}>
         <PassagesContent searchParams={searchParams} />
       </Suspense>
-    </main>
+    </div>
   );
 }
 
@@ -35,7 +35,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
 
   if (!profile?.locationId) {
     return (
-      <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
+      <section className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold">Aucun lieu affecté</h1>
         <p className="mt-3 text-slate-700">Contactez l&apos;administrateur pour associer votre compte à un lieu.</p>
       </section>
@@ -99,7 +99,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
       </Link>
 
       <header className="my-6">
-        <h1 className="text-3xl font-bold text-slate-900">Passages</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Passages</h1>
         <p className="mt-2 text-slate-700">
           Lieu : {profile.assignedLocation?.name ?? "Non renseigné"}. Un passage n&apos;est enregistré
           qu&apos;avec son paiement : sans paiement, le produit ne passe pas.
@@ -107,12 +107,12 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
       </header>
 
       <div className="grid gap-6 xl:grid-cols-[440px_1fr]">
-        <section className="h-fit rounded-2xl bg-white p-6 shadow-sm">
+        <section className="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-xl font-semibold text-slate-900">Nouveau passage</h2>
           <PassageForm />
         </section>
 
-        <section className="min-w-0 rounded-2xl bg-white p-6 shadow-sm">
+        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-5 text-xl font-semibold text-slate-900">
             Historique des passages ({total})
           </h2>

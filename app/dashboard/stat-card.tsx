@@ -42,11 +42,11 @@ export function StatCard({
       >
         <span className="flex items-start justify-between gap-3">
           <span className="text-sm font-medium text-slate-700">{label}</span>
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
             <KindIcon kind={kind} className="size-5" />
           </span>
         </span>
-        <span className="mt-2 block break-words text-2xl font-bold text-slate-900">{value}</span>
+        <span className="mt-2 block break-words text-3xl font-bold tracking-tight text-slate-900">{value}</span>
         <span className="mt-2 block text-sm text-slate-600">{description}</span>
         <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-slate-700 group-hover:text-blue-700">
           Voir le détail

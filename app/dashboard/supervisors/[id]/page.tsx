@@ -17,11 +17,11 @@ type Props = {
 
 export default function SupervisorSheetPage(props: Props) {
   return (
-    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+    <div>
       <Suspense fallback={<p>Chargement...</p>}>
         <SupervisorSheet {...props} />
       </Suspense>
-    </main>
+    </div>
   );
 }
 
@@ -92,7 +92,7 @@ async function SupervisorSheet({ params, searchParams }: Props) {
       </Link>
 
       <header className="my-6">
-        <h1 className="text-3xl font-bold text-slate-900">{name}</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">{name}</h1>
         <p className="mt-2 text-slate-700">
           {supervisor.user.email}
           {supervisor.user.phoneNumber ? ` — ${supervisor.user.phoneNumber}` : ""} — CIN {supervisor.nationalId}
@@ -117,7 +117,7 @@ async function SupervisorSheet({ params, searchParams }: Props) {
         <Stat label="Montant reçu" value={formatMGA(payments._sum.amountReceived ?? 0)} />
       </div>
 
-      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+      <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-5 text-xl font-semibold text-slate-900">Passages enregistrés par {name}</h2>
         {passages.length === 0 ? (
           <p className="text-slate-700">Ce régisseur n&apos;a encore enregistré aucun passage.</p>
@@ -129,7 +129,7 @@ async function SupervisorSheet({ params, searchParams }: Props) {
         )}
       </section>
 
-      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+      <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-5 text-xl font-semibold text-slate-900">Activité récente de {name}</h2>
         {activity.rows.length === 0 ? (
           <p className="text-slate-700">Aucune opération enregistrée.</p>
@@ -139,7 +139,7 @@ async function SupervisorSheet({ params, searchParams }: Props) {
       </section>
 
       {accountEvents.rows.length > 0 && (
-        <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-5 text-xl font-semibold text-slate-900">Opérations sur ce compte</h2>
           <AuditTable rows={accountEvents.rows} locationNames={accountEvents.locationNames} />
         </section>

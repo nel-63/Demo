@@ -75,7 +75,7 @@ export default function SupervisorForm({
             required={field.required}
             maxLength={field.name === "address" ? 300 : 100}
             autoComplete={field.name === "email" ? "email" : "off"}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
           />
         </div>
       ))}

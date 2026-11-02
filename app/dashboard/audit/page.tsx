@@ -21,11 +21,11 @@ export default function AuditPage({
   searchParams: Promise<SearchParams>;
 }) {
   return (
-    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+    <div>
       <Suspense fallback={<p>Chargement...</p>}>
         <AuditContent searchParams={searchParams} />
       </Suspense>
-    </main>
+    </div>
   );
 }
 
@@ -77,13 +77,13 @@ async function AuditContent({
       </Link>
 
       <header className="my-6">
-        <h1 className="text-3xl font-bold text-slate-900">Journal d&apos;audit</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Journal d&apos;audit</h1>
         <p className="mt-2 text-slate-600">
           Qui a fait quoi, sur quel enregistrement et à quel moment. Ce journal est en lecture seule.
         </p>
       </header>
 
-      <section className="rounded-2xl bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-5 text-xl font-semibold">Opérations ({total})</h2>
 
         <ListFilters

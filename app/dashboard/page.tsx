@@ -5,7 +5,6 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { formatMGA } from "@/lib/audit";
 import LocationStats from "./location-stats";
-import LogoutButton from "./logout-button";
 import { StatCard } from "./stat-card";
 
 const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
@@ -17,11 +16,11 @@ const tonnageText = (value: unknown) => `${Number(value ?? 0).toLocaleString("fr
 
 export default function DashboardPage() {
   return (
-    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+    <div>
       <Suspense fallback={<p>Chargement du tableau de bord...</p>}>
         <DashboardContent />
       </Suspense>
-    </main>
+    </div>
   );
 }
 
@@ -37,7 +36,7 @@ async function DashboardContent() {
   }
 
   return (
-    <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
+    <section className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
       <h1 className="text-2xl font-bold">Accès non autorisé</h1>
       <p className="mt-3 text-slate-700">Contactez l&apos;administrateur pour obtenir les droits nécessaires.</p>
     </section>
@@ -58,20 +57,8 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
       <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Administration</p>
-          <h1 className="mt-2 text-3xl font-bold text-slate-900">Statistiques globales</h1>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Statistiques globales</h1>
           <p className="mt-2 text-slate-700">Bienvenue, {firstName} {lastName}.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Link href="/dashboard/supervisors" className="rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800">
-            Régisseurs
-          </Link>
-          <Link href="/dashboard/locations" className="rounded-xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-100">
-            Lieux
-          </Link>
-          <Link href="/dashboard/audit" className="rounded-xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-100">
-            Journal d&apos;audit
-          </Link>
-          <LogoutButton />
         </div>
       </header>
 
@@ -105,7 +92,7 @@ async function SupervisorDashboard({
 
   if (!profile?.locationId) {
     return (
-      <section className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
+      <section className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold">Aucun lieu affecté</h1>
         <p className="mt-3 text-slate-700">Contactez l&apos;administrateur pour associer votre compte à un lieu.</p>
       </section>
@@ -144,7 +131,7 @@ async function SupervisorDashboard({
       <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Espace régisseur</p>
-          <h1 className="mt-2 text-3xl font-bold text-slate-900">Statistiques du lieu</h1>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Statistiques du lieu</h1>
           <p className="mt-2 text-slate-700">
             Bienvenue, {firstName} {lastName}. Lieu : {profile.assignedLocation?.name ?? "Non renseigné"}.
           </p>
@@ -153,10 +140,9 @@ async function SupervisorDashboard({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Link href="/dashboard/passages" className="rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800">
+          <Link href="/dashboard/passages" className="rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-800">
             Enregistrer un passage
           </Link>
-          <LogoutButton />
         </div>
       </header>
 
@@ -167,7 +153,7 @@ async function SupervisorDashboard({
         <StatCard label="Monnaie rendue" value={formatMGA(payments._sum.changeReturned)} description="Total rendu en espèces" kind="change" />
       </div>
 
-      <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+      <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold text-slate-900">Passages récents</h2>
           <Link href="/dashboard/passages" className="text-sm font-medium text-blue-700 hover:underline">

@@ -71,3 +71,23 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .details-backdrop, .details-panel { animation: none; }
 }
+
+/* Tableaux : en-têtes sobres et lignes survolables, sans modifier chaque page. */
+main table thead th {
+  background: #f8fafc;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+main table thead th:first-child { border-top-left-radius: 0.75rem; }
+main table thead th:last-child { border-top-right-radius: 0.75rem; }
+main table tbody tr { transition: background-color 120ms ease-out; }
+main table tbody tr:hover { background: #f8fafc; }
+
+/* Défilement fluide, sauf si l'utilisateur préfère moins de mouvement. */
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}

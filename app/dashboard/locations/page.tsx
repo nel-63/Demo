@@ -9,9 +9,9 @@ export default function LocationsPage() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+        <div>
           <p className="text-slate-600">Chargement...</p>
-        </main>
+        </div>
       }
     >
       <LocationsContent />
@@ -41,26 +41,26 @@ async function LocationsContent() {
   });
 
   return (
-    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+    <div>
       <div className="mx-auto max-w-7xl">
         <Link href="/dashboard" className="text-sm font-medium text-blue-700 hover:underline">
           &larr; Retour au tableau de bord
         </Link>
 
         <header className="my-6">
-          <h1 className="text-3xl font-bold text-slate-900">Gestion des lieux</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Gestion des lieux</h1>
           <p className="mt-2 text-slate-600">
             Chaque lieu constitue un espace de données partagé entre les régisseurs qui y sont affectés.
           </p>
         </header>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[360px_1fr]">
-          <section className="h-fit rounded-2xl bg-white p-6 shadow-sm">
+          <section className="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-5 text-xl font-semibold">Nouveau lieu</h2>
             <LocationForm />
           </section>
 
-          <section className="rounded-2xl bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-5 text-xl font-semibold">
               Lieux enregistrés ({locations.length})
             </h2>
@@ -105,6 +105,6 @@ async function LocationsContent() {
           </section>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

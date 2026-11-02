@@ -38,7 +38,7 @@ async function LocationsContent({ searchParams }: { searchParams: Promise<Search
       _count: {
         select: {
           supervisors: true,
-          passages: true,
+          passages: { where: { deletedAt: null } },
         },
       },
     },

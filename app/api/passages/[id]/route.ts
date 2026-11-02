@@ -43,7 +43,7 @@ function snapshotOf(record: {
 }
 
 async function recordRevision(
-  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  tx: any,
   actorId: string,
   passageId: string,
   action: "UPDATE" | "DELETE",
@@ -141,6 +141,7 @@ export async function PATCH(request: Request, context: Context) {
       await tx.$queryRaw`SELECT "id" FROM "TransportAssignment" WHERE "id" = ${id} FOR UPDATE`;
       const current = await loadForUpdate(tx, id);
       if (!current || current.deletedAt) return null;
+      if (!current.payment) return null;
       const before = snapshotOf(current);
       const paymentData = {
         paymentMethod: method, reference: reference || null,
@@ -161,11 +162,7 @@ export async function PATCH(request: Request, context: Context) {
           driverLicenseNumber: driverLicenseNumber || null, notes: notes || null,
         },
       });
-      if (current.payment) {
-        await tx.payment.update({ where: { id: current.payment.id }, data: paymentData });
-      } else {
-        return null;
-      }
+      await tx.payment.update({ where: { id: current.payment.id }, data: paymentData });
 
       const fresh = await loadForUpdate(tx, id);
       const after = snapshotOf(fresh);

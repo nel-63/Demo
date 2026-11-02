@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { checkPayment, isPaymentMethod, parseCents, toDecimal } from "@/lib/payment-rules";
+import type { Prisma } from "@/app/generated/prisma/client";
 
 type Context = { params: Promise<{ id: string }> };
 type PassageSnapshot = {
@@ -43,7 +44,7 @@ function snapshotOf(record: {
 }
 
 async function recordRevision(
-  tx: any,
+  tx: Prisma.TransactionClient,
   actorId: string,
   passageId: string,
   action: "UPDATE" | "DELETE",
@@ -76,7 +77,7 @@ async function recordRevision(
   });
 }
 
-async function loadForUpdate(tx: any, id: string) {
+async function loadForUpdate(tx: Prisma.TransactionClient, id: string) {
   return tx.passage.findUnique({
     where: { id },
     include: {
@@ -170,6 +171,7 @@ export async function PATCH(request: Request, context: Context) {
       await tx.payment.update({ where: { id: current.payment.id }, data: paymentData });
 
       const fresh = await loadForUpdate(tx, id);
+      if (!fresh) throw new Error("Passage disappeared during update.");
       const after = snapshotOf(fresh);
       await recordRevision(tx, user.id, id, "UPDATE", before, after);
       await tx.auditLog.create({
@@ -209,6 +211,7 @@ export async function DELETE(_request: Request, context: Context) {
         await tx.payment.update({ where: { id: current.payment.id }, data: { deletedAt: now, deletedById: user.id } });
       }
       const fresh = await loadForUpdate(tx, id);
+      if (!fresh) throw new Error("Passage disappeared during deletion.");
       const after = snapshotOf(fresh);
       await recordRevision(tx, user.id, id, "DELETE", before, after);
       await tx.auditLog.create({

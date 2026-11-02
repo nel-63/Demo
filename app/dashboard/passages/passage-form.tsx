@@ -120,11 +120,20 @@ export default function PassageForm() {
 
       <h3 className={sectionClass}>Véhicule et chauffeur (facultatif)</h3>
 
-      <Field id="vehicleInfo" label="Description du véhicule" hint="Par exemple : camion benne blanc, plaque 1234 TAA.">
+      <Field id="vehicleRegistration" label="Numéro d'immatriculation">
+        <input id="vehicleRegistration" name="vehicleRegistration" maxLength={40} className={inputClass} />
+      </Field>
+      <Field id="vehicleCharacteristics" label="Caractéristiques du véhicule" hint="Type, marque, couleur, capacité, etc.">
+        <input id="vehicleCharacteristics" name="vehicleCharacteristics" maxLength={200} className={inputClass} />
+      </Field>
+      <Field id="vehicleInfo" label="Informations complémentaires sur le véhicule">
         <input id="vehicleInfo" name="vehicleInfo" maxLength={200} className={inputClass} />
       </Field>
       <Field id="driverName" label="Nom du chauffeur">
         <input id="driverName" name="driverName" maxLength={150} className={inputClass} />
+      </Field>
+      <Field id="driverLicenseNumber" label="Numéro de permis du chauffeur">
+        <input id="driverLicenseNumber" name="driverLicenseNumber" maxLength={80} className={inputClass} />
       </Field>
 
       <h3 className={sectionClass}>Paiement</h3>

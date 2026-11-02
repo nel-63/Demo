@@ -20,7 +20,7 @@ export default async function LocationStats() {
           _sum: { tonnage: true },
         }),
         prisma.payment.aggregate({
-          where: { passage: { is: { locationId: location.id } } },
+          where: { deletedAt: null, passage: { is: { locationId: location.id, deletedAt: null } } },
           _sum: { amountReceived: true },
         }),
       ]);

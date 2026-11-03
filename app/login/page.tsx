@@ -42,7 +42,7 @@ export default function LoginPage() {
           <span className="text-lg font-semibold text-slate-900">WWWWW</span>
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Connexion</h1>
-        <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+        <form method="post" onSubmit={handleSubmit} className="mt-8 space-y-5">
           <div>
             <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-800">Adresse email</label>
             <input id="email" name="email" type="email" autoComplete="username" required value={email}

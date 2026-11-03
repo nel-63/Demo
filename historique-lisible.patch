@@ -1,0 +1,677 @@
+diff --git a/app/api/passages/[id]/history/route.ts b/app/api/passages/[id]/history/route.ts
+index 6e44a7b..d59c972 100644
+--- a/app/api/passages/[id]/history/route.ts
++++ b/app/api/passages/[id]/history/route.ts
+@@ -1,6 +1,7 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
++import { buildHistory } from "@/lib/passage-history";
+ 
+ export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+   const user = await getCurrentUser();
+@@ -17,9 +18,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
+     });
+     const passage = await prisma.passage.findUnique({
+       where: { id },
+-      select: { locationId: true },
++      select: { locationId: true, deletedAt: true },
+     });
+-    if (!profile?.locationId || passage?.locationId !== profile.locationId) {
++    // Un passage supprimé n'est visible que de l'administrateur.
++    if (!profile?.locationId || passage?.locationId !== profile.locationId || passage.deletedAt) {
+       return NextResponse.json({ message: "Passage introuvable dans votre lieu." }, { status: 404 });
+     }
+   }
+@@ -28,13 +30,13 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
+     orderBy: { version: "desc" },
+     select: {
+       id: true, version: true, action: true, snapshot: true, createdAt: true,
+-      actor: { select: { firstName: true, lastName: true, email: true } },
++      actor: { select: { firstName: true, lastName: true } },
+     },
+   });
++  // Les instantanés bruts ne quittent pas le serveur : on renvoie un historique lisible.
+   return NextResponse.json({
+-    revisions: revisions.map((revision) => ({
+-      ...revision,
+-      createdAt: revision.createdAt.toISOString(),
+-    })),
++    entries: buildHistory(
++      revisions.map((revision) => ({ ...revision, createdAt: revision.createdAt.toISOString() })),
++    ),
+   });
+ }
+diff --git a/app/dashboard/passages/passage-actions.tsx b/app/dashboard/passages/passage-actions.tsx
+index 4810daf..5c490f8 100644
+--- a/app/dashboard/passages/passage-actions.tsx
++++ b/app/dashboard/passages/passage-actions.tsx
+@@ -3,6 +3,7 @@
+ import { useState, type FormEvent } from "react";
+ import { useRouter } from "next/navigation";
+ import { PAYMENT_METHOD_LABELS } from "@/lib/audit";
++import PassageHistory from "./passage-history";
+ 
+ type Initial = {
+   id: string;
+@@ -18,17 +19,11 @@ type Initial = {
+   product: { name: string; type: string; tonnage: string };
+   payment: { paymentMethod: keyof typeof PAYMENT_METHOD_LABELS; reference: string | null; amountDue: string; amountReceived: string };
+ };
+-type Revision = {
+-  id: string; version: number; action: string; snapshot: unknown; createdAt: string;
+-  actor: { firstName: string; lastName: string; email: string };
+-};
+ 
+ export default function PassageActions({ initial, canManage }: { initial: Initial; canManage: boolean }) {
+   const router = useRouter();
+   const [busy, setBusy] = useState(false);
+   const [message, setMessage] = useState("");
+-  const [revisions, setRevisions] = useState<Revision[] | null>(null);
+-  const [historyOpen, setHistoryOpen] = useState(false);
+ 
+   async function save(event: FormEvent<HTMLFormElement>) {
+     event.preventDefault();
+@@ -62,18 +57,6 @@ export default function PassageActions({ initial, canManage }: { initial: Initia
+     finally { setBusy(false); }
+   }
+ 
+-  async function toggleHistory() {
+-    const next = !historyOpen;
+-    setHistoryOpen(next);
+-    if (!next || revisions !== null) return;
+-    try {
+-      const response = await fetch(`/api/passages/${initial.id}/history`);
+-      const result = await response.json();
+-      if (!response.ok) { setMessage(result.message ?? "Historique inaccessible."); return; }
+-      setRevisions(result.revisions ?? []);
+-    } catch { setMessage("Impossible de charger l'historique."); }
+-  }
+-
+   const field = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900";
+   const label = "mb-1 block text-xs font-medium text-slate-700";
+   return (
+@@ -101,21 +84,8 @@ export default function PassageActions({ initial, canManage }: { initial: Initia
+         </form>
+       </details>}
+       {canManage && <button type="button" onClick={remove} disabled={busy} className="w-full rounded-lg border border-red-300 px-3 py-2 text-left text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">Supprimer logiquement</button>}
+-      <button type="button" onClick={toggleHistory} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50">{historyOpen ? "Masquer l'historique" : "Voir l'historique"}</button>
++      <PassageHistory passageId={initial.id} productName={initial.product.name} />
+       {message && <p role="status" className="text-xs text-slate-700">{message}</p>}
+-      {historyOpen && (
+-        <div className="max-h-80 overflow-y-auto rounded-lg bg-slate-50 p-3 text-xs">
+-          {!revisions ? "Chargement de l'historique…" : revisions.length === 0 ? "Aucune version enregistrée." :
+-            revisions.map((revision) => (
+-              <details key={revision.id} className="border-b border-slate-200 py-2">
+-                <summary className="cursor-pointer font-semibold">Version {revision.version} · {revision.action} · {new Date(revision.createdAt).toLocaleString("fr-FR")}</summary>
+-                <p className="my-1 text-slate-600">Par {revision.actor.firstName} {revision.actor.lastName} ({revision.actor.email})</p>
+-                <pre className="overflow-x-auto whitespace-pre-wrap break-words">{JSON.stringify(revision.snapshot, null, 2)}</pre>
+-              </details>
+-            ))
+-          }
+-        </div>
+-      )}
+     </div>
+   );
+ }
+diff --git a/app/dashboard/passages/passage-history.tsx b/app/dashboard/passages/passage-history.tsx
+new file mode 100644
+index 0000000..4a932d2
+--- /dev/null
++++ b/app/dashboard/passages/passage-history.tsx
+@@ -0,0 +1,168 @@
++"use client";
++
++import { useRef, useState } from "react";
++import { FileText, History, Pencil, Trash2, X } from "lucide-react";
++import type { HistoryEntry } from "@/lib/passage-history";
++
++const dateTimeFormatter = new Intl.DateTimeFormat("fr-FR", {
++  dateStyle: "long",
++  timeStyle: "short",
++  timeZone: "Indian/Antananarivo",
++});
++
++const KIND_STYLE = {
++  initial: { icon: FileText, circle: "bg-slate-100 text-slate-800" },
++  updated: { icon: Pencil, circle: "bg-blue-100 text-blue-800" },
++  deleted: { icon: Trash2, circle: "bg-red-100 text-red-800" },
++} as const;
++
++export default function PassageHistory({
++  passageId,
++  productName,
++}: {
++  passageId: string;
++  productName: string;
++}) {
++  const dialogRef = useRef<HTMLDialogElement>(null);
++  const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
++  const [error, setError] = useState("");
++
++  async function open() {
++    dialogRef.current?.showModal();
++    // On recharge à chaque ouverture : le passage a pu être modifié entre-temps.
++    setEntries(null);
++    setError("");
++    try {
++      const response = await fetch(`/api/passages/${passageId}/history`);
++      const result = await response.json().catch(() => ({}));
++      if (!response.ok) {
++        setError(result.message ?? "Historique inaccessible.");
++        return;
++      }
++      setEntries(result.entries ?? []);
++    } catch {
++      setError("Impossible de charger l'historique.");
++    }
++  }
++
++  const close = () => dialogRef.current?.close();
++
++  return (
++    <>
++      <button
++        type="button"
++        onClick={open}
++        className="flex w-full items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
++      >
++        <History className="size-4 shrink-0" aria-hidden="true" />
++        Voir l&apos;historique
++      </button>
++
++      <dialog
++        ref={dialogRef}
++        aria-labelledby={`history-title-${passageId}`}
++        onClick={(event) => {
++          // Un clic sur le fond assombri ferme la fenêtre.
++          if (event.target === event.currentTarget) close();
++        }}
++        className="m-auto max-h-[85vh] w-[min(42rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-0 text-slate-900 shadow-xl backdrop:bg-slate-900/50"
++      >
++        <div className="flex max-h-[85vh] flex-col">
++          <header className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
++            <div>
++              <h2 id={`history-title-${passageId}`} className="text-lg font-bold">
++                Historique du passage
++              </h2>
++              <p className="mt-1 text-sm text-slate-700">
++                {productName}. Rien n&apos;est jamais effacé : chaque changement est conservé.
++              </p>
++            </div>
++            <button
++              type="button"
++              onClick={close}
++              aria-label="Fermer l'historique"
++              className="rounded-lg p-2 text-slate-700 hover:bg-slate-100"
++            >
++              <X className="size-5" aria-hidden="true" />
++            </button>
++          </header>
++
++          <div className="overflow-y-auto p-5">
++            {error ? (
++              <p role="alert" className="text-sm font-medium text-red-700">{error}</p>
++            ) : entries === null ? (
++              <p className="text-sm text-slate-700">Chargement de l&apos;historique...</p>
++            ) : entries.length === 0 ? (
++              <p className="text-sm text-slate-800">
++                Aucun changement : ce passage est toujours tel qu&apos;il a été enregistré.
++              </p>
++            ) : (
++              <ol className="space-y-6">
++                {entries.map((entry) => {
++                  const { icon: Icon, circle } = KIND_STYLE[entry.kind];
++                  return (
++                    <li key={entry.id} className="flex gap-4">
++                      <span
++                        aria-hidden="true"
++                        className={`flex size-9 shrink-0 items-center justify-center rounded-full ${circle}`}
++                      >
++                        <Icon className="size-4" />
++                      </span>
++
++                      <div className="min-w-0 flex-1">
++                        <p className="font-semibold text-slate-900">
++                          {entry.title}
++                          {entry.author && (
++                            <span className="font-normal text-slate-700"> par {entry.author}</span>
++                          )}
++                        </p>
++                        <p className="text-sm text-slate-700">
++                          {dateTimeFormatter.format(new Date(entry.when))}
++                        </p>
++
++                        {entry.kind === "updated" && entry.changes.length === 0 && (
++                          <p className="mt-3 text-sm text-slate-700">
++                            Aucune information visible n&apos;a changé.
++                          </p>
++                        )}
++
++                        {entry.changes.length > 0 && (
++                          <ul className="mt-3 space-y-2">
++                            {entry.changes.map((change) => (
++                              <li key={change.label} className="rounded-xl bg-slate-50 p-3 text-sm">
++                                <p className="font-semibold text-slate-900">{change.label}</p>
++                                <p className="mt-1 text-slate-800">
++                                  <span className="text-slate-700">Avant : </span>
++                                  <span className="line-through">{change.before}</span>
++                                </p>
++                                <p className="text-slate-800">
++                                  <span className="text-slate-700">Maintenant : </span>
++                                  <span className="font-semibold text-emerald-800">{change.after}</span>
++                                </p>
++                              </li>
++                            ))}
++                          </ul>
++                        )}
++
++                        {entry.details.length > 0 && (
++                          <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-xl bg-slate-50 p-3 text-sm">
++                            {entry.details.map((detail) => (
++                              <div key={detail.label} className="contents">
++                                <dt className="text-slate-700">{detail.label}</dt>
++                                <dd className="font-medium text-slate-900">{detail.value}</dd>
++                              </div>
++                            ))}
++                          </dl>
++                        )}
++                      </div>
++                    </li>
++                  );
++                })}
++              </ol>
++            )}
++          </div>
++        </div>
++      </dialog>
++    </>
++  );
++}
+diff --git a/lib/passage-history.ts b/lib/passage-history.ts
+new file mode 100644
+index 0000000..43dcf07
+--- /dev/null
++++ b/lib/passage-history.ts
+@@ -0,0 +1,171 @@
++// Transforme les révisions brutes d'un passage (instantanés JSON) en historique lisible :
++// qui a fait quoi, quand, et ce qui a changé (avant / maintenant). Fonctions pures, testables.
++
++import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
++
++export type RawRevision = {
++  id: string;
++  version: number;
++  action: string; // BASELINE | UPDATE | DELETE
++  snapshot: unknown;
++  createdAt: string;
++  actor: { firstName: string; lastName: string };
++};
++
++export type HistoryChange = { label: string; before: string; after: string };
++export type HistoryDetail = { label: string; value: string };
++
++export type HistoryEntry = {
++  id: string;
++  kind: "initial" | "updated" | "deleted";
++  title: string;
++  // Auteur de l'action. Absent pour l'état d'origine : le journal ne garde pas qui l'a créé
++  // à cet endroit (c'est le régisseur indiqué dans la liste des passages).
++  author: string | null;
++  when: string; // date ISO
++  changes: HistoryChange[]; // modifications : ce qui a changé
++  details: HistoryDetail[]; // état d'origine ou suppression : résumé du passage
++};
++
++type Group = "passage" | "product" | "payment";
++type Kind = "text" | "date" | "tonnage" | "money" | "method";
++type Field = { group: Group; key: string; label: string; kind: Kind };
++
++// L'ordre est celui du formulaire : produit, trajet, véhicule et chauffeur, paiement, observations.
++const FIELDS: Field[] = [
++  { group: "product", key: "name", label: "Nom du produit", kind: "text" },
++  { group: "product", key: "type", label: "Type de produit", kind: "text" },
++  { group: "product", key: "tonnage", label: "Tonnage", kind: "tonnage" },
++  { group: "product", key: "description", label: "Description du produit", kind: "text" },
++  { group: "passage", key: "origin", label: "Provenance", kind: "text" },
++  { group: "passage", key: "destination", label: "Destination", kind: "text" },
++  { group: "passage", key: "assignedAt", label: "Date du passage", kind: "date" },
++  { group: "passage", key: "vehicleRegistration", label: "Immatriculation du véhicule", kind: "text" },
++  { group: "passage", key: "vehicleCharacteristics", label: "Caractéristiques du véhicule", kind: "text" },
++  { group: "passage", key: "vehicleInfo", label: "Autres informations sur le véhicule", kind: "text" },
++  { group: "passage", key: "driverName", label: "Chauffeur", kind: "text" },
++  { group: "passage", key: "driverLicenseNumber", label: "N° de permis du chauffeur", kind: "text" },
++  { group: "payment", key: "paymentMethod", label: "Mode de paiement", kind: "method" },
++  { group: "payment", key: "reference", label: "Référence du paiement", kind: "text" },
++  { group: "payment", key: "amountDue", label: "Montant à payer", kind: "money" },
++  { group: "payment", key: "amountReceived", label: "Montant reçu", kind: "money" },
++  { group: "payment", key: "changeReturned", label: "Monnaie rendue", kind: "money" },
++  { group: "passage", key: "notes", label: "Observations", kind: "text" },
++];
++
++// Champs affichés dans le résumé d'un passage (état d'origine, suppression).
++const SUMMARY_KEYS = new Set([
++  "name", "tonnage", "origin", "destination", "assignedAt",
++  "vehicleRegistration", "driverName", "paymentMethod", "amountDue",
++]);
++
++const EMPTY = "Non renseigné";
++
++const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
++  dateStyle: "long",
++  timeZone: "Indian/Antananarivo",
++});
++
++function isRecord(value: unknown): value is Record<string, unknown> {
++  return typeof value === "object" && value !== null && !Array.isArray(value);
++}
++
++type Snap = Partial<Record<Group, Record<string, unknown> | null>>;
++
++function asSnap(value: unknown): Snap | null {
++  if (!isRecord(value)) return null;
++  return {
++    passage: isRecord(value.passage) ? value.passage : null,
++    product: isRecord(value.product) ? value.product : null,
++    payment: isRecord(value.payment) ? value.payment : null,
++  };
++}
++
++function formatValue(kind: Kind, value: unknown): string {
++  if (value === null || value === undefined || value === "") return EMPTY;
++  switch (kind) {
++    case "date": {
++      const date = new Date(String(value));
++      return Number.isNaN(date.getTime()) ? String(value) : dateFormatter.format(date);
++    }
++    case "tonnage": {
++      const number = Number(value);
++      return Number.isFinite(number) ? `${number.toLocaleString("fr-FR")} t` : String(value);
++    }
++    case "money":
++      return formatMGA(value);
++    case "method":
++      return PAYMENT_METHOD_LABELS[String(value)] ?? String(value);
++    default:
++      return String(value);
++  }
++}
++
++const read = (snap: Snap | null, field: Field) =>
++  formatValue(field.kind, snap?.[field.group]?.[field.key]);
++
++function diff(before: Snap | null, after: Snap | null): HistoryChange[] {
++  const changes: HistoryChange[] = [];
++  for (const field of FIELDS) {
++    const from = read(before, field);
++    const to = read(after, field);
++    // On compare les textes affichés : « 8.50 » et « 8,5 t » ne sont pas un changement.
++    if (from !== to) changes.push({ label: field.label, before: from, after: to });
++  }
++  return changes;
++}
++
++function summary(snap: Snap | null): HistoryDetail[] {
++  if (!snap) return [];
++  const details: HistoryDetail[] = [];
++  for (const field of FIELDS) {
++    if (!SUMMARY_KEYS.has(field.key)) continue;
++    const value = read(snap, field);
++    if (value !== EMPTY) details.push({ label: field.label, value });
++  }
++  return details;
++}
++
++const fullName = (actor: { firstName: string; lastName: string }) =>
++  `${actor.firstName} ${actor.lastName}`.trim();
++
++export function buildHistory(revisions: RawRevision[]): HistoryEntry[] {
++  return revisions.map((revision) => {
++    const base = { id: revision.id, when: revision.createdAt };
++
++    if (revision.action === "BASELINE") {
++      return {
++        ...base,
++        kind: "initial" as const,
++        title: "Passage tel qu'il a été enregistré à l'origine",
++        author: null,
++        changes: [],
++        details: summary(asSnap(revision.snapshot)),
++      };
++    }
++
++    const pair = isRecord(revision.snapshot) ? revision.snapshot : {};
++    const before = asSnap(pair.before);
++    const after = asSnap(pair.after);
++
++    if (revision.action === "DELETE") {
++      return {
++        ...base,
++        kind: "deleted" as const,
++        title: "Passage supprimé",
++        author: fullName(revision.actor),
++        changes: [],
++        details: summary(before),
++      };
++    }
++
++    return {
++      ...base,
++      kind: "updated" as const,
++      title: "Passage modifié",
++      author: fullName(revision.actor),
++      changes: diff(before, after),
++      details: [],
++    };
++  });
++}
+diff --git a/tests/api/passage-history.test.ts b/tests/api/passage-history.test.ts
+new file mode 100644
+index 0000000..04a264f
+--- /dev/null
++++ b/tests/api/passage-history.test.ts
+@@ -0,0 +1,73 @@
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import { GET } from "@/app/api/passages/[id]/history/route";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/auth";
++import { resetFakePrisma, type FakePrisma } from "../helpers/fake-prisma";
++import { ADMIN, SUPERVISOR, jsonRequest, params, read } from "../helpers/http";
++
++vi.mock("@/lib/prisma", async () => {
++  const { createFakePrisma } = await import("../helpers/fake-prisma");
++  return { prisma: createFakePrisma() };
++});
++vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn() }));
++
++const db = prisma as unknown as FakePrisma;
++const call = () => GET(jsonRequest("/api/passages/pas-1/history", "GET"), params("pas-1"));
++
++const revisionRow = {
++  id: "rev-2",
++  version: 2,
++  action: "UPDATE",
++  createdAt: new Date("2026-11-02T08:20:00Z"),
++  actor: { firstName: "Rina", lastName: "Rakoto" },
++  snapshot: {
++    before: { passage: { origin: "Antsirabe" }, product: { tonnage: "8.50" }, payment: null },
++    after: { passage: { origin: "Mahajanga" }, product: { tonnage: "8.50" }, payment: null },
++  },
++};
++
++beforeEach(() => {
++  resetFakePrisma(db);
++  vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
++  db.supervisor.findUnique.mockResolvedValue({ locationId: "loc-1" });
++  db.passage.findUnique.mockResolvedValue({ locationId: "loc-1", deletedAt: null });
++  db.recordRevision.findMany.mockResolvedValue([revisionRow]);
++});
++
++describe("historique d'un passage", () => {
++  it("renvoie un historique lisible, sans instantané brut ni adresse email", async () => {
++    const { status, body } = await read(await call());
++
++    expect(status).toBe(200);
++    expect(body.entries).toEqual([
++      expect.objectContaining({
++        kind: "updated",
++        author: "Rina Rakoto",
++        changes: [{ label: "Provenance", before: "Antsirabe", after: "Mahajanga" }],
++      }),
++    ]);
++    expect(JSON.stringify(body)).not.toMatch(/snapshot|version|email|UPDATE/);
++  });
++
++  it("refuse un utilisateur non connecté", async () => {
++    vi.mocked(getCurrentUser).mockResolvedValue(null);
++    expect((await read(await call())).status).toBe(401);
++  });
++
++  it("cache à un régisseur l'historique d'un passage supprimé", async () => {
++    db.passage.findUnique.mockResolvedValue({ locationId: "loc-1", deletedAt: new Date() });
++    expect((await read(await call())).status).toBe(404);
++    expect(db.recordRevision.findMany).not.toHaveBeenCalled();
++  });
++
++  it("refuse un passage d'un autre lieu", async () => {
++    db.passage.findUnique.mockResolvedValue({ locationId: "loc-2", deletedAt: null });
++    expect((await read(await call())).status).toBe(404);
++  });
++
++  it("l'administrateur voit l'historique, y compris d'un passage supprimé", async () => {
++    vi.mocked(getCurrentUser).mockResolvedValue(ADMIN);
++    db.passage.findUnique.mockResolvedValue({ locationId: "loc-2", deletedAt: new Date() });
++    expect((await read(await call())).status).toBe(200);
++  });
++});
+diff --git a/tests/lib/passage-history.test.ts b/tests/lib/passage-history.test.ts
+new file mode 100644
+index 0000000..e93aa5e
+--- /dev/null
++++ b/tests/lib/passage-history.test.ts
+@@ -0,0 +1,125 @@
++import { describe, expect, it } from "vitest";
++import { buildHistory, type RawRevision } from "@/lib/passage-history";
++import { formatMGA } from "@/lib/audit";
++
++const actor = { firstName: "Rina", lastName: "Rakoto" };
++
++const snapshot = (over: { passage?: object; product?: object; payment?: object | null } = {}) => ({
++  passage: {
++    id: "pas-1",
++    assignedAt: "2026-10-29T12:00:00.000Z",
++    origin: "Antsirabe",
++    destination: "Toamasina",
++    vehicleInfo: null,
++    driverName: "Jean",
++    vehicleRegistration: "1234 TAA",
++    vehicleCharacteristics: "Camion benne blanc",
++    driverLicenseNumber: "P-998877",
++    notes: null,
++    deletedAt: null,
++    ...over.passage,
++  },
++  product: { id: "prod-1", name: "Riz blanc", type: "Céréale", tonnage: "8.50", description: null, deletedAt: null, ...over.product },
++  payment:
++    over.payment === null
++      ? null
++      : {
++          id: "pay-1", paymentMethod: "CASH", reference: null,
++          amountDue: "40000.00", amountReceived: "50000.00", changeReturned: "10000.00", deletedAt: null,
++          ...over.payment,
++        },
++});
++
++const revision = (over: Partial<RawRevision>): RawRevision => ({
++  id: "rev-1", version: 2, action: "UPDATE", snapshot: {}, createdAt: "2026-11-02T08:20:00.000Z", actor, ...over,
++});
++
++describe("historique lisible d'un passage", () => {
++  it("n'affiche ni numéro de version ni code technique", () => {
++    const [entry] = buildHistory([
++      revision({ snapshot: { before: snapshot(), after: snapshot({ product: { tonnage: "9.00" } }) } }),
++    ]);
++    // Ce que l'utilisateur voit : titre, auteur, changements et détails.
++    const text = JSON.stringify([entry.title, entry.author, entry.changes, entry.details]);
++
++    expect(entry.title).toBe("Passage modifié");
++    expect(entry.author).toBe("Rina Rakoto");
++    expect(text).not.toMatch(/version|UPDATE|BASELINE|DELETE|snapshot/i);
++  });
++
++  it("décrit chaque changement avec « avant » et « maintenant » en français", () => {
++    const [entry] = buildHistory([
++      revision({
++        snapshot: {
++          before: snapshot(),
++          after: snapshot({
++            product: { tonnage: "9.00" },
++            payment: { paymentMethod: "BANK_TRANSFER", reference: "VIR-1", amountReceived: "40000.00", changeReturned: "0.00" },
++          }),
++        },
++      }),
++    ]);
++
++    expect(entry.changes).toEqual([
++      { label: "Tonnage", before: "8,5 t", after: "9 t" },
++      { label: "Mode de paiement", before: "Espèces", after: "Virement bancaire" },
++      { label: "Référence du paiement", before: "Non renseigné", after: "VIR-1" },
++      { label: "Montant reçu", before: formatMGA(50000), after: formatMGA(40000) },
++      { label: "Monnaie rendue", before: formatMGA(10000), after: formatMGA(0) },
++    ]);
++  });
++
++  it("ne signale pas comme un changement une simple différence d'écriture", () => {
++    const [entry] = buildHistory([
++      revision({ snapshot: { before: snapshot({ product: { tonnage: "8.5" } }), after: snapshot({ product: { tonnage: "8.50" } }) } }),
++    ]);
++    expect(entry.changes).toEqual([]);
++  });
++
++  it("formate la date du passage et les champs vides", () => {
++    const [entry] = buildHistory([
++      revision({
++        snapshot: {
++          before: snapshot({ passage: { notes: "Chargement incomplet" } }),
++          after: snapshot({ passage: { assignedAt: "2026-10-30T12:00:00.000Z", notes: null } }),
++        },
++      }),
++    ]);
++
++    expect(entry.changes).toContainEqual({ label: "Date du passage", before: "29 octobre 2026", after: "30 octobre 2026" });
++    expect(entry.changes).toContainEqual({ label: "Observations", before: "Chargement incomplet", after: "Non renseigné" });
++  });
++
++  it("résume le passage supprimé et indique qui l'a supprimé", () => {
++    const [entry] = buildHistory([
++      revision({ action: "DELETE", snapshot: { before: snapshot(), after: snapshot({ passage: { deletedAt: "2026-11-02T09:00:00.000Z" } }) } }),
++    ]);
++
++    expect(entry.kind).toBe("deleted");
++    expect(entry.title).toBe("Passage supprimé");
++    expect(entry.author).toBe("Rina Rakoto");
++    expect(entry.details).toContainEqual({ label: "Nom du produit", value: "Riz blanc" });
++    expect(entry.details).toContainEqual({ label: "Tonnage", value: "8,5 t" });
++    expect(entry.details).toContainEqual({ label: "Immatriculation du véhicule", value: "1234 TAA" });
++  });
++
++  it("présente l'état d'origine sans l'attribuer à la personne qui a fait la première modification", () => {
++    const [entry] = buildHistory([revision({ action: "BASELINE", version: 1, snapshot: snapshot() })]);
++
++    expect(entry.kind).toBe("initial");
++    expect(entry.author).toBeNull();
++    expect(entry.details).toContainEqual({ label: "Destination", value: "Toamasina" });
++    expect(entry.changes).toEqual([]);
++  });
++
++  it("garde l'ordre reçu (le plus récent d'abord) et ne plante pas sur des données inattendues", () => {
++    const entries = buildHistory([
++      revision({ id: "b", snapshot: "n'importe quoi" }),
++      revision({ id: "a", action: "BASELINE", snapshot: null }),
++    ]);
++
++    expect(entries.map((entry) => entry.id)).toEqual(["b", "a"]);
++    expect(entries[0].changes).toEqual([]);
++    expect(entries[1].details).toEqual([]);
++  });
++});

@@ -6,11 +6,10 @@ import type { Prisma } from "@/app/generated/prisma/client";
 
 type Context = { params: Promise<{ id: string }> };
 type PassageSnapshot = {
-  passage: Record<string, unknown>;
-  product: Record<string, unknown>;
-  payment: Record<string, unknown> | null;
+  passage: Prisma.InputJsonObject;
+  product: Prisma.InputJsonObject;
+  payment: Prisma.InputJsonObject | null;
 };
-
 function snapshotOf(record: {
   id: string; assignedAt: Date; origin: string; destination: string;
   vehicleInfo: string | null; driverName: string | null; vehicleRegistration: string | null;

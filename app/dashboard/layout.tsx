@@ -13,8 +13,8 @@ function Brand() {
         <Truck className="size-5" aria-hidden="true" />
       </span>
       <span className="leading-tight">
-        <span className="block font-semibold text-white">WWWWW</span>
-        <span className="block text-xs text-slate-300">Gestion des passages</span>
+        <span className="block font-semibold text-white">REGION MENABE</span>
+        <span className="block text-xs text-slate-300">Régisseur</span>
       </span>
     </div>
   );

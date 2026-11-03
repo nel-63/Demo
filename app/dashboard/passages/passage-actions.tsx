@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { PAYMENT_METHOD_LABELS } from "@/lib/audit";
+import PassageHistory from "./passage-history";
 
 type Initial = {
   id: string;
@@ -18,17 +19,11 @@ type Initial = {
   product: { name: string; type: string; tonnage: string };
   payment: { paymentMethod: keyof typeof PAYMENT_METHOD_LABELS; reference: string | null; amountDue: string; amountReceived: string };
 };
-type Revision = {
-  id: string; version: number; action: string; snapshot: unknown; createdAt: string;
-  actor: { firstName: string; lastName: string; email: string };
-};
 
 export default function PassageActions({ initial, canManage }: { initial: Initial; canManage: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [revisions, setRevisions] = useState<Revision[] | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -62,18 +57,6 @@ export default function PassageActions({ initial, canManage }: { initial: Initia
     finally { setBusy(false); }
   }
 
-  async function toggleHistory() {
-    const next = !historyOpen;
-    setHistoryOpen(next);
-    if (!next || revisions !== null) return;
-    try {
-      const response = await fetch(`/api/passages/${initial.id}/history`);
-      const result = await response.json();
-      if (!response.ok) { setMessage(result.message ?? "Historique inaccessible."); return; }
-      setRevisions(result.revisions ?? []);
-    } catch { setMessage("Impossible de charger l'historique."); }
-  }
-
   const field = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900";
   const label = "mb-1 block text-xs font-medium text-slate-700";
   return (
@@ -101,21 +84,8 @@ export default function PassageActions({ initial, canManage }: { initial: Initia
         </form>
       </details>}
       {canManage && <button type="button" onClick={remove} disabled={busy} className="w-full rounded-lg border border-red-300 px-3 py-2 text-left text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">Supprimer logiquement</button>}
-      <button type="button" onClick={toggleHistory} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50">{historyOpen ? "Masquer l'historique" : "Voir l'historique"}</button>
+      <PassageHistory passageId={initial.id} productName={initial.product.name} />
       {message && <p role="status" className="text-xs text-slate-700">{message}</p>}
-      {historyOpen && (
-        <div className="max-h-80 overflow-y-auto rounded-lg bg-slate-50 p-3 text-xs">
-          {!revisions ? "Chargement de l'historique…" : revisions.length === 0 ? "Aucune version enregistrée." :
-            revisions.map((revision) => (
-              <details key={revision.id} className="border-b border-slate-200 py-2">
-                <summary className="cursor-pointer font-semibold">Version {revision.version} · {revision.action} · {new Date(revision.createdAt).toLocaleString("fr-FR")}</summary>
-                <p className="my-1 text-slate-600">Par {revision.actor.firstName} {revision.actor.lastName} ({revision.actor.email})</p>
-                <pre className="overflow-x-auto whitespace-pre-wrap break-words">{JSON.stringify(revision.snapshot, null, 2)}</pre>
-              </details>
-            ))
-          }
-        </div>
-      )}
     </div>
   );
 }

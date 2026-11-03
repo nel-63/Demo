@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { buildHistory } from "@/lib/passage-history";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
@@ -17,9 +18,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     });
     const passage = await prisma.passage.findUnique({
       where: { id },
-      select: { locationId: true },
+      select: { locationId: true, deletedAt: true },
     });
-    if (!profile?.locationId || passage?.locationId !== profile.locationId) {
+    // Un passage supprimé n'est visible que de l'administrateur.
+    if (!profile?.locationId || passage?.locationId !== profile.locationId || passage.deletedAt) {
       return NextResponse.json({ message: "Passage introuvable dans votre lieu." }, { status: 404 });
     }
   }
@@ -28,13 +30,13 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     orderBy: { version: "desc" },
     select: {
       id: true, version: true, action: true, snapshot: true, createdAt: true,
-      actor: { select: { firstName: true, lastName: true, email: true } },
+      actor: { select: { firstName: true, lastName: true } },
     },
   });
+  // Les instantanés bruts ne quittent pas le serveur : on renvoie un historique lisible.
   return NextResponse.json({
-    revisions: revisions.map((revision) => ({
-      ...revision,
-      createdAt: revision.createdAt.toISOString(),
-    })),
+    entries: buildHistory(
+      revisions.map((revision) => ({ ...revision, createdAt: revision.createdAt.toISOString() })),
+    ),
   });
 }

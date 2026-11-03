@@ -1,7 +1,7 @@
 // Transforme les révisions brutes d'un passage (instantanés JSON) en historique lisible :
 // qui a fait quoi, quand, et ce qui a changé (avant / maintenant). Fonctions pures, testables.
 
-import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
+import { ALL_PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
 
 export type RawRevision = {
   id: string;
@@ -95,7 +95,7 @@ function formatValue(kind: Kind, value: unknown): string {
     case "money":
       return formatMGA(value);
     case "method":
-      return PAYMENT_METHOD_LABELS[String(value)] ?? String(value);
+      return ALL_PAYMENT_METHOD_LABELS[String(value)] ?? String(value);
     default:
       return String(value);
   }

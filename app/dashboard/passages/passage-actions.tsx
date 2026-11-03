@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { PAYMENT_METHOD_LABELS } from "@/lib/audit";
+import { ALL_PAYMENT_METHOD_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/audit";
 import PassageHistory from "./passage-history";
 
 type Initial = {
@@ -17,13 +17,15 @@ type Initial = {
   driverLicenseNumber: string | null;
   notes: string | null;
   product: { name: string; type: string; tonnage: string };
-  payment: { paymentMethod: keyof typeof PAYMENT_METHOD_LABELS; reference: string | null; amountDue: string; amountReceived: string };
+  payment: { paymentMethod: keyof typeof ALL_PAYMENT_METHOD_LABELS; reference: string | null; amountDue: string; amountReceived: string };
 };
 
 export default function PassageActions({ initial, canManage }: { initial: Initial; canManage: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  // Un paiement historique (chèque, virement, autre) ne peut plus être ressaisi tel quel.
+  const initialMethodAllowed = Object.hasOwn(PAYMENT_METHOD_LABELS, initial.payment.paymentMethod);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -78,7 +80,7 @@ export default function PassageActions({ initial, canManage }: { initial: Initia
           <label className={label}>Observations<textarea className={field} name="notes" defaultValue={initial.notes ?? ""} maxLength={2000}/></label>
           <label className={label}>Montant dû (MGA)<input className={field} name="amountDue" type="number" min="0.01" step="0.01" defaultValue={initial.payment.amountDue} required/></label>
           <label className={label}>Montant reçu (MGA)<input className={field} name="amountReceived" type="number" min="0.01" step="0.01" defaultValue={initial.payment.amountReceived} required/></label>
-          <label className={label}>Mode de paiement<select className={field} name="paymentMethod" defaultValue={initial.payment.paymentMethod}>{Object.entries(PAYMENT_METHOD_LABELS).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>
+          <label className={label}>Mode de paiement<select className={field} name="paymentMethod" required defaultValue={initialMethodAllowed ? initial.payment.paymentMethod : ""}>{!initialMethodAllowed && <option value="" disabled>{`${ALL_PAYMENT_METHOD_LABELS[initial.payment.paymentMethod] ?? initial.payment.paymentMethod} (ancien mode : choisir Espèces ou Mobile Money)`}</option>}{Object.entries(PAYMENT_METHOD_LABELS).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>
           <label className={label}>Référence paiement<input className={field} name="reference" defaultValue={initial.payment.reference ?? ""} maxLength={150}/></label>
           <button disabled={busy} className="rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "En cours…" : "Enregistrer les modifications"}</button>
         </form>

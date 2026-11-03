@@ -95,21 +95,36 @@ describe("un passage n'existe qu'avec son paiement", () => {
     });
   });
 
-  it("virement exact avec référence", async () => {
+  it("Mobile Money exact avec référence", async () => {
     const { status } = await read(
-      await send({ paymentMethod: "BANK_TRANSFER", reference: "VIR-1", amountReceived: "40000" }),
+      await send({ paymentMethod: "MOBILE_MONEY", reference: "MVOLA-1", amountReceived: "40000" }),
     );
     expect(status).toBe(201);
     expect(created().payment).toMatchObject({
-      create: { paymentMethod: "BANK_TRANSFER", reference: "VIR-1", changeReturned: "0.00" },
+      create: { paymentMethod: "MOBILE_MONEY", reference: "MVOLA-1", changeReturned: "0.00" },
     });
   });
 
   it.each([
+    ["chèque", "CHECK"],
+    ["virement bancaire", "BANK_TRANSFER"],
+    ["autre", "OTHER"],
+    ["valeur inconnue", "BITCOIN"],
+    ["valeur vide", ""],
+    ["casse différente", "cash"],
+  ])("refuse côté serveur un nouveau paiement par %s", async (_label, paymentMethod) => {
+    const { status } = await read(
+      await send({ paymentMethod, reference: "REF-1", amountReceived: "40000" }),
+    );
+    expect(status).toBe(400);
+    nothingWritten();
+  });
+
+  it.each([
     ["espèces insuffisantes", { amountReceived: "39999.99" }],
-    ["virement sans référence", { paymentMethod: "BANK_TRANSFER", amountReceived: "40000" }],
-    ["virement supérieur au montant", { paymentMethod: "MOBILE_MONEY", reference: "R", amountReceived: "40001" }],
-    ["chèque incomplet", { paymentMethod: "CHECK", reference: "R", amountReceived: "30000" }],
+    ["Mobile Money sans référence", { paymentMethod: "MOBILE_MONEY", amountReceived: "40000" }],
+    ["Mobile Money supérieur au montant", { paymentMethod: "MOBILE_MONEY", reference: "R", amountReceived: "40001" }],
+    ["Mobile Money inférieur au montant", { paymentMethod: "MOBILE_MONEY", reference: "R", amountReceived: "30000" }],
   ])("sans paiement valide, pas de passage : %s", async (_label, body) => {
     const { status } = await read(await send(body));
     expect(status).toBe(400);

@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "WWWWW",
-  description: "WWWWW",
+  title: "REGION MENABE - Régisseur",
+  description: "Application régisseurs de la région Menabe",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

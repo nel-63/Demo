@@ -69,6 +69,18 @@ describe("historique lisible d'un passage", () => {
     ]);
   });
 
+  it("affiche lisiblement un ancien paiement par chèque ou par autre mode", () => {
+    const [entry] = buildHistory([
+      revision({
+        snapshot: {
+          before: snapshot({ payment: { paymentMethod: "CHECK", reference: "CHQ-1", amountReceived: "50000.00", changeReturned: "10000.00" } }),
+          after: snapshot({ payment: { paymentMethod: "OTHER", reference: "CHQ-1", amountReceived: "50000.00", changeReturned: "10000.00" } }),
+        },
+      }),
+    ]);
+    expect(entry.changes).toContainEqual({ label: "Mode de paiement", before: "Chèque", after: "Autre" });
+  });
+
   it("ne signale pas comme un changement une simple différence d'écriture", () => {
     const [entry] = buildHistory([
       revision({ snapshot: { before: snapshot({ product: { tonnage: "8.5" } }), after: snapshot({ product: { tonnage: "8.50" } }) } }),

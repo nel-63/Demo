@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
@@ -28,6 +36,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { Badge, Cell, DetailsResult } from "@/lib/details-types";
+import {
+  DRAWER_DEFAULT_WIDTH,
+  DRAWER_KEY_STEP,
+  DRAWER_KEY_STEP_LARGE,
+  clampDrawerWidth,
+  drawerWidthBounds,
+} from "@/lib/drawer-width";
 
 const KIND_ICONS: Record<string, LucideIcon> = {
   locations: MapPin,
@@ -95,6 +110,16 @@ export default function DetailsDrawer({
   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  // Largeur choisie par l'utilisateur (écran large). Conservée tant que le panneau est ouvert,
+  // réinitialisée à la fermeture puisque le composant est alors démonté.
+  const [width, setWidth] = useState(() =>
+    clampDrawerWidth(DRAWER_DEFAULT_WIDTH, typeof window === "undefined" ? DRAWER_DEFAULT_WIDTH : window.innerWidth),
+  );
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === "undefined" ? DRAWER_DEFAULT_WIDTH : window.innerWidth,
+  );
+  const [resizing, setResizing] = useState(false);
+  const dragRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
 
   const requestKey = `${debounced}|${locationId}|${retry}`;
 
@@ -143,11 +168,78 @@ export default function DetailsDrawer({
     };
   }, [onClose]);
 
+  // Si la fenêtre rétrécit, la largeur est ramenée dans les bornes.
+  useEffect(() => {
+    const onResize = () => {
+      setViewportWidth(window.innerWidth);
+      setWidth((current) => clampDrawerWidth(current, window.innerWidth));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Pendant le glissement : pas de sélection de texte, curseur de redimensionnement.
+  // Le nettoyage couvre aussi le démontage du panneau en plein geste.
+  useEffect(() => {
+    if (!resizing) return;
+    const previousSelect = document.body.style.userSelect;
+    const previousCursor = document.body.style.cursor;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    return () => {
+      document.body.style.userSelect = previousSelect;
+      document.body.style.cursor = previousCursor;
+    };
+  }, [resizing]);
+
+  function onHandlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || !panelRef.current) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: panelRef.current.getBoundingClientRect().width,
+    };
+    setResizing(true);
+  }
+
+  function onHandlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    // Panneau ancré à droite : déplacer la poignée vers la gauche agrandit.
+    setWidth(clampDrawerWidth(drag.startWidth + (drag.startX - event.clientX), window.innerWidth));
+  }
+
+  // Fin du geste : relâchement, annulation (ex. tactile interrompu) ou capture perdue.
+  function endResize(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setResizing(false);
+  }
+
+  function onHandleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? DRAWER_KEY_STEP_LARGE : DRAWER_KEY_STEP;
+    const { min, max } = drawerWidthBounds(window.innerWidth);
+    let next: number | null = null;
+    if (event.key === "ArrowLeft") next = width + step;
+    else if (event.key === "ArrowRight") next = width - step;
+    else if (event.key === "Home") next = min;
+    else if (event.key === "End") next = max;
+    if (next === null) return;
+    event.preventDefault();
+    setWidth(clampDrawerWidth(next, window.innerWidth));
+  }
+
   // Tab reste dans le panneau tant qu'il est ouvert.
   function trapFocus(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== "Tab" || !panelRef.current) return;
     const focusable = panelRef.current.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled])',
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [role="separator"][tabindex="0"]',
     );
     if (focusable.length === 0) return;
     const first = focusable[0];
@@ -188,6 +280,9 @@ export default function DetailsDrawer({
   }
 
   const titleId = `details-title-${kind}`;
+  const bounds = drawerWidthBounds(viewportWidth);
+  // La variable CSS ne s'applique qu'à partir de md ; en dessous, le panneau reste une feuille pleine largeur.
+  const panelStyle = { "--drawer-w": `${width}px` } as CSSProperties;
 
   return createPortal(
     <div className="fixed inset-0 z-50" onKeyDown={trapFocus}>
@@ -202,8 +297,31 @@ export default function DetailsDrawer({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="details-panel absolute inset-x-0 bottom-0 flex h-[92dvh] flex-col rounded-t-2xl bg-white shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:h-full md:w-[600px] md:rounded-none md:rounded-l-2xl lg:w-[640px]"
+        style={panelStyle}
+        className="details-panel absolute inset-x-0 bottom-0 flex h-[92dvh] flex-col rounded-t-2xl bg-white shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:h-full md:w-(--drawer-w) md:max-w-full md:rounded-none md:rounded-l-2xl"
       >
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Redimensionner le panneau"
+          aria-valuenow={Math.min(Math.max(width, bounds.min), bounds.max)}
+          aria-valuemin={bounds.min}
+          aria-valuemax={bounds.max}
+          tabIndex={0}
+          onPointerDown={onHandlePointerDown}
+          onPointerMove={onHandlePointerMove}
+          onPointerUp={endResize}
+          onPointerCancel={endResize}
+          onLostPointerCapture={endResize}
+          onKeyDown={onHandleKeyDown}
+          className={`group absolute inset-y-0 -left-1.5 z-20 hidden w-3 cursor-col-resize touch-none items-center justify-center outline-none md:flex ${resizing ? "bg-blue-100/60" : ""}`}
+        >
+          <span
+            aria-hidden="true"
+            className={`h-12 w-1 rounded-full bg-slate-300 transition-colors group-hover:bg-blue-600 group-focus-visible:bg-blue-600 ${resizing ? "bg-blue-600" : ""}`}
+          />
+        </div>
+
         <header className="flex items-start gap-4 border-b border-slate-200 p-5">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
             <KindIcon kind={kind} className="size-6" />

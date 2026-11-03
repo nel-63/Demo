@@ -136,7 +136,7 @@ export async function PATCH(request: Request, context: Context) {
     if (!/^\d{1,8}(?:\.\d{1,2})?$/.test(tonnage) || Number(tonnage) <= 0) {
       return NextResponse.json({ message: "Tonnage invalide." }, { status: 400 });
     }
-    if (!isPaymentMethod(method)) return NextResponse.json({ message: "Mode de paiement invalide." }, { status: 400 });
+    if (!isPaymentMethod(method)) return NextResponse.json({ message: "Mode de paiement invalide : Espèces ou Mobile Money uniquement." }, { status: 400 });
     const assignedAt = /^\d{4}-\d{2}-\d{2}$/.test(assignedAtText) ? new Date(`${assignedAtText}T12:00:00.000Z`) : null;
     if (!assignedAt || Number.isNaN(assignedAt.getTime()) || assignedAt.toISOString().slice(0, 10) !== assignedAtText) {
       return NextResponse.json({ message: "Date de passage invalide." }, { status: 400 });

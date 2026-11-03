@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
+import { ALL_PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
 
 const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
   dateStyle: "short",
@@ -89,7 +89,7 @@ export default function PassagesTable({
               <td className="px-3 py-4">
                 {item.payment ? (
                   <>
-                    {PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod}
+                    {ALL_PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod}
                     {item.payment.reference && (
                       <p className="text-xs text-slate-700">{item.payment.reference}</p>
                     )}

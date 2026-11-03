@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { checkPayment, isPaymentMethod, parseCents, toDecimal } from "@/lib/payment-rules";
+import {
+  LEGACY_PAYMENT_METHODS,
+  PAYMENT_METHODS,
+  checkPayment,
+  isPaymentMethod,
+  parseCents,
+  toDecimal,
+} from "@/lib/payment-rules";
+import { ALL_PAYMENT_METHOD_LABELS, LEGACY_PAYMENT_METHOD_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/audit";
 
 describe("parseCents / toDecimal", () => {
   it("convertit un montant en centimes et inversement", () => {
@@ -28,7 +36,7 @@ describe("checkPayment", () => {
     expect(checkPayment({ ...base, method: "CASH", receivedCents: 3999999 })).toEqual({ ok: false, error: "INSUFFICIENT" });
   });
 
-  it.each(["BANK_TRANSFER", "CHECK", "MOBILE_MONEY", "OTHER"] as const)(
+  it.each(["MOBILE_MONEY"] as const)(
     "%s : montant exact et référence obligatoires",
     (method) => {
       expect(checkPayment({ ...base, method, reference: "REF-1", receivedCents: 4000000 })).toEqual({ ok: true, changeCents: 0 });
@@ -40,6 +48,34 @@ describe("checkPayment", () => {
 
   it("reconnaît les modes de paiement valides", () => {
     expect(isPaymentMethod("CASH")).toBe(true);
+    expect(isPaymentMethod("MOBILE_MONEY")).toBe(true);
     expect(isPaymentMethod("BITCOIN")).toBe(false);
+  });
+
+  it.each(["CHECK", "BANK_TRANSFER", "OTHER", "BITCOIN", "", "cash"])(
+    "refuse %j pour une nouvelle opération",
+    (value) => expect(isPaymentMethod(value)).toBe(false),
+  );
+});
+
+describe("modes autorisés et modes historiques", () => {
+  it("n'autorise que Espèces et Mobile Money en saisie", () => {
+    expect([...PAYMENT_METHODS]).toEqual(["CASH", "MOBILE_MONEY"]);
+  });
+
+  it("les formulaires (libellés de saisie) ne proposent que les deux modes autorisés", () => {
+    expect(Object.keys(PAYMENT_METHOD_LABELS)).toEqual([...PAYMENT_METHODS]);
+    expect(PAYMENT_METHOD_LABELS).toEqual({ CASH: "Espèces", MOBILE_MONEY: "Mobile Money" });
+  });
+
+  it("chaque ancien mode garde un libellé explicite pour l'historique", () => {
+    expect(Object.keys(LEGACY_PAYMENT_METHOD_LABELS).sort()).toEqual([...LEGACY_PAYMENT_METHODS].sort());
+    expect(ALL_PAYMENT_METHOD_LABELS).toMatchObject({
+      CASH: "Espèces",
+      MOBILE_MONEY: "Mobile Money",
+      CHECK: "Chèque",
+      BANK_TRANSFER: "Virement bancaire",
+      OTHER: "Autre",
+    });
   });
 });

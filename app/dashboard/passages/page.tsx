@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
+import { ALL_PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
 import ListFilters from "../list-filters";
 import { readChoice, readParam, type SearchParams } from "../search-params";
 import PassageForm from "./passage-form";
@@ -40,7 +40,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
 
   const params = await searchParams;
   const q = readParam(params, "q");
-  const method = readChoice(params, "mode", Object.keys(PAYMENT_METHOD_LABELS));
+  const method = readChoice(params, "mode", Object.keys(ALL_PAYMENT_METHOD_LABELS));
   const deleted = isAdmin && readParam(params, "deleted", 1) === "1";
   const words = q.split(/\s+/).filter(Boolean).slice(0, 5);
   const has = (word: string) => ({ contains: word, mode: "insensitive" as const });
@@ -106,7 +106,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
         <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-5 text-xl font-semibold">{deleted ? "Enregistrements conservés" : "Historique des passages"} ({total})</h2>
           <ListFilters action="/dashboard/passages" q={q} placeholder="Produit, trajet, immatriculation, chauffeur…" filters={[
-            { name: "mode", label: "Mode de paiement", value: method, options: Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label })) },
+            { name: "mode", label: "Mode de paiement", value: method, options: Object.entries(ALL_PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label })) },
             ...(deleted ? [{ name: "deleted", label: "Affichage", value: "1", options: [{ value: "1", label: "Supprimés" }] }] : []),
           ]} />
           {passages.length === 0 ? (
@@ -136,7 +136,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
                         {!item.vehicleInfo && !item.vehicleRegistration && !item.vehicleCharacteristics && !item.driverName && !item.driverLicenseNumber && "—"}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-right">{item.payment ? formatMGA(item.payment.amountDue) : "—"}</td>
-                      <td className="px-3 py-4">{item.payment ? <>{PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod}{item.payment.reference && <p className="text-xs text-slate-700">{item.payment.reference}</p>}</> : "—"}</td>
+                      <td className="px-3 py-4">{item.payment ? <>{ALL_PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod}{item.payment.reference && <p className="text-xs text-slate-700">{item.payment.reference}</p>}</> : "—"}</td>
                       <td className="px-3 py-4">{item.supervisor.user.firstName} {item.supervisor.user.lastName}</td>
                       {(isAdmin || isSupervisor) && !deleted && <td className="min-w-[230px] px-3 py-4">
                         {item.payment ? <PassageActions canManage={isSupervisor} initial={{
@@ -145,7 +145,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
                           vehicleCharacteristics: item.vehicleCharacteristics, driverName: item.driverName,
                           driverLicenseNumber: item.driverLicenseNumber, notes: item.notes,
                           product: { name: item.product.name, type: item.product.type, tonnage: String(item.product.tonnage) },
-                          payment: { paymentMethod: item.payment.paymentMethod as keyof typeof PAYMENT_METHOD_LABELS, reference: item.payment.reference, amountDue: String(item.payment.amountDue), amountReceived: String(item.payment.amountReceived) },
+                          payment: { paymentMethod: item.payment.paymentMethod as keyof typeof ALL_PAYMENT_METHOD_LABELS, reference: item.payment.reference, amountDue: String(item.payment.amountDue), amountReceived: String(item.payment.amountReceived) },
                         }}/> : <span className="text-xs text-slate-500">—</span>}
                       </td>}
                       {isAdmin && deleted && <td className="px-3 py-4 text-xs font-semibold text-red-700">Supprimé le {item.deletedAt ? dateFormatter.format(item.deletedAt) : "—"}</td>}

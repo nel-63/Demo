@@ -32,12 +32,23 @@ export const ROLE_LABELS: Record<string, string> = {
   ANALYST: "Analyste",
 };
 
+// Libellés des modes autorisés pour une nouvelle opération (formulaires de saisie).
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: "Espèces",
+  MOBILE_MONEY: "Mobile Money",
+};
+
+// Libellés des anciens modes : lecture seule (historique, détails, filtres, exports).
+export const LEGACY_PAYMENT_METHOD_LABELS: Record<string, string> = {
   BANK_TRANSFER: "Virement bancaire",
   CHECK: "Chèque",
-  MOBILE_MONEY: "Mobile money",
   OTHER: "Autre",
+};
+
+// Tous les libellés, pour afficher n'importe quel paiement existant.
+export const ALL_PAYMENT_METHOD_LABELS: Record<string, string> = {
+  ...PAYMENT_METHOD_LABELS,
+  ...LEGACY_PAYMENT_METHOD_LABELS,
 };
 
 export const TRANSPORT_STATUS_LABELS: Record<string, string> = {
@@ -126,7 +137,7 @@ export function describeAudit(
     if (details.amountReceived !== undefined) lines.push(`Montant reçu : ${formatMGA(details.amountReceived)}`);
     if (details.changeReturned !== undefined) lines.push(`Monnaie rendue : ${formatMGA(details.changeReturned)}`);
     const method = str(details.paymentMethod);
-    if (method) lines.push(`Mode : ${PAYMENT_METHOD_LABELS[method] ?? method}`);
+    if (method) lines.push(`Mode : ${ALL_PAYMENT_METHOD_LABELS[method] ?? method}`);
     const reference = str(details.reference);
     if (reference) lines.push(`Référence : ${reference}`);
   } else if (action === "CHANGE_TRANSPORT_STATUS") {

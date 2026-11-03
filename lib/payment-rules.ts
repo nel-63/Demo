@@ -1,8 +1,15 @@
 // Règles de paiement d'un passage (montants en centimes pour éviter les erreurs d'arrondi).
 
-export const PAYMENT_METHODS = ["CASH", "BANK_TRANSFER", "CHECK", "MOBILE_MONEY", "OTHER"] as const;
+// Modes acceptés pour toute NOUVELLE opération (création ou modification d'un passage).
+export const PAYMENT_METHODS = ["CASH", "MOBILE_MONEY"] as const;
 export type PaymentMethodValue = (typeof PAYMENT_METHODS)[number];
 
+// Modes qui ne peuvent plus être saisis mais restent lisibles dans l'historique, les
+// rapports et les exports (valeurs conservées dans l'enum Prisma et en base).
+export const LEGACY_PAYMENT_METHODS = ["BANK_TRANSFER", "CHECK", "OTHER"] as const;
+export type LegacyPaymentMethodValue = (typeof LEGACY_PAYMENT_METHODS)[number];
+
+// Vrai uniquement pour un mode autorisé en saisie ; refuse les anciens modes et toute valeur inconnue.
 export function isPaymentMethod(value: string): value is PaymentMethodValue {
   return (PAYMENT_METHODS as readonly string[]).includes(value);
 }
@@ -23,7 +30,7 @@ export type PaymentCheck =
   | { ok: false; error: "INSUFFICIENT" | "EXACT_REQUIRED" };
 
 // Espèces : le montant reçu couvre au moins le montant dû, la monnaie est rendue.
-// Autres modes : montant exact et référence obligatoire. Jamais de paiement partiel.
+// Mobile Money : montant exact et référence obligatoire. Jamais de paiement partiel.
 export function checkPayment(input: {
   method: PaymentMethodValue;
   reference: string;

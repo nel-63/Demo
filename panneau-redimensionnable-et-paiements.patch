@@ -1,0 +1,679 @@
+it applydiff --git a/app/api/passages/[id]/route.ts b/app/api/passages/[id]/route.ts
+index afb4c40..2c2e06f 100644
+--- a/app/api/passages/[id]/route.ts
++++ b/app/api/passages/[id]/route.ts
+@@ -136,7 +136,7 @@ export async function PATCH(request: Request, context: Context) {
+     if (!/^\d{1,8}(?:\.\d{1,2})?$/.test(tonnage) || Number(tonnage) <= 0) {
+       return NextResponse.json({ message: "Tonnage invalide." }, { status: 400 });
+     }
+-    if (!isPaymentMethod(method)) return NextResponse.json({ message: "Mode de paiement invalide." }, { status: 400 });
++    if (!isPaymentMethod(method)) return NextResponse.json({ message: "Mode de paiement invalide : Espèces ou Mobile Money uniquement." }, { status: 400 });
+     const assignedAt = /^\d{4}-\d{2}-\d{2}$/.test(assignedAtText) ? new Date(`${assignedAtText}T12:00:00.000Z`) : null;
+     if (!assignedAt || Number.isNaN(assignedAt.getTime()) || assignedAt.toISOString().slice(0, 10) !== assignedAtText) {
+       return NextResponse.json({ message: "Date de passage invalide." }, { status: 400 });
+diff --git a/app/api/passages/route.ts b/app/api/passages/route.ts
+index 331a612..754d7ed 100644
+--- a/app/api/passages/route.ts
++++ b/app/api/passages/route.ts
+@@ -77,7 +77,7 @@ export async function POST(request: Request) {
+     }
+ 
+     if (!isPaymentMethod(method)) {
+-      return NextResponse.json({ message: "Mode de paiement invalide." }, { status: 400 });
++      return NextResponse.json({ message: "Mode de paiement invalide : Espèces ou Mobile Money uniquement." }, { status: 400 });
+     }
+ 
+     const dueCents = parseCents(dueText);
+diff --git a/app/dashboard/details-drawer.tsx b/app/dashboard/details-drawer.tsx
+index 1279b58..eceeeea 100644
+--- a/app/dashboard/details-drawer.tsx
++++ b/app/dashboard/details-drawer.tsx
+@@ -1,6 +1,14 @@
+ "use client";
+ 
+-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
++import {
++  useEffect,
++  useMemo,
++  useRef,
++  useState,
++  type CSSProperties,
++  type KeyboardEvent,
++  type PointerEvent as ReactPointerEvent,
++} from "react";
+ import { createPortal } from "react-dom";
+ import Link from "next/link";
+ import {
+@@ -28,6 +36,13 @@ import {
+   type LucideIcon,
+ } from "lucide-react";
+ import type { Badge, Cell, DetailsResult } from "@/lib/details-types";
++import {
++  DRAWER_DEFAULT_WIDTH,
++  DRAWER_KEY_STEP,
++  DRAWER_KEY_STEP_LARGE,
++  clampDrawerWidth,
++  drawerWidthBounds,
++} from "@/lib/drawer-width";
+ 
+ const KIND_ICONS: Record<string, LucideIcon> = {
+   locations: MapPin,
+@@ -95,6 +110,16 @@ export default function DetailsDrawer({
+   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
+   const panelRef = useRef<HTMLDivElement>(null);
+   const closeRef = useRef<HTMLButtonElement>(null);
++  // Largeur choisie par l'utilisateur (écran large). Conservée tant que le panneau est ouvert,
++  // réinitialisée à la fermeture puisque le composant est alors démonté.
++  const [width, setWidth] = useState(() =>
++    clampDrawerWidth(DRAWER_DEFAULT_WIDTH, typeof window === "undefined" ? DRAWER_DEFAULT_WIDTH : window.innerWidth),
++  );
++  const [viewportWidth, setViewportWidth] = useState(() =>
++    typeof window === "undefined" ? DRAWER_DEFAULT_WIDTH : window.innerWidth,
++  );
++  const [resizing, setResizing] = useState(false);
++  const dragRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
+ 
+   const requestKey = `${debounced}|${locationId}|${retry}`;
+ 
+@@ -143,11 +168,78 @@ export default function DetailsDrawer({
+     };
+   }, [onClose]);
+ 
++  // Si la fenêtre rétrécit, la largeur est ramenée dans les bornes.
++  useEffect(() => {
++    const onResize = () => {
++      setViewportWidth(window.innerWidth);
++      setWidth((current) => clampDrawerWidth(current, window.innerWidth));
++    };
++    window.addEventListener("resize", onResize);
++    return () => window.removeEventListener("resize", onResize);
++  }, []);
++
++  // Pendant le glissement : pas de sélection de texte, curseur de redimensionnement.
++  // Le nettoyage couvre aussi le démontage du panneau en plein geste.
++  useEffect(() => {
++    if (!resizing) return;
++    const previousSelect = document.body.style.userSelect;
++    const previousCursor = document.body.style.cursor;
++    document.body.style.userSelect = "none";
++    document.body.style.cursor = "col-resize";
++    return () => {
++      document.body.style.userSelect = previousSelect;
++      document.body.style.cursor = previousCursor;
++    };
++  }, [resizing]);
++
++  function onHandlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
++    if (event.button !== 0 || !panelRef.current) return;
++    event.preventDefault();
++    event.currentTarget.setPointerCapture(event.pointerId);
++    dragRef.current = {
++      pointerId: event.pointerId,
++      startX: event.clientX,
++      startWidth: panelRef.current.getBoundingClientRect().width,
++    };
++    setResizing(true);
++  }
++
++  function onHandlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
++    const drag = dragRef.current;
++    if (!drag || drag.pointerId !== event.pointerId) return;
++    // Panneau ancré à droite : déplacer la poignée vers la gauche agrandit.
++    setWidth(clampDrawerWidth(drag.startWidth + (drag.startX - event.clientX), window.innerWidth));
++  }
++
++  // Fin du geste : relâchement, annulation (ex. tactile interrompu) ou capture perdue.
++  function endResize(event: ReactPointerEvent<HTMLDivElement>) {
++    const drag = dragRef.current;
++    if (!drag || drag.pointerId !== event.pointerId) return;
++    dragRef.current = null;
++    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
++      event.currentTarget.releasePointerCapture(event.pointerId);
++    }
++    setResizing(false);
++  }
++
++  function onHandleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
++    const step = event.shiftKey ? DRAWER_KEY_STEP_LARGE : DRAWER_KEY_STEP;
++    const { min, max } = drawerWidthBounds(window.innerWidth);
++    let next: number | null = null;
++    if (event.key === "ArrowLeft") next = width + step;
++    else if (event.key === "ArrowRight") next = width - step;
++    else if (event.key === "Home") next = min;
++    else if (event.key === "End") next = max;
++    if (next === null) return;
++    event.preventDefault();
++    setWidth(clampDrawerWidth(next, window.innerWidth));
++  }
++
+   // Tab reste dans le panneau tant qu'il est ouvert.
+   function trapFocus(event: KeyboardEvent<HTMLDivElement>) {
+     if (event.key !== "Tab" || !panelRef.current) return;
+     const focusable = panelRef.current.querySelectorAll<HTMLElement>(
+-      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled])',
++      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [role="separator"][tabindex="0"]',
+     );
+     if (focusable.length === 0) return;
+     const first = focusable[0];
+@@ -188,6 +280,9 @@ export default function DetailsDrawer({
+   }
+ 
+   const titleId = `details-title-${kind}`;
++  const bounds = drawerWidthBounds(viewportWidth);
++  // La variable CSS ne s'applique qu'à partir de md ; en dessous, le panneau reste une feuille pleine largeur.
++  const panelStyle = { "--drawer-w": `${width}px` } as CSSProperties;
+ 
+   return createPortal(
+     <div className="fixed inset-0 z-50" onKeyDown={trapFocus}>
+@@ -202,8 +297,31 @@ export default function DetailsDrawer({
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby={titleId}
+-        className="details-panel absolute inset-x-0 bottom-0 flex h-[92dvh] flex-col rounded-t-2xl bg-white shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:h-full md:w-[600px] md:rounded-none md:rounded-l-2xl lg:w-[640px]"
++        style={panelStyle}
++        className="details-panel absolute inset-x-0 bottom-0 flex h-[92dvh] flex-col rounded-t-2xl bg-white shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:h-full md:w-(--drawer-w) md:max-w-full md:rounded-none md:rounded-l-2xl"
+       >
++        <div
++          role="separator"
++          aria-orientation="vertical"
++          aria-label="Redimensionner le panneau"
++          aria-valuenow={Math.min(Math.max(width, bounds.min), bounds.max)}
++          aria-valuemin={bounds.min}
++          aria-valuemax={bounds.max}
++          tabIndex={0}
++          onPointerDown={onHandlePointerDown}
++          onPointerMove={onHandlePointerMove}
++          onPointerUp={endResize}
++          onPointerCancel={endResize}
++          onLostPointerCapture={endResize}
++          onKeyDown={onHandleKeyDown}
++          className={`group absolute inset-y-0 -left-1.5 z-20 hidden w-3 cursor-col-resize touch-none items-center justify-center outline-none md:flex ${resizing ? "bg-blue-100/60" : ""}`}
++        >
++          <span
++            aria-hidden="true"
++            className={`h-12 w-1 rounded-full bg-slate-300 transition-colors group-hover:bg-blue-600 group-focus-visible:bg-blue-600 ${resizing ? "bg-blue-600" : ""}`}
++          />
++        </div>
++
+         <header className="flex items-start gap-4 border-b border-slate-200 p-5">
+           <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+             <KindIcon kind={kind} className="size-6" />
+diff --git a/app/dashboard/passages-table.tsx b/app/dashboard/passages-table.tsx
+index 6a36dd9..c9acc02 100644
+--- a/app/dashboard/passages-table.tsx
++++ b/app/dashboard/passages-table.tsx
+@@ -1,5 +1,5 @@
+ import Link from "next/link";
+-import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
++import { ALL_PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
+ 
+ const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
+   dateStyle: "short",
+@@ -89,7 +89,7 @@ export default function PassagesTable({
+               <td className="px-3 py-4">
+                 {item.payment ? (
+                   <>
+-                    {PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod}
++                    {ALL_PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod}
+                     {item.payment.reference && (
+                       <p className="text-xs text-slate-700">{item.payment.reference}</p>
+                     )}
+diff --git a/app/dashboard/passages/page.tsx b/app/dashboard/passages/page.tsx
+index e5ca502..89c6dff 100644
+--- a/app/dashboard/passages/page.tsx
++++ b/app/dashboard/passages/page.tsx
+@@ -3,7 +3,7 @@ import Link from "next/link";
+ import { redirect } from "next/navigation";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/auth";
+-import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
++import { ALL_PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
+ import ListFilters from "../list-filters";
+ import { readChoice, readParam, type SearchParams } from "../search-params";
+ import PassageForm from "./passage-form";
+@@ -40,7 +40,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
+ 
+   const params = await searchParams;
+   const q = readParam(params, "q");
+-  const method = readChoice(params, "mode", Object.keys(PAYMENT_METHOD_LABELS));
++  const method = readChoice(params, "mode", Object.keys(ALL_PAYMENT_METHOD_LABELS));
+   const deleted = isAdmin && readParam(params, "deleted", 1) === "1";
+   const words = q.split(/\s+/).filter(Boolean).slice(0, 5);
+   const has = (word: string) => ({ contains: word, mode: "insensitive" as const });
+@@ -106,7 +106,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
+         <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+           <h2 className="mb-5 text-xl font-semibold">{deleted ? "Enregistrements conservés" : "Historique des passages"} ({total})</h2>
+           <ListFilters action="/dashboard/passages" q={q} placeholder="Produit, trajet, immatriculation, chauffeur…" filters={[
+-            { name: "mode", label: "Mode de paiement", value: method, options: Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label })) },
++            { name: "mode", label: "Mode de paiement", value: method, options: Object.entries(ALL_PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label })) },
+             ...(deleted ? [{ name: "deleted", label: "Affichage", value: "1", options: [{ value: "1", label: "Supprimés" }] }] : []),
+           ]} />
+           {passages.length === 0 ? (
+@@ -136,7 +136,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
+                         {!item.vehicleInfo && !item.vehicleRegistration && !item.vehicleCharacteristics && !item.driverName && !item.driverLicenseNumber && "—"}
+                       </td>
+                       <td className="whitespace-nowrap px-3 py-4 text-right">{item.payment ? formatMGA(item.payment.amountDue) : "—"}</td>
+-                      <td className="px-3 py-4">{item.payment ? <>{PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod}{item.payment.reference && <p className="text-xs text-slate-700">{item.payment.reference}</p>}</> : "—"}</td>
++                      <td className="px-3 py-4">{item.payment ? <>{ALL_PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod}{item.payment.reference && <p className="text-xs text-slate-700">{item.payment.reference}</p>}</> : "—"}</td>
+                       <td className="px-3 py-4">{item.supervisor.user.firstName} {item.supervisor.user.lastName}</td>
+                       {(isAdmin || isSupervisor) && !deleted && <td className="min-w-[230px] px-3 py-4">
+                         {item.payment ? <PassageActions canManage={isSupervisor} initial={{
+@@ -145,7 +145,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
+                           vehicleCharacteristics: item.vehicleCharacteristics, driverName: item.driverName,
+                           driverLicenseNumber: item.driverLicenseNumber, notes: item.notes,
+                           product: { name: item.product.name, type: item.product.type, tonnage: String(item.product.tonnage) },
+-                          payment: { paymentMethod: item.payment.paymentMethod as keyof typeof PAYMENT_METHOD_LABELS, reference: item.payment.reference, amountDue: String(item.payment.amountDue), amountReceived: String(item.payment.amountReceived) },
++                          payment: { paymentMethod: item.payment.paymentMethod as keyof typeof ALL_PAYMENT_METHOD_LABELS, reference: item.payment.reference, amountDue: String(item.payment.amountDue), amountReceived: String(item.payment.amountReceived) },
+                         }}/> : <span className="text-xs text-slate-500">—</span>}
+                       </td>}
+                       {isAdmin && deleted && <td className="px-3 py-4 text-xs font-semibold text-red-700">Supprimé le {item.deletedAt ? dateFormatter.format(item.deletedAt) : "—"}</td>}
+diff --git a/app/dashboard/passages/passage-actions.tsx b/app/dashboard/passages/passage-actions.tsx
+index 5c490f8..3503ec9 100644
+--- a/app/dashboard/passages/passage-actions.tsx
++++ b/app/dashboard/passages/passage-actions.tsx
+@@ -2,7 +2,7 @@
+ 
+ import { useState, type FormEvent } from "react";
+ import { useRouter } from "next/navigation";
+-import { PAYMENT_METHOD_LABELS } from "@/lib/audit";
++import { ALL_PAYMENT_METHOD_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/audit";
+ import PassageHistory from "./passage-history";
+ 
+ type Initial = {
+@@ -17,13 +17,15 @@ type Initial = {
+   driverLicenseNumber: string | null;
+   notes: string | null;
+   product: { name: string; type: string; tonnage: string };
+-  payment: { paymentMethod: keyof typeof PAYMENT_METHOD_LABELS; reference: string | null; amountDue: string; amountReceived: string };
++  payment: { paymentMethod: keyof typeof ALL_PAYMENT_METHOD_LABELS; reference: string | null; amountDue: string; amountReceived: string };
+ };
+ 
+ export default function PassageActions({ initial, canManage }: { initial: Initial; canManage: boolean }) {
+   const router = useRouter();
+   const [busy, setBusy] = useState(false);
+   const [message, setMessage] = useState("");
++  // Un paiement historique (chèque, virement, autre) ne peut plus être ressaisi tel quel.
++  const initialMethodAllowed = Object.hasOwn(PAYMENT_METHOD_LABELS, initial.payment.paymentMethod);
+ 
+   async function save(event: FormEvent<HTMLFormElement>) {
+     event.preventDefault();
+@@ -78,7 +80,7 @@ export default function PassageActions({ initial, canManage }: { initial: Initia
+           <label className={label}>Observations<textarea className={field} name="notes" defaultValue={initial.notes ?? ""} maxLength={2000}/></label>
+           <label className={label}>Montant dû (MGA)<input className={field} name="amountDue" type="number" min="0.01" step="0.01" defaultValue={initial.payment.amountDue} required/></label>
+           <label className={label}>Montant reçu (MGA)<input className={field} name="amountReceived" type="number" min="0.01" step="0.01" defaultValue={initial.payment.amountReceived} required/></label>
+-          <label className={label}>Mode de paiement<select className={field} name="paymentMethod" defaultValue={initial.payment.paymentMethod}>{Object.entries(PAYMENT_METHOD_LABELS).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>
++          <label className={label}>Mode de paiement<select className={field} name="paymentMethod" required defaultValue={initialMethodAllowed ? initial.payment.paymentMethod : ""}>{!initialMethodAllowed && <option value="" disabled>{`${ALL_PAYMENT_METHOD_LABELS[initial.payment.paymentMethod] ?? initial.payment.paymentMethod} (ancien mode : choisir Espèces ou Mobile Money)`}</option>}{Object.entries(PAYMENT_METHOD_LABELS).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>
+           <label className={label}>Référence paiement<input className={field} name="reference" defaultValue={initial.payment.reference ?? ""} maxLength={150}/></label>
+           <button disabled={busy} className="rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "En cours…" : "Enregistrer les modifications"}</button>
+         </form>
+diff --git a/lib/audit.ts b/lib/audit.ts
+index be7c1fc..55f6301 100644
+--- a/lib/audit.ts
++++ b/lib/audit.ts
+@@ -32,14 +32,25 @@ export const ROLE_LABELS: Record<string, string> = {
+   ANALYST: "Analyste",
+ };
+ 
++// Libellés des modes autorisés pour une nouvelle opération (formulaires de saisie).
+ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
+   CASH: "Espèces",
++  MOBILE_MONEY: "Mobile Money",
++};
++
++// Libellés des anciens modes : lecture seule (historique, détails, filtres, exports).
++export const LEGACY_PAYMENT_METHOD_LABELS: Record<string, string> = {
+   BANK_TRANSFER: "Virement bancaire",
+   CHECK: "Chèque",
+-  MOBILE_MONEY: "Mobile money",
+   OTHER: "Autre",
+ };
+ 
++// Tous les libellés, pour afficher n'importe quel paiement existant.
++export const ALL_PAYMENT_METHOD_LABELS: Record<string, string> = {
++  ...PAYMENT_METHOD_LABELS,
++  ...LEGACY_PAYMENT_METHOD_LABELS,
++};
++
+ export const TRANSPORT_STATUS_LABELS: Record<string, string> = {
+   PLANNED: "Planifié",
+   IN_PROGRESS: "En cours",
+@@ -126,7 +137,7 @@ export function describeAudit(
+     if (details.amountReceived !== undefined) lines.push(`Montant reçu : ${formatMGA(details.amountReceived)}`);
+     if (details.changeReturned !== undefined) lines.push(`Monnaie rendue : ${formatMGA(details.changeReturned)}`);
+     const method = str(details.paymentMethod);
+-    if (method) lines.push(`Mode : ${PAYMENT_METHOD_LABELS[method] ?? method}`);
++    if (method) lines.push(`Mode : ${ALL_PAYMENT_METHOD_LABELS[method] ?? method}`);
+     const reference = str(details.reference);
+     if (reference) lines.push(`Référence : ${reference}`);
+   } else if (action === "CHANGE_TRANSPORT_STATUS") {
+diff --git a/lib/details.ts b/lib/details.ts
+index 2495935..fbdf9f1 100644
+--- a/lib/details.ts
++++ b/lib/details.ts
+@@ -1,5 +1,5 @@
+ import { prisma } from "@/lib/prisma";
+-import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
++import { ALL_PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
+ import type { Cell, Column, DetailsResult, DetailsRow } from "@/lib/details-types";
+ 
+ export const DETAIL_LIMIT = 200;
+@@ -262,7 +262,7 @@ export async function getDetails(
+             product: text(r.passage.product.name),
+             route: text(`${r.passage.origin} → ${r.passage.destination}`),
+             method: text(
+-              `${PAYMENT_METHOD_LABELS[r.paymentMethod] ?? r.paymentMethod}${r.reference ? ` (${r.reference})` : ""}`,
++              `${ALL_PAYMENT_METHOD_LABELS[r.paymentMethod] ?? r.paymentMethod}${r.reference ? ` (${r.reference})` : ""}`,
+             ),
+             due: num(r.amountDue, formatMGA(r.amountDue)),
+             received: num(r.amountReceived, formatMGA(r.amountReceived)),
+@@ -344,7 +344,7 @@ export async function getDetails(
+             ...withLocation(admin, r.assignedLocation?.name),
+             destination: text(r.destination),
+             amount: r.payment ? num(r.payment.amountDue, formatMGA(r.payment.amountDue)) : text("—"),
+-            method: text(r.payment ? (PAYMENT_METHOD_LABELS[r.payment.paymentMethod] ?? r.payment.paymentMethod) : "—"),
++            method: text(r.payment ? (ALL_PAYMENT_METHOD_LABELS[r.payment.paymentMethod] ?? r.payment.paymentMethod) : "—"),
+             by: text(fullName(r.supervisor.user)),
+           },
+         })),
+diff --git a/lib/drawer-width.ts b/lib/drawer-width.ts
+new file mode 100644
+index 0000000..7c74ee0
+--- /dev/null
++++ b/lib/drawer-width.ts
+@@ -0,0 +1,20 @@
++// Largeur du panneau de détails (en pixels) : bornes et ajustement.
++// Les bornes ne valent que sur écran large ; en dessous, le panneau est une feuille pleine largeur.
++
++export const DRAWER_MIN_WIDTH = 420;
++export const DRAWER_MAX_WIDTH = 1100;
++export const DRAWER_DEFAULT_WIDTH = 640;
++export const DRAWER_KEY_STEP = 24;
++export const DRAWER_KEY_STEP_LARGE = 96;
++
++// Bornes effectives : jamais plus que la fenêtre, et le minimum ne dépasse jamais le maximum.
++export function drawerWidthBounds(viewportWidth: number): { min: number; max: number } {
++  const max = Math.max(0, Math.min(DRAWER_MAX_WIDTH, Math.floor(viewportWidth)));
++  return { min: Math.min(DRAWER_MIN_WIDTH, max), max };
++}
++
++export function clampDrawerWidth(width: number, viewportWidth: number): number {
++  const { min, max } = drawerWidthBounds(viewportWidth);
++  if (!Number.isFinite(width)) return Math.min(Math.max(DRAWER_DEFAULT_WIDTH, min), max);
++  return Math.min(Math.max(Math.round(width), min), max);
++}
+diff --git a/lib/passage-history.ts b/lib/passage-history.ts
+index 43dcf07..1edf1ad 100644
+--- a/lib/passage-history.ts
++++ b/lib/passage-history.ts
+@@ -1,7 +1,7 @@
+ // Transforme les révisions brutes d'un passage (instantanés JSON) en historique lisible :
+ // qui a fait quoi, quand, et ce qui a changé (avant / maintenant). Fonctions pures, testables.
+ 
+-import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
++import { ALL_PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
+ 
+ export type RawRevision = {
+   id: string;
+@@ -95,7 +95,7 @@ function formatValue(kind: Kind, value: unknown): string {
+     case "money":
+       return formatMGA(value);
+     case "method":
+-      return PAYMENT_METHOD_LABELS[String(value)] ?? String(value);
++      return ALL_PAYMENT_METHOD_LABELS[String(value)] ?? String(value);
+     default:
+       return String(value);
+   }
+diff --git a/lib/payment-rules.ts b/lib/payment-rules.ts
+index 770636f..1fc9f43 100644
+--- a/lib/payment-rules.ts
++++ b/lib/payment-rules.ts
+@@ -1,8 +1,15 @@
+ // Règles de paiement d'un passage (montants en centimes pour éviter les erreurs d'arrondi).
+ 
+-export const PAYMENT_METHODS = ["CASH", "BANK_TRANSFER", "CHECK", "MOBILE_MONEY", "OTHER"] as const;
++// Modes acceptés pour toute NOUVELLE opération (création ou modification d'un passage).
++export const PAYMENT_METHODS = ["CASH", "MOBILE_MONEY"] as const;
+ export type PaymentMethodValue = (typeof PAYMENT_METHODS)[number];
+ 
++// Modes qui ne peuvent plus être saisis mais restent lisibles dans l'historique, les
++// rapports et les exports (valeurs conservées dans l'enum Prisma et en base).
++export const LEGACY_PAYMENT_METHODS = ["BANK_TRANSFER", "CHECK", "OTHER"] as const;
++export type LegacyPaymentMethodValue = (typeof LEGACY_PAYMENT_METHODS)[number];
++
++// Vrai uniquement pour un mode autorisé en saisie ; refuse les anciens modes et toute valeur inconnue.
+ export function isPaymentMethod(value: string): value is PaymentMethodValue {
+   return (PAYMENT_METHODS as readonly string[]).includes(value);
+ }
+@@ -23,7 +30,7 @@ export type PaymentCheck =
+   | { ok: false; error: "INSUFFICIENT" | "EXACT_REQUIRED" };
+ 
+ // Espèces : le montant reçu couvre au moins le montant dû, la monnaie est rendue.
+-// Autres modes : montant exact et référence obligatoire. Jamais de paiement partiel.
++// Mobile Money : montant exact et référence obligatoire. Jamais de paiement partiel.
+ export function checkPayment(input: {
+   method: PaymentMethodValue;
+   reference: string;
+diff --git a/tests/api/passages-edit.test.ts b/tests/api/passages-edit.test.ts
+index c0564f2..445989f 100644
+--- a/tests/api/passages-edit.test.ts
++++ b/tests/api/passages-edit.test.ts
+@@ -92,6 +92,37 @@ describe("gestion des passages par les régisseurs", () => {
+     expect(db.auditLog.create).toHaveBeenCalled();
+   });
+ 
++  it("accepte de passer un paiement à Mobile Money avec référence", async () => {
++    db.passage.findUnique
++      .mockResolvedValueOnce(current)
++      .mockResolvedValueOnce(current);
++    const response = await PATCH(
++      jsonRequest("/api/passages/pass-1", "PATCH", {
++        ...valid, paymentMethod: "MOBILE_MONEY", reference: "MVOLA-9", amountReceived: "45000",
++      }),
++      context,
++    );
++    expect((await read(response)).status).toBe(200);
++    expect(db.payment.update).toHaveBeenCalledWith(expect.objectContaining({
++      data: expect.objectContaining({ paymentMethod: "MOBILE_MONEY", reference: "MVOLA-9" }),
++    }));
++  });
++
++  it.each(["CHECK", "BANK_TRANSFER", "OTHER", "BITCOIN"])(
++    "refuse une requête forgée qui réintroduit %s à la modification",
++    async (paymentMethod) => {
++      const response = await PATCH(
++        jsonRequest("/api/passages/pass-1", "PATCH", {
++          ...valid, paymentMethod, reference: "REF-1", amountReceived: "45000",
++        }),
++        context,
++      );
++      expect((await read(response)).status).toBe(400);
++      expect(db.$transaction).not.toHaveBeenCalled();
++      expect(db.payment.update).not.toHaveBeenCalled();
++    },
++  );
++
+   it("supprime logiquement le passage, le produit et le paiement", async () => {
+     const response = await DELETE(
+       new Request("https://demo.test/api/passages/pass-1", { method: "DELETE" }),
+diff --git a/tests/api/passages.test.ts b/tests/api/passages.test.ts
+index 71956bc..dcd0abb 100644
+--- a/tests/api/passages.test.ts
++++ b/tests/api/passages.test.ts
+@@ -95,21 +95,36 @@ describe("un passage n'existe qu'avec son paiement", () => {
+     });
+   });
+ 
+-  it("virement exact avec référence", async () => {
++  it("Mobile Money exact avec référence", async () => {
+     const { status } = await read(
+-      await send({ paymentMethod: "BANK_TRANSFER", reference: "VIR-1", amountReceived: "40000" }),
++      await send({ paymentMethod: "MOBILE_MONEY", reference: "MVOLA-1", amountReceived: "40000" }),
+     );
+     expect(status).toBe(201);
+     expect(created().payment).toMatchObject({
+-      create: { paymentMethod: "BANK_TRANSFER", reference: "VIR-1", changeReturned: "0.00" },
++      create: { paymentMethod: "MOBILE_MONEY", reference: "MVOLA-1", changeReturned: "0.00" },
+     });
+   });
+ 
++  it.each([
++    ["chèque", "CHECK"],
++    ["virement bancaire", "BANK_TRANSFER"],
++    ["autre", "OTHER"],
++    ["valeur inconnue", "BITCOIN"],
++    ["valeur vide", ""],
++    ["casse différente", "cash"],
++  ])("refuse côté serveur un nouveau paiement par %s", async (_label, paymentMethod) => {
++    const { status } = await read(
++      await send({ paymentMethod, reference: "REF-1", amountReceived: "40000" }),
++    );
++    expect(status).toBe(400);
++    nothingWritten();
++  });
++
+   it.each([
+     ["espèces insuffisantes", { amountReceived: "39999.99" }],
+-    ["virement sans référence", { paymentMethod: "BANK_TRANSFER", amountReceived: "40000" }],
+-    ["virement supérieur au montant", { paymentMethod: "MOBILE_MONEY", reference: "R", amountReceived: "40001" }],
+-    ["chèque incomplet", { paymentMethod: "CHECK", reference: "R", amountReceived: "30000" }],
++    ["Mobile Money sans référence", { paymentMethod: "MOBILE_MONEY", amountReceived: "40000" }],
++    ["Mobile Money supérieur au montant", { paymentMethod: "MOBILE_MONEY", reference: "R", amountReceived: "40001" }],
++    ["Mobile Money inférieur au montant", { paymentMethod: "MOBILE_MONEY", reference: "R", amountReceived: "30000" }],
+   ])("sans paiement valide, pas de passage : %s", async (_label, body) => {
+     const { status } = await read(await send(body));
+     expect(status).toBe(400);
+diff --git a/tests/lib/drawer-width.test.ts b/tests/lib/drawer-width.test.ts
+new file mode 100644
+index 0000000..c08d458
+--- /dev/null
++++ b/tests/lib/drawer-width.test.ts
+@@ -0,0 +1,43 @@
++import { describe, expect, it } from "vitest";
++import {
++  DRAWER_DEFAULT_WIDTH,
++  DRAWER_MAX_WIDTH,
++  DRAWER_MIN_WIDTH,
++  clampDrawerWidth,
++  drawerWidthBounds,
++} from "@/lib/drawer-width";
++
++describe("drawerWidthBounds", () => {
++  it("écran large : minimum 420 px, maximum 1100 px", () => {
++    expect(drawerWidthBounds(1920)).toEqual({ min: DRAWER_MIN_WIDTH, max: DRAWER_MAX_WIDTH });
++  });
++
++  it("le maximum ne dépasse jamais la largeur de la fenêtre", () => {
++    expect(drawerWidthBounds(900)).toEqual({ min: 420, max: 900 });
++  });
++
++  it("fenêtre plus étroite que le minimum : le minimum suit la fenêtre", () => {
++    expect(drawerWidthBounds(360)).toEqual({ min: 360, max: 360 });
++  });
++});
++
++describe("clampDrawerWidth", () => {
++  it("laisse passer une largeur dans les bornes", () => {
++    expect(clampDrawerWidth(700, 1920)).toBe(700);
++  });
++
++  it("respecte la largeur minimale et maximale", () => {
++    expect(clampDrawerWidth(100, 1920)).toBe(420);
++    expect(clampDrawerWidth(5000, 1920)).toBe(1100);
++  });
++
++  it("ramène la largeur dans la fenêtre quand elle rétrécit", () => {
++    expect(clampDrawerWidth(1000, 800)).toBe(800);
++    expect(clampDrawerWidth(1000, 300)).toBe(300);
++  });
++
++  it("arrondit et gère les valeurs non finies", () => {
++    expect(clampDrawerWidth(640.6, 1920)).toBe(641);
++    expect(clampDrawerWidth(Number.NaN, 1920)).toBe(DRAWER_DEFAULT_WIDTH);
++  });
++});
+diff --git a/tests/lib/passage-history.test.ts b/tests/lib/passage-history.test.ts
+index e93aa5e..e82c2d2 100644
+--- a/tests/lib/passage-history.test.ts
++++ b/tests/lib/passage-history.test.ts
+@@ -69,6 +69,18 @@ describe("historique lisible d'un passage", () => {
+     ]);
+   });
+ 
++  it("affiche lisiblement un ancien paiement par chèque ou par autre mode", () => {
++    const [entry] = buildHistory([
++      revision({
++        snapshot: {
++          before: snapshot({ payment: { paymentMethod: "CHECK", reference: "CHQ-1", amountReceived: "50000.00", changeReturned: "10000.00" } }),
++          after: snapshot({ payment: { paymentMethod: "OTHER", reference: "CHQ-1", amountReceived: "50000.00", changeReturned: "10000.00" } }),
++        },
++      }),
++    ]);
++    expect(entry.changes).toContainEqual({ label: "Mode de paiement", before: "Chèque", after: "Autre" });
++  });
++
+   it("ne signale pas comme un changement une simple différence d'écriture", () => {
+     const [entry] = buildHistory([
+       revision({ snapshot: { before: snapshot({ product: { tonnage: "8.5" } }), after: snapshot({ product: { tonnage: "8.50" } }) } }),
+diff --git a/tests/lib/payment-rules.test.ts b/tests/lib/payment-rules.test.ts
+index 889e0a6..c154234 100644
+--- a/tests/lib/payment-rules.test.ts
++++ b/tests/lib/payment-rules.test.ts
+@@ -1,5 +1,13 @@
+ import { describe, expect, it } from "vitest";
+-import { checkPayment, isPaymentMethod, parseCents, toDecimal } from "@/lib/payment-rules";
++import {
++  LEGACY_PAYMENT_METHODS,
++  PAYMENT_METHODS,
++  checkPayment,
++  isPaymentMethod,
++  parseCents,
++  toDecimal,
++} from "@/lib/payment-rules";
++import { ALL_PAYMENT_METHOD_LABELS, LEGACY_PAYMENT_METHOD_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/audit";
+ 
+ describe("parseCents / toDecimal", () => {
+   it("convertit un montant en centimes et inversement", () => {
+@@ -28,7 +36,7 @@ describe("checkPayment", () => {
+     expect(checkPayment({ ...base, method: "CASH", receivedCents: 3999999 })).toEqual({ ok: false, error: "INSUFFICIENT" });
+   });
+ 
+-  it.each(["BANK_TRANSFER", "CHECK", "MOBILE_MONEY", "OTHER"] as const)(
++  it.each(["MOBILE_MONEY"] as const)(
+     "%s : montant exact et référence obligatoires",
+     (method) => {
+       expect(checkPayment({ ...base, method, reference: "REF-1", receivedCents: 4000000 })).toEqual({ ok: true, changeCents: 0 });
+@@ -40,6 +48,34 @@ describe("checkPayment", () => {
+ 
+   it("reconnaît les modes de paiement valides", () => {
+     expect(isPaymentMethod("CASH")).toBe(true);
++    expect(isPaymentMethod("MOBILE_MONEY")).toBe(true);
+     expect(isPaymentMethod("BITCOIN")).toBe(false);
+   });
++
++  it.each(["CHECK", "BANK_TRANSFER", "OTHER", "BITCOIN", "", "cash"])(
++    "refuse %j pour une nouvelle opération",
++    (value) => expect(isPaymentMethod(value)).toBe(false),
++  );
++});
++
++describe("modes autorisés et modes historiques", () => {
++  it("n'autorise que Espèces et Mobile Money en saisie", () => {
++    expect([...PAYMENT_METHODS]).toEqual(["CASH", "MOBILE_MONEY"]);
++  });
++
++  it("les formulaires (libellés de saisie) ne proposent que les deux modes autorisés", () => {
++    expect(Object.keys(PAYMENT_METHOD_LABELS)).toEqual([...PAYMENT_METHODS]);
++    expect(PAYMENT_METHOD_LABELS).toEqual({ CASH: "Espèces", MOBILE_MONEY: "Mobile Money" });
++  });
++
++  it("chaque ancien mode garde un libellé explicite pour l'historique", () => {
++    expect(Object.keys(LEGACY_PAYMENT_METHOD_LABELS).sort()).toEqual([...LEGACY_PAYMENT_METHODS].sort());
++    expect(ALL_PAYMENT_METHOD_LABELS).toMatchObject({
++      CASH: "Espèces",
++      MOBILE_MONEY: "Mobile Money",
++      CHECK: "Chèque",
++      BANK_TRANSFER: "Virement bancaire",
++      OTHER: "Autre",
++    });
++  });
+ });

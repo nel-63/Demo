@@ -2,7 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { CircleAlert, Eye, EyeOff, Truck } from "lucide-react";
+import Image from "next/image";
+import { CircleAlert, Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -36,10 +37,8 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10 sm:px-8">
       <section className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-lg sm:p-10">
         <div className="mb-7 flex items-center gap-3">
-          <span className="flex size-11 items-center justify-center rounded-xl bg-blue-600 text-white">
-            <Truck className="size-6" aria-hidden="true" />
-          </span>
-          <span className="text-lg font-semibold text-slate-900">WWWWW</span>
+                      <Image src="/Baobab Landscape Emblem.png" alt="Logo Région Menabe" width={408} height={408} className="h-26 w-26"/>
+          <span className="text-center text-lg font-semibold text-slate-900">REGION MENABE <br /> Régisseur</span>
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Connexion</h1>
         <form method="post" onSubmit={handleSubmit} className="mt-8 space-y-5">

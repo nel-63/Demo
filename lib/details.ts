@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
+import { ALL_PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
 import type { Cell, Column, DetailsResult, DetailsRow } from "@/lib/details-types";
 
 export const DETAIL_LIMIT = 200;
@@ -262,7 +262,7 @@ export async function getDetails(
             product: text(r.passage.product.name),
             route: text(`${r.passage.origin} → ${r.passage.destination}`),
             method: text(
-              `${PAYMENT_METHOD_LABELS[r.paymentMethod] ?? r.paymentMethod}${r.reference ? ` (${r.reference})` : ""}`,
+              `${ALL_PAYMENT_METHOD_LABELS[r.paymentMethod] ?? r.paymentMethod}${r.reference ? ` (${r.reference})` : ""}`,
             ),
             due: num(r.amountDue, formatMGA(r.amountDue)),
             received: num(r.amountReceived, formatMGA(r.amountReceived)),
@@ -344,7 +344,7 @@ export async function getDetails(
             ...withLocation(admin, r.assignedLocation?.name),
             destination: text(r.destination),
             amount: r.payment ? num(r.payment.amountDue, formatMGA(r.payment.amountDue)) : text("—"),
-            method: text(r.payment ? (PAYMENT_METHOD_LABELS[r.payment.paymentMethod] ?? r.payment.paymentMethod) : "—"),
+            method: text(r.payment ? (ALL_PAYMENT_METHOD_LABELS[r.payment.paymentMethod] ?? r.payment.paymentMethod) : "—"),
             by: text(fullName(r.supervisor.user)),
           },
         })),

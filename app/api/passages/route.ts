@@ -77,7 +77,7 @@ export async function POST(request: Request) {
     }
 
     if (!isPaymentMethod(method)) {
-      return NextResponse.json({ message: "Mode de paiement invalide." }, { status: 400 });
+      return NextResponse.json({ message: "Mode de paiement invalide : Espèces ou Mobile Money uniquement." }, { status: 400 });
     }
 
     const dueCents = parseCents(dueText);

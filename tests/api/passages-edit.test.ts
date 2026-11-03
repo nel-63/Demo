@@ -92,6 +92,37 @@ describe("gestion des passages par les régisseurs", () => {
     expect(db.auditLog.create).toHaveBeenCalled();
   });
 
+  it("accepte de passer un paiement à Mobile Money avec référence", async () => {
+    db.passage.findUnique
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce(current);
+    const response = await PATCH(
+      jsonRequest("/api/passages/pass-1", "PATCH", {
+        ...valid, paymentMethod: "MOBILE_MONEY", reference: "MVOLA-9", amountReceived: "45000",
+      }),
+      context,
+    );
+    expect((await read(response)).status).toBe(200);
+    expect(db.payment.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ paymentMethod: "MOBILE_MONEY", reference: "MVOLA-9" }),
+    }));
+  });
+
+  it.each(["CHECK", "BANK_TRANSFER", "OTHER", "BITCOIN"])(
+    "refuse une requête forgée qui réintroduit %s à la modification",
+    async (paymentMethod) => {
+      const response = await PATCH(
+        jsonRequest("/api/passages/pass-1", "PATCH", {
+          ...valid, paymentMethod, reference: "REF-1", amountReceived: "45000",
+        }),
+        context,
+      );
+      expect((await read(response)).status).toBe(400);
+      expect(db.$transaction).not.toHaveBeenCalled();
+      expect(db.payment.update).not.toHaveBeenCalled();
+    },
+  );
+
   it("supprime logiquement le passage, le produit et le paiement", async () => {
     const response = await DELETE(
       new Request("https://demo.test/api/passages/pass-1", { method: "DELETE" }),

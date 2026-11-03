@@ -1,6 +1,6 @@
 import { Suspense, type ReactNode } from "react";
+import Image from "next/image";
 import { redirect } from "next/navigation";
-import { Truck } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import LogoutButton from "./logout-button";
@@ -9,9 +9,13 @@ import NavLinks from "./nav-links";
 function Brand() {
   return (
     <div className="flex items-center gap-3">
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
-        <Truck className="size-5" aria-hidden="true" />
-      </span>
+      <Image
+        src="/Baobab Landscape Emblem.png"
+        alt="Logo Région Menabe"
+        width={408}
+        height={408}
+        className="h-26 w-26"
+      />
       <span className="leading-tight">
         <span className="block font-semibold text-white">REGION MENABE</span>
         <span className="block text-xs text-slate-300">Régisseur</span>

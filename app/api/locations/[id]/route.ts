@@ -27,7 +27,7 @@ export async function DELETE(_request: Request, context: Context) {
         select: { id: true, name: true, deletedAt: true },
       });
       if (!location) return "NOT_FOUND" as const;
-      if (location.deletedAt) return "ALREADY_ARCHIVED" as const;
+      if (location.deletedAt) return "ALREADY_DELETED" as const;
 
       const deletedAt = new Date();
       await tx.location.update({
@@ -43,19 +43,19 @@ export async function DELETE(_request: Request, context: Context) {
           details: { name: location.name, deletedAt: deletedAt.toISOString(), historyPreserved: true },
         },
       });
-      return "ARCHIVED" as const;
+      return "DELETED" as const;
     });
 
     if (result === "NOT_FOUND") {
       return NextResponse.json({ message: "Lieu introuvable." }, { status: 404 });
     }
-    if (result === "ALREADY_ARCHIVED") {
-      return NextResponse.json({ message: "Ce lieu est déjà archivé." }, { status: 409 });
+    if (result === "ALREADY_DELETED") {
+      return NextResponse.json({ message: "Ce lieu est déjà dans la corbeille." }, { status: 409 });
     }
-    return NextResponse.json({ ok: true, message: "Lieu archivé. Son historique est conservé." });
+    return NextResponse.json({ ok: true, message: "Lieu placé dans la corbeille. Toutes ses données sont conservées." });
   } catch (error) {
-    console.error("Location archiving failed:", error);
-    return NextResponse.json({ message: "Impossible d'archiver le lieu." }, { status: 500 });
+    console.error("Location soft deletion failed:", error);
+    return NextResponse.json({ message: "Impossible de supprimer le lieu." }, { status: 500 });
   }
 }
 

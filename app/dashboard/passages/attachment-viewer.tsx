@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type AttachmentKind = "pjt" | "quittance";
 
@@ -18,6 +18,11 @@ export default function AttachmentViewer({
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const requestController = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => requestController.current?.abort();
+  }, []);
 
   useEffect(() => {
     if (!imageUrl) return;
@@ -36,6 +41,9 @@ export default function AttachmentViewer({
   }, [active]);
 
   async function open(kind: AttachmentKind) {
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
     setActive(kind);
     setImageUrl(null);
     setError("");
@@ -44,6 +52,7 @@ export default function AttachmentViewer({
       const response = await fetch(`/api/passages/${encodeURIComponent(passageId)}/attachments/${kind}`, {
         method: "GET",
         cache: "no-store",
+        signal: controller.signal,
       });
       if (!response.ok) {
         const result = await response.json().catch(() => ({}));
@@ -51,15 +60,19 @@ export default function AttachmentViewer({
       }
       const blob = await response.blob();
       if (!blob.type.startsWith("image/")) throw new Error("Le serveur n'a pas renvoyé une image valide.");
-      setImageUrl(URL.createObjectURL(blob));
+      if (!controller.signal.aborted) setImageUrl(URL.createObjectURL(blob));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Impossible de charger cette image.");
+      if (!controller.signal.aborted) {
+        setError(cause instanceof Error ? cause.message : "Impossible de charger cette image.");
+      }
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }
 
   function close() {
+    requestController.current?.abort();
+    requestController.current = null;
     setActive(null);
     setImageUrl(null);
     setError("");

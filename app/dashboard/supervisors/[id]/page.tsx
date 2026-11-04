@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { formatMGA } from "@/lib/audit";
 import { fetchAuditRows } from "@/lib/audit-rows";
-import { FICHE_PAGE_SIZE, PASSAGE_ROW_SELECT } from "@/lib/passage-rows";
+import { FICHE_PAGE_SIZE, PASSAGE_ROW_SELECT, addAttachmentFlags } from "@/lib/passage-rows";
 import AuditTable from "../../audit-table";
 import PassagesTable from "../../passages-table";
 import Pager from "../../pager";
@@ -69,7 +69,7 @@ async function SupervisorSheet({ params, searchParams }: Props) {
   const pageCount = Math.max(1, Math.ceil(total / FICHE_PAGE_SIZE));
   const page = Math.min(Math.max(Number.isFinite(requestedPage) ? requestedPage : 1, 1), pageCount);
 
-  const [passages, activity, accountEvents] = await Promise.all([
+  const [passageRows, activity, accountEvents] = await Promise.all([
     prisma.passage.findMany({
       where: { supervisorId: id, deletedAt: null, assignedLocation: { is: { deletedAt: null } } },
       orderBy: { assignedAt: "desc" },
@@ -82,6 +82,7 @@ async function SupervisorSheet({ params, searchParams }: Props) {
     // Ce que l'administrateur a fait sur son compte (lieu, désactivation, mot de passe).
     fetchAuditRows({ where: { entityType: "Supervisor", entityId: id }, take: 20 }),
   ]);
+  const passages = await addAttachmentFlags(passageRows);
 
   const name = `${supervisor.user.firstName} ${supervisor.user.lastName}`;
 

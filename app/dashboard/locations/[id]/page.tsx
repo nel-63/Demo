@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { formatMGA } from "@/lib/audit";
 import { fetchAuditRows } from "@/lib/audit-rows";
-import { FICHE_PAGE_SIZE, PASSAGE_ROW_SELECT } from "@/lib/passage-rows";
+import { FICHE_PAGE_SIZE, PASSAGE_ROW_SELECT, addAttachmentFlags } from "@/lib/passage-rows";
 import AuditTable from "../../audit-table";
 import PassagesTable from "../../passages-table";
 import Pager from "../../pager";
@@ -73,7 +73,7 @@ async function LocationSheet({ params, searchParams }: Props) {
   const pageCount = Math.max(1, Math.ceil(total / FICHE_PAGE_SIZE));
   const page = Math.min(Math.max(Number.isFinite(requestedPage) ? requestedPage : 1, 1), pageCount);
 
-  const [passages, activity] = await Promise.all([
+  const [passageRows, activity] = await Promise.all([
     prisma.passage.findMany({
       where: { locationId: id, deletedAt: null },
       orderBy: { assignedAt: "desc" },
@@ -93,6 +93,7 @@ async function LocationSheet({ params, searchParams }: Props) {
       includeDeletedLocations: true,
     }),
   ]);
+  const passages = await addAttachmentFlags(passageRows);
 
   return (
     <div className="mx-auto max-w-7xl">

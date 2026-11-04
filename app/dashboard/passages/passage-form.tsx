@@ -32,7 +32,7 @@ function Field({
   );
 }
 
-export default function PassageForm({ locations }: { locations: string[] }) {
+export default function PassageForm() {
   const router = useRouter();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -56,18 +56,15 @@ export default function PassageForm({ locations }: { locations: string[] }) {
     setLoading(true);
 
     const form = event.currentTarget;
-    const values = {
-      ...Object.fromEntries(new FormData(form).entries()),
-      paymentMethod: method,
-      amountDue: due,
-      amountReceived: receivedValue,
-    };
+    const values = new FormData(form);
+    values.set("paymentMethod", method);
+    values.set("amountDue", due);
+    values.set("amountReceived", receivedValue);
 
     try {
       const response = await fetch("/api/passages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: values,
       });
       const result = await response.json().catch(() => ({}));
 
@@ -115,17 +112,11 @@ export default function PassageForm({ locations }: { locations: string[] }) {
 
       <h3 className={sectionClass}>Trajet</h3>
 
-      <Field id="origin" label="D'où vient le produit" hint="Lieu de départ.">
-        <select id="origin" name="origin" required defaultValue="" className={inputClass}>
-          <option value="" disabled>Choisir un lieu</option>
-          {locations.map((location) => <option key={location} value={location}>{location}</option>)}
-        </select>
+      <Field id="origin" label="Lieu de départ" hint="Saisissez librement le lieu de départ.">
+        <input id="origin" name="origin" type="text" required maxLength={150} placeholder="Lieu de départ" className={inputClass} />
       </Field>
-      <Field id="destination" label="Où va le produit" hint="Lieu d'arrivée. Le passage est rattaché à votre lieu.">
-        <select id="destination" name="destination" required defaultValue="" className={inputClass}>
-          <option value="" disabled>Choisir un lieu</option>
-          {locations.map((location) => <option key={location} value={location}>{location}</option>)}
-        </select>
+      <Field id="destination" label="Lieu d'arrivée" hint="Saisissez librement le lieu d'arrivée.">
+        <input id="destination" name="destination" type="text" required maxLength={150} placeholder="Lieu d'arrivée" className={inputClass} />
       </Field>
 
       <h3 className={sectionClass}>Véhicule et chauffeur (facultatif)</h3>
@@ -144,6 +135,29 @@ export default function PassageForm({ locations }: { locations: string[] }) {
       </Field>
       <Field id="driverLicenseNumber" label="Numéro de permis du chauffeur">
         <input id="driverLicenseNumber" name="driverLicenseNumber" maxLength={80} className={inputClass} />
+      </Field>
+
+      <h3 className={sectionClass}>Informations complémentaires sur le transport</h3>
+      <Field id="nomOp" label="Nom de l'opérateur">
+        <input id="nomOp" name="nomOp" maxLength={150} className={inputClass} />
+      </Field>
+      <Field id="nomSoc" label="Nom de la société">
+        <input id="nomSoc" name="nomSoc" maxLength={200} className={inputClass} />
+      </Field>
+      <Field id="coli" label="Mode de colisage">
+        <input id="coli" name="coli" maxLength={100} className={inputClass} />
+      </Field>
+      <Field id="nbColi" label="Nombre de colis">
+        <input id="nbColi" name="nbColi" type="number" min="0" step="1" inputMode="numeric" className={inputClass} />
+      </Field>
+      <Field id="nQuittance" label="Numéro de quittance">
+        <input id="nQuittance" name="nQuittance" maxLength={100} className={inputClass} />
+      </Field>
+      <Field id="pjt" label="Pièce jointe — ticket du contrôleur" hint="JPEG, PNG ou WebP. 5 Mo maximum.">
+        <input id="pjt" name="pjt" type="file" accept="image/jpeg,image/png,image/webp" className={inputClass} />
+      </Field>
+      <Field id="quittance" label="Photo de la quittance" hint="JPEG, PNG ou WebP. 5 Mo maximum.">
+        <input id="quittance" name="quittance" type="file" accept="image/jpeg,image/png,image/webp" className={inputClass} />
       </Field>
 
       <h3 className={sectionClass}>Paiement</h3>

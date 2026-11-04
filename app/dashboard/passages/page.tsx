@@ -8,6 +8,8 @@ import ListFilters from "../list-filters";
 import { readChoice, readParam, type SearchParams } from "../search-params";
 import PassageForm from "./passage-form";
 import PassageActions from "./passage-actions";
+import AttachmentViewer from "./attachment-viewer";
+import { addAttachmentFlags } from "@/lib/passage-rows";
 
 const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
   dateStyle: "short", timeZone: "Indian/Antananarivo",
@@ -40,15 +42,6 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
     locationArchived = Boolean(profile.assignedLocation?.deletedAt);
   }
 
-  const locations = isSupervisor && !locationArchived
-    ? await prisma.location.findMany({
-        where: { deletedAt: null },
-        orderBy: { name: "asc" },
-        select: { name: true },
-      })
-    : [];
-  const placeNames = locations.map((location) => location.name);
-
   const params = await searchParams;
   const q = readParam(params, "q");
   const method = readChoice(params, "mode", Object.keys(ALL_PAYMENT_METHOD_LABELS));
@@ -76,7 +69,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
     } : {}),
   };
 
-  const [total, passages] = await Promise.all([
+  const [total, passageRows] = await Promise.all([
     prisma.passage.count({ where }),
     prisma.passage.findMany({
       where, orderBy: { assignedAt: "desc" }, take: 100,
@@ -84,12 +77,14 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
         id: true, assignedAt: true, origin: true, destination: true,
         vehicleInfo: true, vehicleRegistration: true, vehicleCharacteristics: true,
         driverName: true, driverLicenseNumber: true, notes: true, deletedAt: true,
+        nomOp: true, nomSoc: true, coli: true, nbColi: true, nQuittance: true,
         product: { select: { name: true, type: true, tonnage: true } },
         supervisor: { select: { user: { select: { firstName: true, lastName: true } } } },
         payment: { select: { paymentMethod: true, reference: true, amountDue: true, amountReceived: true, changeReturned: true } },
       },
     }),
   ]);
+  const passages = await addAttachmentFlags(passageRows);
 
   const filtered = q !== "" || method !== "";
   return (
@@ -116,12 +111,8 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
               <p role="status" className="rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
                 Votre ancien lieu a été supprimé. Contactez l&apos;administrateur pour être affecté à un lieu actif.
               </p>
-            ) : placeNames.length === 0 ? (
-              <p role="status" className="rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
-                Aucun lieu actif n&apos;est disponible pour les trajets. Contactez l&apos;administrateur.
-              </p>
             ) : (
-              <PassageForm locations={placeNames} />
+              <PassageForm />
             )}
           </section>
         )}
@@ -139,7 +130,8 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
                 <thead className="border-b text-slate-700"><tr>
                   <th className="px-3 py-3">Date</th><th className="px-3 py-3">Produit</th>
                   <th className="px-3 py-3 text-right">Tonnage</th><th className="px-3 py-3">Trajet</th>
-                  <th className="px-3 py-3">Véhicule / chauffeur</th><th className="px-3 py-3 text-right">Montant payé</th>
+                  <th className="px-3 py-3">Véhicule / chauffeur</th><th className="px-3 py-3">Informations transport</th>
+                  <th className="px-3 py-3">Pièces jointes</th><th className="px-3 py-3 text-right">Montant payé</th>
                   <th className="px-3 py-3">Mode</th><th className="px-3 py-3">Régisseur</th>
                   {(isAdmin || isSupervisor) && !deleted && <th className="px-3 py-3">{isAdmin ? "Historique" : "Actions"}</th>}
                 </tr></thead>
@@ -157,15 +149,24 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
                         {item.driverLicenseNumber && <p className="text-xs text-slate-700">Permis : {item.driverLicenseNumber}</p>}
                         {!item.vehicleInfo && !item.vehicleRegistration && !item.vehicleCharacteristics && !item.driverName && !item.driverLicenseNumber && "—"}
                       </td>
+                      <td className="px-3 py-4">
+                        <p>Opérateur : {item.nomOp || "—"}</p>
+                        <p>Société : {item.nomSoc || "—"}</p>
+                        <p>Colisage : {item.coli || "—"}</p>
+                        <p>Nombre de colis : {item.nbColi ?? "—"}</p>
+                        <p>N° quittance : {item.nQuittance || "—"}</p>
+                      </td>
+                      <td className="px-3 py-4"><AttachmentViewer passageId={item.id} hasPjt={item.hasPjt} hasQuittance={item.hasQuittance} /></td>
                       <td className="whitespace-nowrap px-3 py-4 text-right">{item.payment ? formatMGA(item.payment.amountDue) : "—"}</td>
                       <td className="px-3 py-4">{item.payment ? <>{ALL_PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod}{item.payment.reference && <p className="text-xs text-slate-700">{item.payment.reference}</p>}</> : "—"}</td>
                       <td className="px-3 py-4">{item.supervisor.user.firstName} {item.supervisor.user.lastName}</td>
                       {(isAdmin || isSupervisor) && !deleted && <td className="min-w-[230px] px-3 py-4">
-                        {item.payment ? <PassageActions canManage={isSupervisor} locations={placeNames} initial={{
+                        {item.payment ? <PassageActions canManage={isSupervisor} initial={{
                           id: item.id, assignedAt: item.assignedAt.toISOString().slice(0, 10), origin: item.origin, destination: item.destination,
                           vehicleInfo: item.vehicleInfo, vehicleRegistration: item.vehicleRegistration,
                           vehicleCharacteristics: item.vehicleCharacteristics, driverName: item.driverName,
                           driverLicenseNumber: item.driverLicenseNumber, notes: item.notes,
+                          nomOp: item.nomOp, nomSoc: item.nomSoc, coli: item.coli, nbColi: item.nbColi, nQuittance: item.nQuittance,
                           product: { name: item.product.name, type: item.product.type, tonnage: String(item.product.tonnage) },
                           payment: { paymentMethod: item.payment.paymentMethod as keyof typeof ALL_PAYMENT_METHOD_LABELS, reference: item.payment.reference, amountDue: String(item.payment.amountDue), amountReceived: String(item.payment.amountReceived) },
                         }}/> : <span className="text-xs text-slate-500">—</span>}

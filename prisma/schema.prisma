@@ -94,6 +94,13 @@ model Passage {
   vehicleCharacteristics String?
   driverLicenseNumber String?
   notes        String?
+  nomOp        String?   @map("nom_op")
+  nomSoc       String?   @map("nom_soc")
+  coli         String?   @map("coli")
+  nbColi       Int?      @map("nbcoli")
+  nQuittance   String?   @map("n_quittance")
+  pjt          Bytes?    @map("pjt") @db.ByteA
+  quittance    Bytes?    @map("quittance") @db.ByteA
   deletedAt    DateTime?
   deletedById  String?
   createdAt    DateTime @default(now())

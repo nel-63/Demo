@@ -100,6 +100,70 @@ describe("un passage n'existe qu'avec son paiement", () => {
     });
   });
 
+  it("accepte des lieux de départ et d'arrivée libres, même inconnus de la table Location", async () => {
+    db.location.findMany.mockResolvedValue([{ name: "Lieu existant uniquement" }]);
+    const { status } = await read(await send({
+      origin: "Point de chargement non répertorié",
+      destination: "Zone industrielle - quai 4",
+    }));
+    expect(status).toBe(201);
+    expect(created()).toMatchObject({
+      origin: "Point de chargement non répertorié",
+      destination: "Zone industrielle - quai 4",
+    });
+    expect(db.location.findMany).not.toHaveBeenCalled();
+  });
+
+  it("accepte une image PNG envoyée en multipart et la stocke en binaire", async () => {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(valid)) form.set(key, value);
+    form.set("pjt", new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], { type: "image/png" }), "ticket.png");
+    const response = await POST(new Request("https://demo.test/api/passages", { method: "POST", body: form }));
+    expect((await read(response)).status).toBe(201);
+    expect(created().pjt).toBeInstanceOf(Uint8Array);
+    expect(created().quittance).toBeNull();
+  });
+
+  it("rejette un fichier joint dont la signature ne correspond pas à une image autorisée", async () => {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(valid)) form.set(key, value);
+    form.set("pjt", new Blob(["not an image"], { type: "image/png" }), "ticket.png");
+    const response = await POST(new Request("https://demo.test/api/passages", { method: "POST", body: form }));
+    expect((await read(response)).status).toBe(400);
+    nothingWritten();
+  });
+
+  it("enregistre les nouvelles informations dans le passage et sa première révision", async () => {
+    const { status } = await read(await send({
+      nomOp: "Opérateur Alpha",
+      nomSoc: "Société Bêta",
+      coli: "Sacs de 50 kg",
+      nbColi: "24",
+      nQuittance: "Q-2026-0042",
+    }));
+    expect(status).toBe(201);
+    expect(created()).toMatchObject({
+      nomOp: "Opérateur Alpha",
+      nomSoc: "Société Bêta",
+      coli: "Sacs de 50 kg",
+      nbColi: 24,
+      nQuittance: "Q-2026-0042",
+    });
+    expect(db.recordRevision.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        snapshot: expect.objectContaining({
+          passage: expect.objectContaining({
+            nomOp: "Opérateur Alpha",
+            nomSoc: "Société Bêta",
+            coli: "Sacs de 50 kg",
+            nbColi: 24,
+            nQuittance: "Q-2026-0042",
+          }),
+        }),
+      }),
+    }));
+  });
+
   it("Mobile Money exact avec référence", async () => {
     const { status } = await read(
       await send({ paymentMethod: "MOBILE_MONEY", reference: "MVOLA-1", amountReceived: "40000" }),
@@ -165,17 +229,19 @@ describe("validation", () => {
     ["date invalide", { assignedAt: "2026-02-31" }],
     ["format de date invalide", { assignedAt: "29/10/2026" }],
     ["champ trop long", { origin: "x".repeat(151) }],
+    ["nombre de colis décimal", { nbColi: "2.5" }],
+    ["nombre de colis négatif", { nbColi: "-1" }],
   ])("refuse : %s", async (_label, body) => {
     expect((await read(await send(body))).status).toBe(400);
     nothingWritten();
   });
 
-  it("refuse un lieu qui ne fait pas partie des choix actifs", async () => {
-    db.location.findMany.mockResolvedValue([{ name: "Antsirabe" }]);
-    const { status } = await read(await send({}));
-    expect(status).toBe(400);
-    expect(db.product.create).not.toHaveBeenCalled();
-    expect(db.passage.create).not.toHaveBeenCalled();
+  it("ne limite pas l'origine et la destination aux lieux présents dans Location", async () => {
+    db.location.findMany.mockResolvedValue([{ name: "Lieu différent" }]);
+    const { status } = await read(await send({ origin: "Départ libre", destination: "Arrivée libre" }));
+    expect(status).toBe(201);
+    expect(created()).toMatchObject({ origin: "Départ libre", destination: "Arrivée libre" });
+    expect(db.location.findMany).not.toHaveBeenCalled();
   });
 
   it("refuse un passage depuis un lieu archivé", async () => {

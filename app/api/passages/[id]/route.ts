@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { checkPayment, isPaymentMethod, parseCents, toDecimal } from "@/lib/payment-rules";
 import { isProductType } from "@/lib/product-types";
 import type { Prisma } from "@/app/generated/prisma/client";
+import { readPassagePayload, AttachmentValidationError } from "@/lib/passage-attachments";
 
 type Context = { params: Promise<{ id: string }> };
 type PassageSnapshot = {
@@ -15,7 +16,8 @@ function snapshotOf(record: {
   id: string; assignedAt: Date; origin: string; destination: string;
   vehicleInfo: string | null; driverName: string | null; vehicleRegistration: string | null;
   vehicleCharacteristics: string | null; driverLicenseNumber: string | null; notes: string | null;
-  deletedAt: Date | null;
+  nomOp: string | null; nomSoc: string | null; coli: string | null; nbColi: number | null;
+  nQuittance: string | null; deletedAt: Date | null;
   product: { id: string; name: string; type: string; tonnage: unknown; description: string | null; deletedAt: Date | null };
   payment: null | { id: string; paymentMethod: string; reference: string | null; amountDue: unknown; amountReceived: unknown; changeReturned: unknown; deletedAt: Date | null };
 }): PassageSnapshot {
@@ -26,6 +28,8 @@ function snapshotOf(record: {
       driverName: record.driverName, vehicleRegistration: record.vehicleRegistration,
       vehicleCharacteristics: record.vehicleCharacteristics,
       driverLicenseNumber: record.driverLicenseNumber, notes: record.notes,
+      nomOp: record.nomOp, nomSoc: record.nomSoc, coli: record.coli,
+      nbColi: record.nbColi, nQuittance: record.nQuittance,
       deletedAt: record.deletedAt?.toISOString() ?? null,
     },
     product: {
@@ -88,9 +92,13 @@ async function getSupervisorLocationId(userId: string): Promise<string | null> {
 async function loadForUpdate(tx: Prisma.TransactionClient, id: string) {
   return tx.passage.findUnique({
     where: { id },
-    include: {
-      product: true,
-      payment: true,
+    select: {
+      id: true, productId: true, locationId: true, assignedAt: true, origin: true, destination: true,
+      vehicleInfo: true, driverName: true, vehicleRegistration: true, vehicleCharacteristics: true,
+      driverLicenseNumber: true, notes: true, nomOp: true, nomSoc: true, coli: true,
+      nbColi: true, nQuittance: true, deletedAt: true,
+      product: { select: { id: true, name: true, type: true, tonnage: true, description: true, deletedAt: true } },
+      payment: { select: { id: true, paymentMethod: true, reference: true, amountDue: true, amountReceived: true, changeReturned: true, deletedAt: true } },
     },
   });
 }
@@ -104,8 +112,9 @@ export async function PATCH(request: Request, context: Context) {
     const supervisorLocationId = await getSupervisorLocationId(user.id);
     if (!supervisorLocationId) return NextResponse.json({ message: "Votre compte n'est affecté à aucun lieu." }, { status: 403 });
     const { id } = await context.params;
-    const body: unknown = await request.json().catch(() => null);
-    const data = body && typeof body === "object" ? body as Record<string, unknown> : {};
+    const payload = await readPassagePayload(request);
+    const data = payload.data;
+    const { pjt, quittance } = payload;
     const text = (key: string) => typeof data[key] === "string" ? (data[key] as string).trim() : "";
 
     const productName = text("productName");
@@ -120,6 +129,12 @@ export async function PATCH(request: Request, context: Context) {
     const vehicleCharacteristics = text("vehicleCharacteristics");
     const driverLicenseNumber = text("driverLicenseNumber");
     const notes = text("notes");
+    const nomOp = text("nomOp");
+    const nomSoc = text("nomSoc");
+    const coli = text("coli");
+    const nbColiText = text("nbColi");
+    const nbColi = nbColiText ? Number(nbColiText) : null;
+    const nQuittance = text("nQuittance");
     const method = text("paymentMethod");
     const reference = text("reference");
     const dueText = text("amountDue");
@@ -131,8 +146,12 @@ export async function PATCH(request: Request, context: Context) {
     if (productName.length > 150 || productType.length > 100 || origin.length > 150 ||
         destination.length > 150 || vehicleInfo.length > 200 || driverName.length > 150 ||
         vehicleRegistration.length > 40 || vehicleCharacteristics.length > 200 ||
-        driverLicenseNumber.length > 80 || notes.length > 2000 || reference.length > 150) {
+        driverLicenseNumber.length > 80 || notes.length > 2000 || reference.length > 150 ||
+        nomOp.length > 150 || nomSoc.length > 200 || coli.length > 100 || nQuittance.length > 100) {
       return NextResponse.json({ message: "Un champ dépasse la longueur autorisée." }, { status: 400 });
+    }
+    if (nbColiText && (!/^\d{1,9}$/.test(nbColiText) || !Number.isSafeInteger(nbColi) || (nbColi as number) < 0)) {
+      return NextResponse.json({ message: "Le nombre de colis doit être un entier positif ou nul." }, { status: 400 });
     }
     if (!/^\d{1,8}(?:\.\d{1,2})?$/.test(tonnage) || Number(tonnage) <= 0) {
       return NextResponse.json({ message: "Tonnage invalide." }, { status: 400 });
@@ -162,18 +181,6 @@ export async function PATCH(request: Request, context: Context) {
         return { error: "INVALID_PRODUCT_TYPE" as const };
       }
 
-      const activePlaces = await tx.location.findMany({
-        where: { name: { in: [origin, destination] }, deletedAt: null },
-        select: { name: true },
-      });
-      const activeNames = new Set(activePlaces.map((location) => location.name));
-      if (
-        (origin !== current.origin && !activeNames.has(origin)) ||
-        (destination !== current.destination && !activeNames.has(destination))
-      ) {
-        return { error: "INVALID_LOCATION" as const };
-      }
-
       const before = snapshotOf(current);
       const paymentData = {
         paymentMethod: method, reference: reference || null,
@@ -192,6 +199,10 @@ export async function PATCH(request: Request, context: Context) {
           vehicleRegistration: vehicleRegistration || null,
           vehicleCharacteristics: vehicleCharacteristics || null,
           driverLicenseNumber: driverLicenseNumber || null, notes: notes || null,
+          nomOp: nomOp || null, nomSoc: nomSoc || null, coli: coli || null,
+          nbColi, nQuittance: nQuittance || null,
+          ...(pjt ? { pjt } : {}),
+          ...(quittance ? { quittance } : {}),
         },
       });
       await tx.payment.update({ where: { id: current.payment.id }, data: paymentData });
@@ -203,7 +214,7 @@ export async function PATCH(request: Request, context: Context) {
       await tx.auditLog.create({
         data: {
           userId: user.id, action: "UPDATE", entityType: "Passage", entityId: id,
-          details: { before, after },
+          details: { before, after, attachmentsUpdated: { pjt: Boolean(pjt), quittance: Boolean(quittance) } },
         },
       });
       return { snapshot: after };
@@ -211,17 +222,13 @@ export async function PATCH(request: Request, context: Context) {
 
     if (!updated) return NextResponse.json({ message: "Passage introuvable, supprimé, situé hors de votre lieu ou sans paiement." }, { status: 404 });
     if ("error" in updated) {
-      return NextResponse.json(
-        {
-          message: updated.error === "INVALID_PRODUCT_TYPE"
-            ? "Choisissez une catégorie de produit valide."
-            : "Les lieux choisis doivent être actifs. Les lieux historiques inchangés restent conservés.",
-        },
-        { status: 400 },
-      );
+      return NextResponse.json({ message: "Choisissez une catégorie de produit valide." }, { status: 400 });
     }
     return NextResponse.json({ ok: true, message: "Passage modifié. La version précédente est conservée." });
   } catch (error) {
+    if (error instanceof AttachmentValidationError) {
+      return NextResponse.json({ message: error.message }, { status: 400 });
+    }
     console.error("Passage update failed:", error);
     return NextResponse.json({ message: "Impossible de modifier le passage." }, { status: 500 });
   }

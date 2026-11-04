@@ -115,14 +115,27 @@ describe("gestion des passages par les régisseurs", () => {
     expect((await read(response)).status).toBe(200);
   });
 
-  it("refuse de remplacer un lieu historique par un lieu non défini", async () => {
+  it("accepte des lieux de départ et d'arrivée librement saisis", async () => {
+    db.passage.findUnique
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce({ ...current, origin: "Point non répertorié", destination: "Quai privé" });
     const response = await PATCH(
-      jsonRequest("/api/passages/pass-1", "PATCH", { ...valid, origin: "Nouveau lieu libre" }),
+      jsonRequest("/api/passages/pass-1", "PATCH", {
+        ...valid, origin: "Point non répertorié", destination: "Quai privé",
+        nomOp: "Opérateur Gamma", nomSoc: "Société Delta", coli: "Cartons",
+        nbColi: "12", nQuittance: "QT-12",
+      }),
       context,
     );
-    expect((await read(response)).status).toBe(400);
-    expect(db.passage.update).not.toHaveBeenCalled();
-    expect(db.product.update).not.toHaveBeenCalled();
+    expect((await read(response)).status).toBe(200);
+    expect(db.passage.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        origin: "Point non répertorié", destination: "Quai privé",
+        nomOp: "Opérateur Gamma", nomSoc: "Société Delta", coli: "Cartons",
+        nbColi: 12, nQuittance: "QT-12",
+      }),
+    }));
+    expect(db.location.findMany).not.toHaveBeenCalled();
   });
 
   it.each(["CHECK", "BANK_TRANSFER", "OTHER", "BITCOIN"])(

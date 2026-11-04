@@ -44,7 +44,7 @@ async function SupervisorsContent({ searchParams }: { searchParams: Promise<Sear
           { user: { firstName: { contains: q, mode: "insensitive" } } },
           { user: { lastName: { contains: q, mode: "insensitive" } } },
           { user: { email: { contains: q, mode: "insensitive" } } },
-          { assignedLocation: { name: { contains: q, mode: "insensitive" } } },
+          { assignedLocation: { is: { deletedAt: null, name: { contains: q, mode: "insensitive" } } } },
         ],
       } : undefined,
       orderBy: { createdAt: "desc" },
@@ -128,9 +128,6 @@ async function SupervisorsContent({ searchParams }: { searchParams: Promise<Sear
                         <td className="px-3 py-4">{item.nationalId}</td>
                         <td className="px-3 py-4">
                           {item.assignedLocation?.deletedAt ? "Aucun lieu actif" : item.assignedLocation?.name ?? "Non affecté"}
-                          {item.assignedLocation?.deletedAt && (
-                            <span className="ml-1 text-xs text-red-700">(archivé)</span>
-                          )}
                         </td>
                         <td className="px-3 py-4">
                           <LocationAssignmentForm

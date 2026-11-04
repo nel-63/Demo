@@ -36,7 +36,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
       return <section className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"><h1 className="text-2xl font-bold">Aucun lieu affecté</h1><p className="mt-3 text-slate-700">Contactez l&apos;administrateur pour associer votre compte à un lieu.</p></section>;
     }
     locationId = profile.locationId;
-    locationName = profile.assignedLocation?.name ?? null;
+    locationName = profile.assignedLocation?.deletedAt ? null : profile.assignedLocation?.name ?? null;
     locationArchived = Boolean(profile.assignedLocation?.deletedAt);
   }
 
@@ -57,6 +57,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
   const has = (word: string) => ({ contains: word, mode: "insensitive" as const });
 
   const where = {
+    assignedLocation: { is: { deletedAt: null } },
     deletedAt: deleted ? { not: null } : null,
     ...(locationId ? { locationId } : {}),
     ...(method ? { payment: { is: { paymentMethod: method as "CASH" } } } : {}),
@@ -113,7 +114,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
             <h2 className="mb-4 text-xl font-semibold text-slate-900">Nouveau passage</h2>
             {locationArchived ? (
               <p role="status" className="rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
-                Ce lieu est archivé. Contactez l&apos;administrateur pour vous affecter à un lieu actif.
+                Votre ancien lieu a été supprimé. Contactez l&apos;administrateur pour être affecté à un lieu actif.
               </p>
             ) : placeNames.length === 0 ? (
               <p role="status" className="rounded-lg bg-amber-50 p-4 text-sm text-amber-900">

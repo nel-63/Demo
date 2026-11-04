@@ -13,7 +13,7 @@ export const AUDIT_SELECT = {
 // Charge des lignes du journal et complète les anciens logs de paiement
 // (créés avant que le montant soit écrit dans les détails) en relisant le paiement lui-même,
 // qui n'est jamais modifié après création.
-export async function fetchAuditRows(args: { where: object; skip?: number; take: number }) {
+export async function fetchAuditRows(args: { where: object; skip?: number; take: number; includeDeletedLocations?: boolean }) {
   const [logs, locations] = await Promise.all([
     prisma.auditLog.findMany({
       where: args.where,
@@ -22,7 +22,7 @@ export async function fetchAuditRows(args: { where: object; skip?: number; take:
       take: args.take,
       select: AUDIT_SELECT,
     }),
-    prisma.location.findMany({ select: { id: true, name: true } }),
+    prisma.location.findMany({ where: args.includeDeletedLocations ? undefined : { deletedAt: null }, select: { id: true, name: true } }),
   ]);
 
   const legacyIds = logs

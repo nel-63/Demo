@@ -171,7 +171,8 @@ export function describeAudit(
     const email = str(details.email);
     if (email) lines.push(`Compte : ${email}`);
     const previous = str(details.previousLocationId);
-    const next = str(details.newLocationName) ?? (str(details.newLocationId) ? context.locations?.[details.newLocationId as string] : null);
+    const nextId = str(details.newLocationId);
+    const next = nextId ? context.locations?.[nextId] : str(details.newLocationName);
     if (previous) lines.push(`Ancien lieu : ${context.locations?.[previous] ?? "—"}`);
     if (next) lines.push(`Nouveau lieu : ${next}`);
   } else if (action === "CHANGE_DRIVER") {

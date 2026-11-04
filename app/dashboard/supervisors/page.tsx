@@ -44,7 +44,7 @@ async function SupervisorsContent({ searchParams }: { searchParams: Promise<Sear
           { user: { firstName: { contains: q, mode: "insensitive" } } },
           { user: { lastName: { contains: q, mode: "insensitive" } } },
           { user: { email: { contains: q, mode: "insensitive" } } },
-          { assignedLocation: { name: { contains: q, mode: "insensitive" } } },
+          { assignedLocation: { is: { deletedAt: null, name: { contains: q, mode: "insensitive" } } } },
         ],
       } : undefined,
       orderBy: { createdAt: "desc" },
@@ -127,17 +127,14 @@ async function SupervisorsContent({ searchParams }: { searchParams: Promise<Sear
                         <td className="px-3 py-4">{item.user.email}</td>
                         <td className="px-3 py-4">{item.nationalId}</td>
                         <td className="px-3 py-4">
-                          {item.assignedLocation?.name ?? "Non affecté"}
-                          {item.assignedLocation?.deletedAt && (
-                            <span className="ml-1 text-xs text-red-700">(archivé)</span>
-                          )}
+                          {item.assignedLocation?.deletedAt ? "Aucun lieu actif" : item.assignedLocation?.name ?? "Non affecté"}
                         </td>
                         <td className="px-3 py-4">
                           <LocationAssignmentForm
                             supervisorId={item.id}
                             supervisorName={`${item.user.firstName} ${item.user.lastName}`}
                             currentLocationId={item.locationId}
-                            currentLocationName={item.assignedLocation?.name ?? null}
+                            currentLocationName={item.assignedLocation?.deletedAt ? null : item.assignedLocation?.name ?? null}
                             locations={locations}
                           />
                         </td>

@@ -36,13 +36,14 @@ async function Shell({ children }: { children: ReactNode }) {
       where: { userId: user.id },
       select: { assignedLocation: { select: { name: true, deletedAt: true } } },
     });
-    placeName = profile?.assignedLocation?.name ?? null;
-    if (profile?.assignedLocation?.deletedAt) placeName = `${placeName} (archivé)`;
+    placeName = profile?.assignedLocation && !profile.assignedLocation.deletedAt
+      ? profile.assignedLocation.name
+      : null;
   }
 
   const fullName = `${user.firstName} ${user.lastName}`;
   const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
-  const roleLabel = isAdmin ? "Administrateur" : placeName ? `Régisseur · ${placeName}` : "Régisseur";
+  const roleLabel = isAdmin ? "Administrateur" : placeName ? `Régisseur · ${placeName}` : "Régisseur · Aucun lieu actif";
 
   return (
     <div className="min-h-screen md:flex">

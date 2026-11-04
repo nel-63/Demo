@@ -11,7 +11,8 @@ export default function Pager({
   pageCount: number;
 }) {
   if (pageCount <= 1) return null;
-  const href = (target: number) => (target > 1 ? `${basePath}?page=${target}` : basePath);
+  const separator = basePath.includes("?") ? "&" : "?";
+  const href = (target: number) => (target > 1 ? `${basePath}${separator}page=${target}` : basePath);
   const linkClass =
     "rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-100";
 

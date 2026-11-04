@@ -70,10 +70,10 @@ export async function getDetails(
   const list = words(rawQuery);
   const loc = scope.locationId ? { locationId: scope.locationId } : {};
   // Filtre « passage du lieu » pour les paiements.
-  const viaPassage = { passage: { is: { deletedAt: null, ...(scope.locationId ? { locationId: scope.locationId } : {}) } } };
+  const viaPassage = { passage: { is: { deletedAt: null, assignedLocation: { is: { deletedAt: null } }, ...(scope.locationId ? { locationId: scope.locationId } : {}) } } };
 
   const locations = admin
-    ? await prisma.location.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } })
+    ? await prisma.location.findMany({ where: { deletedAt: null }, select: { id: true, name: true }, orderBy: { name: "asc" } })
     : null;
 
   const finish = (
@@ -99,12 +99,13 @@ export async function getDetails(
   switch (kind) {
     case "locations": {
       const where = {
+        deletedAt: null,
         ...(scope.locationId ? { id: scope.locationId } : {}),
         ...andWords(list, (w) => [{ name: has(w) }]),
       };
       const [count, total, rows] = await Promise.all([
         prisma.location.count({ where }),
-        prisma.location.count({ where: scope.locationId ? { id: scope.locationId } : {} }),
+        prisma.location.count({ where: { deletedAt: null, ...(scope.locationId ? { id: scope.locationId } : {}) } }),
         prisma.location.findMany({
           where,
           orderBy: { name: "asc" },
@@ -279,7 +280,7 @@ export async function getDetails(
       // passages, tonnage : la même liste de passages, avec un total différent.
       const where = {
         AND: [
-          { deletedAt: null },
+          { deletedAt: null, assignedLocation: { is: { deletedAt: null } } },
           loc,
           andWords(list, (w) => [
             { product: { name: has(w) } },
@@ -298,9 +299,9 @@ export async function getDetails(
       };
       const [count, total, sum, rows] = await Promise.all([
         prisma.passage.count({ where }),
-        prisma.passage.count({ where: { ...loc, deletedAt: null } }),
+        prisma.passage.count({ where: { ...loc, deletedAt: null, assignedLocation: { is: { deletedAt: null } } } }),
         prisma.product.aggregate({
-          where: { deletedAt: null, passage: { is: { deletedAt: null, ...(scope.locationId ? { locationId: scope.locationId } : {}) } } },
+          where: { deletedAt: null, passage: { is: { deletedAt: null, assignedLocation: { is: { deletedAt: null } }, ...(scope.locationId ? { locationId: scope.locationId } : {}) } } },
           _sum: { tonnage: true },
         }),
         prisma.passage.findMany({

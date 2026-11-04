@@ -12,7 +12,7 @@ import Pager from "../../pager";
 
 type Props = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ page?: string | string[] }>;
+  searchParams: Promise<{ page?: string | string[]; trash?: string | string[] }>;
 };
 
 export default function LocationSheetPage(props: Props) {
@@ -42,6 +42,7 @@ async function LocationSheet({ params, searchParams }: Props) {
   const { id } = await params;
   const query = await searchParams;
   const requestedPage = Number.parseInt(String(Array.isArray(query.page) ? query.page[0] : query.page ?? "1"), 10);
+  const fromTrash = (Array.isArray(query.trash) ? query.trash[0] : query.trash) === "1";
 
   const location = await prisma.location.findUnique({
     where: { id },
@@ -49,6 +50,7 @@ async function LocationSheet({ params, searchParams }: Props) {
   });
 
   if (!location) notFound();
+  if (location.deletedAt && !fromTrash) notFound();
 
   const [total, tonnage, payments, supervisors] = await Promise.all([
     prisma.passage.count({ where: { locationId: id, deletedAt: null } }),
@@ -88,19 +90,20 @@ async function LocationSheet({ params, searchParams }: Props) {
         ],
       },
       take: 25,
+      includeDeletedLocations: true,
     }),
   ]);
 
   return (
     <div className="mx-auto max-w-7xl">
-      <Link href="/dashboard/locations" className="text-sm font-medium text-blue-700 hover:underline">
+      <Link href={location.deletedAt ? "/dashboard/locations?trash=1" : "/dashboard/locations"} className="text-sm font-medium text-blue-700 hover:underline">
         &larr; Retour aux lieux
       </Link>
 
       <header className="my-6">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">{location.name}</h1>
         <p className="mt-2 text-slate-700">
-          {location.deletedAt ? "Lieu archivé. " : ""}
+          {location.deletedAt ? "Lieu supprimé — historique et données conservés. " : ""}
           Ce qui a été fait dans ce lieu : les produits qui y sont passés, par qui, d&apos;où et vers où.
         </p>
       </header>
@@ -142,7 +145,7 @@ async function LocationSheet({ params, searchParams }: Props) {
         ) : (
           <>
             <PassagesTable rows={passages} showLocation={false} />
-            <Pager basePath={`/dashboard/locations/${id}`} page={page} pageCount={pageCount} />
+            <Pager basePath={location.deletedAt ? `/dashboard/locations/${id}?trash=1` : `/dashboard/locations/${id}`} page={page} pageCount={pageCount} />
           </>
         )}
       </section>

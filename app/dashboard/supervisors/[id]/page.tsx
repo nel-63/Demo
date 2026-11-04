@@ -50,7 +50,7 @@ async function SupervisorSheet({ params, searchParams }: Props) {
       userId: true,
       nationalId: true,
       address: true,
-      assignedLocation: { select: { id: true, name: true } },
+      assignedLocation: { select: { id: true, name: true, deletedAt: true } },
       user: { select: { firstName: true, lastName: true, email: true, phoneNumber: true, isActive: true } },
     },
   });
@@ -58,10 +58,10 @@ async function SupervisorSheet({ params, searchParams }: Props) {
   if (!supervisor) notFound();
 
   const [total, tonnage, payments] = await Promise.all([
-    prisma.passage.count({ where: { supervisorId: id, deletedAt: null } }),
-    prisma.product.aggregate({ where: { deletedAt: null, passage: { is: { supervisorId: id, deletedAt: null } } }, _sum: { tonnage: true } }),
+    prisma.passage.count({ where: { supervisorId: id, deletedAt: null, assignedLocation: { is: { deletedAt: null } } } }),
+    prisma.product.aggregate({ where: { deletedAt: null, passage: { is: { supervisorId: id, deletedAt: null, assignedLocation: { is: { deletedAt: null } } } } }, _sum: { tonnage: true } }),
     prisma.payment.aggregate({
-      where: { deletedAt: null, passage: { is: { supervisorId: id, deletedAt: null } } },
+      where: { deletedAt: null, passage: { is: { supervisorId: id, deletedAt: null, assignedLocation: { is: { deletedAt: null } } } } },
       _sum: { amountReceived: true },
     }),
   ]);
@@ -71,7 +71,7 @@ async function SupervisorSheet({ params, searchParams }: Props) {
 
   const [passages, activity, accountEvents] = await Promise.all([
     prisma.passage.findMany({
-      where: { supervisorId: id, deletedAt: null },
+      where: { supervisorId: id, deletedAt: null, assignedLocation: { is: { deletedAt: null } } },
       orderBy: { assignedAt: "desc" },
       skip: (page - 1) * FICHE_PAGE_SIZE,
       take: FICHE_PAGE_SIZE,
@@ -99,12 +99,12 @@ async function SupervisorSheet({ params, searchParams }: Props) {
         </p>
         <p className="mt-1 text-slate-700">
           Lieu :{" "}
-          {supervisor.assignedLocation ? (
+          {supervisor.assignedLocation && !supervisor.assignedLocation.deletedAt ? (
             <Link href={`/dashboard/locations/${supervisor.assignedLocation.id}`} className="font-medium text-blue-700 hover:underline">
               {supervisor.assignedLocation.name}
             </Link>
           ) : (
-            "non affecté"
+            "aucun lieu actif"
           )}
           {" — "}
           Compte {supervisor.user.isActive ? "actif" : "désactivé"}

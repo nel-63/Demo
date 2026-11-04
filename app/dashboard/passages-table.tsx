@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ALL_PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
+import AttachmentViewer from "./passages/attachment-viewer";
 
 const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
   dateStyle: "short",
@@ -13,6 +14,13 @@ type Row = {
   destination: string;
   vehicleInfo: string | null;
   driverName: string | null;
+  nomOp: string | null;
+  nomSoc: string | null;
+  coli: string | null;
+  nbColi: number | null;
+  nQuittance: string | null;
+  hasPjt: boolean;
+  hasQuittance: boolean;
   product: { name: string; type: string; tonnage: unknown };
   supervisor: { id: string; user: { firstName: string; lastName: string } };
   assignedLocation: { id: string; name: string } | null;
@@ -41,6 +49,8 @@ export default function PassagesTable({
             {showLocation && <th className="px-3 py-3">Lieu de passage</th>}
             <th className="px-3 py-3">Destination</th>
             <th className="px-3 py-3">Véhicule / chauffeur</th>
+            <th className="px-3 py-3">Informations transport</th>
+            <th className="px-3 py-3">Pièces jointes</th>
             <th className="px-3 py-3 text-right">Montant payé</th>
             <th className="px-3 py-3">Mode</th>
             {showSupervisor && <th className="px-3 py-3">Enregistré par</th>}
@@ -82,6 +92,16 @@ export default function PassagesTable({
                 ) : (
                   <span className="text-slate-600">—</span>
                 )}
+              </td>
+              <td className="px-3 py-4">
+                <p>Opérateur : {item.nomOp || "—"}</p>
+                <p>Société : {item.nomSoc || "—"}</p>
+                <p>Colisage : {item.coli || "—"}</p>
+                <p>Nombre de colis : {item.nbColi ?? "—"}</p>
+                <p>N° quittance : {item.nQuittance || "—"}</p>
+              </td>
+              <td className="px-3 py-4">
+                <AttachmentViewer passageId={item.id} hasPjt={item.hasPjt} hasQuittance={item.hasQuittance} />
               </td>
               <td className="whitespace-nowrap px-3 py-4 text-right">
                 {item.payment ? formatMGA(item.payment.amountDue) : "—"}

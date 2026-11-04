@@ -100,6 +100,51 @@ describe("un passage n'existe qu'avec son paiement", () => {
     });
   });
 
+  it("accepte des lieux de départ et d'arrivée libres, même inconnus de la table Location", async () => {
+    db.location.findMany.mockResolvedValue([{ name: "Lieu existant uniquement" }]);
+    const { status } = await read(await send({
+      origin: "Point de chargement non répertorié",
+      destination: "Zone industrielle - quai 4",
+    }));
+    expect(status).toBe(201);
+    expect(created()).toMatchObject({
+      origin: "Point de chargement non répertorié",
+      destination: "Zone industrielle - quai 4",
+    });
+    expect(db.location.findMany).not.toHaveBeenCalled();
+  });
+
+  it("enregistre les nouvelles informations dans le passage et sa première révision", async () => {
+    const { status } = await read(await send({
+      nomOp: "Opérateur Alpha",
+      nomSoc: "Société Bêta",
+      coli: "Sacs de 50 kg",
+      nbColi: "24",
+      nQuittance: "Q-2026-0042",
+    }));
+    expect(status).toBe(201);
+    expect(created()).toMatchObject({
+      nomOp: "Opérateur Alpha",
+      nomSoc: "Société Bêta",
+      coli: "Sacs de 50 kg",
+      nbColi: 24,
+      nQuittance: "Q-2026-0042",
+    });
+    expect(db.recordRevision.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        snapshot: expect.objectContaining({
+          passage: expect.objectContaining({
+            nomOp: "Opérateur Alpha",
+            nomSoc: "Société Bêta",
+            coli: "Sacs de 50 kg",
+            nbColi: 24,
+            nQuittance: "Q-2026-0042",
+          }),
+        }),
+      }),
+    }));
+  });
+
   it("Mobile Money exact avec référence", async () => {
     const { status } = await read(
       await send({ paymentMethod: "MOBILE_MONEY", reference: "MVOLA-1", amountReceived: "40000" }),
@@ -170,12 +215,12 @@ describe("validation", () => {
     nothingWritten();
   });
 
-  it("refuse un lieu qui ne fait pas partie des choix actifs", async () => {
-    db.location.findMany.mockResolvedValue([{ name: "Antsirabe" }]);
-    const { status } = await read(await send({}));
-    expect(status).toBe(400);
-    expect(db.product.create).not.toHaveBeenCalled();
-    expect(db.passage.create).not.toHaveBeenCalled();
+  it("ne limite pas l'origine et la destination aux lieux présents dans Location", async () => {
+    db.location.findMany.mockResolvedValue([{ name: "Lieu différent" }]);
+    const { status } = await read(await send({ origin: "Départ libre", destination: "Arrivée libre" }));
+    expect(status).toBe(201);
+    expect(created()).toMatchObject({ origin: "Départ libre", destination: "Arrivée libre" });
+    expect(db.location.findMany).not.toHaveBeenCalled();
   });
 
   it("refuse un passage depuis un lieu archivé", async () => {

@@ -8,6 +8,7 @@ import {
   parseCents,
   toDecimal,
 } from "@/lib/payment-rules";
+import { readPassagePayload, AttachmentValidationError } from "@/lib/passage-attachments";
 
 // Enregistre un passage ET son paiement en une seule opération :
 // pas de paiement valide, pas de passage.
@@ -40,8 +41,9 @@ export async function POST(request: Request) {
     }
 
     const locationId = profile.locationId;
-    const body: unknown = await request.json().catch(() => null);
-    const data = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+    const payload = await readPassagePayload(request);
+    const data = payload.data;
+    const { pjt, quittance } = payload;
     const text = (key: string) =>
       typeof data[key] === "string" ? (data[key] as string).trim() : "";
 
@@ -55,6 +57,12 @@ export async function POST(request: Request) {
     const vehicleCharacteristics = text("vehicleCharacteristics");
     const driverLicenseNumber = text("driverLicenseNumber");
     const notes = text("notes");
+    const nomOp = text("nomOp");
+    const nomSoc = text("nomSoc");
+    const coli = text("coli");
+    const nbColiText = text("nbColi");
+    const nbColi = nbColiText ? Number(nbColiText) : null;
+    const nQuittance = text("nQuittance");
     const tonnageText = text("tonnage");
     const assignedAtText = text("assignedAt");
     const method = text("paymentMethod");
@@ -78,9 +86,15 @@ export async function POST(request: Request) {
       vehicleInfo.length > 200 || driverName.length > 150 ||
       vehicleRegistration.length > 40 || vehicleCharacteristics.length > 200 ||
       driverLicenseNumber.length > 80 ||
-      notes.length > 2000 || reference.length > 150
+      notes.length > 2000 || reference.length > 150 ||
+      nomOp.length > 150 || nomSoc.length > 200 || coli.length > 100 ||
+      nQuittance.length > 100
     ) {
       return NextResponse.json({ message: "Un champ est trop long." }, { status: 400 });
+    }
+
+    if (nbColiText && (!/^\d{1,9}$/.test(nbColiText) || !Number.isSafeInteger(nbColi) || (nbColi as number) < 0)) {
+      return NextResponse.json({ message: "Le nombre de colis doit être un entier positif ou nul." }, { status: 400 });
     }
 
     if (!/^\d{1,8}(?:\.\d{1,2})?$/.test(tonnageText) || Number(tonnageText) <= 0) {
@@ -134,15 +148,6 @@ export async function POST(request: Request) {
     const changeReturned = toDecimal(payment.changeCents);
 
     const passage = await prisma.$transaction(async (tx) => {
-      const availablePlaces = await tx.location.findMany({
-        where: { name: { in: [origin, destination] }, deletedAt: null },
-        select: { name: true },
-      });
-      const availableNames = new Set(availablePlaces.map((location) => location.name));
-      if (!availableNames.has(origin) || !availableNames.has(destination)) {
-        return null;
-      }
-
       const product = await tx.product.create({
         data: { name: productName, type: productType, tonnage: tonnageText },
         select: { id: true },
@@ -161,6 +166,13 @@ export async function POST(request: Request) {
           vehicleCharacteristics: vehicleCharacteristics || null,
           driverLicenseNumber: driverLicenseNumber || null,
           notes: notes || null,
+          nomOp: nomOp || null,
+          nomSoc: nomSoc || null,
+          coli: coli || null,
+          nbColi,
+          nQuittance: nQuittance || null,
+          pjt: pjt ?? null,
+          quittance: quittance ?? null,
           ...(assignedAt ? { assignedAt } : {}),
           payment: {
             create: {
@@ -209,6 +221,12 @@ export async function POST(request: Request) {
             vehicleCharacteristics,
             driverName,
             driverLicenseNumber,
+            nomOp: nomOp || null,
+            nomSoc: nomSoc || null,
+            coli: coli || null,
+            nbColi,
+            nQuittance: nQuittance || null,
+            attachmentsUpdated: { pjt: Boolean(pjt), quittance: Boolean(quittance) },
           },
         },
       });
@@ -245,7 +263,9 @@ export async function POST(request: Request) {
               vehicleRegistration: vehicleRegistration || null,
               vehicleCharacteristics: vehicleCharacteristics || null,
               driverName: driverName || null, driverLicenseNumber: driverLicenseNumber || null,
-              notes: notes || null, deletedAt: null,
+              notes: notes || null,
+              nomOp: nomOp || null, nomSoc: nomSoc || null, coli: coli || null,
+              nbColi, nQuittance: nQuittance || null, deletedAt: null,
             },
             product: {
               id: product.id, name: productName, type: productType,
@@ -263,13 +283,6 @@ export async function POST(request: Request) {
 
       return created;
     });
-
-    if (!passage) {
-      return NextResponse.json(
-        { message: "L'origine et la destination doivent être choisies parmi les lieux actifs." },
-        { status: 400 },
-      );
-    }
 
     return NextResponse.json(
       {
@@ -289,6 +302,9 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
+    if (error instanceof AttachmentValidationError) {
+      return NextResponse.json({ message: error.message }, { status: 400 });
+    }
     console.error("Passage creation failed:", error);
     return NextResponse.json({ message: "Impossible d'enregistrer le passage." }, { status: 500 });
   }

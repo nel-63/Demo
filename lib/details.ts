@@ -299,7 +299,7 @@ export async function getDetails(
       };
       const [count, total, sum, rows] = await Promise.all([
         prisma.passage.count({ where }),
-        prisma.passage.count({ where: { ...loc, deletedAt: null } }),
+        prisma.passage.count({ where: { ...loc, deletedAt: null, assignedLocation: { is: { deletedAt: null } } } }),
         prisma.product.aggregate({
           where: { deletedAt: null, passage: { is: { deletedAt: null, assignedLocation: { is: { deletedAt: null } }, ...(scope.locationId ? { locationId: scope.locationId } : {}) } } },
           _sum: { tonnage: true },

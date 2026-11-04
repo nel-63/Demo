@@ -89,7 +89,7 @@ export default function LocationAssignmentForm({
         </option>
         {currentLocationId && !locations.some((location) => location.id === currentLocationId) && (
           <option value={currentLocationId} disabled>
-            {currentLocationName ?? "Lieu actuel"} (archivé)
+            Lieu supprimé (à remplacer)
           </option>
         )}
         {locations.map((location) => (

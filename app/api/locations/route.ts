@@ -65,7 +65,7 @@ export async function POST(request: Request) {
 
     if (code === "P2002") {
       return NextResponse.json(
-        { message: "Ce lieu existe déjà." },
+        { message: "Ce lieu existe déjà ou a été archivé. Réactivez-le depuis la liste des lieux." },
         { status: 409 }
       );
     }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { checkPayment, isPaymentMethod, parseCents, toDecimal } from "@/lib/payment-rules";
+import { isProductType } from "@/lib/product-types";
 import type { Prisma } from "@/app/generated/prisma/client";
 
 type Context = { params: Promise<{ id: string }> };
@@ -157,6 +158,22 @@ export async function PATCH(request: Request, context: Context) {
       const current = await loadForUpdate(tx, id);
       if (!current || current.deletedAt || current.locationId !== supervisorLocationId) return null;
       if (!current.payment) return null;
+      if (!isProductType(productType) && productType !== current.product.type) {
+        return { error: "INVALID_PRODUCT_TYPE" as const };
+      }
+
+      const activePlaces = await tx.location.findMany({
+        where: { name: { in: [origin, destination] }, deletedAt: null },
+        select: { name: true },
+      });
+      const activeNames = new Set(activePlaces.map((location) => location.name));
+      if (
+        (origin !== current.origin && !activeNames.has(origin)) ||
+        (destination !== current.destination && !activeNames.has(destination))
+      ) {
+        return { error: "INVALID_LOCATION" as const };
+      }
+
       const before = snapshotOf(current);
       const paymentData = {
         paymentMethod: method, reference: reference || null,
@@ -189,10 +206,20 @@ export async function PATCH(request: Request, context: Context) {
           details: { before, after },
         },
       });
-      return after;
+      return { snapshot: after };
     });
 
     if (!updated) return NextResponse.json({ message: "Passage introuvable, supprimé, situé hors de votre lieu ou sans paiement." }, { status: 404 });
+    if ("error" in updated) {
+      return NextResponse.json(
+        {
+          message: updated.error === "INVALID_PRODUCT_TYPE"
+            ? "Choisissez une catégorie de produit valide."
+            : "Les lieux choisis doivent être actifs. Les lieux historiques inchangés restent conservés.",
+        },
+        { status: 400 },
+      );
+    }
     return NextResponse.json({ ok: true, message: "Passage modifié. La version précédente est conservée." });
   } catch (error) {
     console.error("Passage update failed:", error);

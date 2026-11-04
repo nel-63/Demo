@@ -173,11 +173,15 @@ model Location {
   id             String   @id @default(cuid())
   name           String
   normalizedName String   @unique
+  deletedAt      DateTime?
+  deletedById    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   supervisors Supervisor[]
   passages    Passage[]
+
+  @@index([deletedAt])
 }
 
 model LoginFailure {

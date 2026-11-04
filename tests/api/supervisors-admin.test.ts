@@ -112,6 +112,24 @@ describe("changement de lieu (non-régression)", () => {
     // l'historique des passages reste attaché au lieu où ils ont eu lieu
     expect(db.passage.update).not.toHaveBeenCalled();
   });
+
+  it("refuse une affectation vers un lieu archivé", async () => {
+    db.supervisor.findUnique.mockResolvedValue({
+      id: "sup-1",
+      locationId: "loc-1",
+      location: "Tana",
+      user: { firstName: "R", lastName: "R", email: "rina@test.mg" },
+    });
+    db.location.findUnique.mockResolvedValue({ id: "loc-2", name: "Tamatave", deletedAt: new Date() });
+
+    const response = await PATCH(
+      jsonRequest("/api/supervisors/sup-1", "PATCH", { locationId: "loc-2" }),
+      params("sup-1"),
+    );
+
+    expect((await read(response)).status).toBe(400);
+    expect(db.supervisor.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("réinitialisation du mot de passe", () => {

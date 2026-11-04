@@ -45,7 +45,7 @@ async function LocationSheet({ params, searchParams }: Props) {
 
   const location = await prisma.location.findUnique({
     where: { id },
-    select: { id: true, name: true, createdAt: true },
+    select: { id: true, name: true, createdAt: true, deletedAt: true },
   });
 
   if (!location) notFound();
@@ -100,6 +100,7 @@ async function LocationSheet({ params, searchParams }: Props) {
       <header className="my-6">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">{location.name}</h1>
         <p className="mt-2 text-slate-700">
+          {location.deletedAt ? "Lieu archivé. " : ""}
           Ce qui a été fait dans ce lieu : les produits qui y sont passés, par qui, d&apos;où et vers où.
         </p>
       </header>

@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
+import { PRODUCT_TYPES } from "@/lib/product-types";
 
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100";
@@ -31,7 +32,7 @@ function Field({
   );
 }
 
-export default function PassageForm() {
+export default function PassageForm({ locations }: { locations: string[] }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -100,7 +101,10 @@ export default function PassageForm() {
         <input id="productName" name="productName" required maxLength={150} className={inputClass} />
       </Field>
       <Field id="productType" label="Type de produit">
-        <input id="productType" name="productType" required maxLength={100} className={inputClass} />
+        <select id="productType" name="productType" required defaultValue="" className={inputClass}>
+          <option value="" disabled>Choisir une catégorie</option>
+          {PRODUCT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+        </select>
       </Field>
       <Field id="tonnage" label="Tonnage (tonnes)">
         <input
@@ -112,10 +116,16 @@ export default function PassageForm() {
       <h3 className={sectionClass}>Trajet</h3>
 
       <Field id="origin" label="D'où vient le produit" hint="Lieu de départ.">
-        <input id="origin" name="origin" required maxLength={150} className={inputClass} />
+        <select id="origin" name="origin" required defaultValue="" className={inputClass}>
+          <option value="" disabled>Choisir un lieu</option>
+          {locations.map((location) => <option key={location} value={location}>{location}</option>)}
+        </select>
       </Field>
       <Field id="destination" label="Où va le produit" hint="Lieu d'arrivée. Le passage est rattaché à votre lieu.">
-        <input id="destination" name="destination" required maxLength={150} className={inputClass} />
+        <select id="destination" name="destination" required defaultValue="" className={inputClass}>
+          <option value="" disabled>Choisir un lieu</option>
+          {locations.map((location) => <option key={location} value={location}>{location}</option>)}
+        </select>
       </Field>
 
       <h3 className={sectionClass}>Véhicule et chauffeur (facultatif)</h3>

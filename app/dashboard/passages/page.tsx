@@ -26,17 +26,28 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
 
   let locationId: string | null = null;
   let locationName: string | null = null;
+  let locationArchived = false;
   if (!isAdmin) {
     const profile = await prisma.supervisor.findUnique({
       where: { userId: user.id },
-      select: { locationId: true, assignedLocation: { select: { name: true } } },
+      select: { locationId: true, assignedLocation: { select: { name: true, deletedAt: true } } },
     });
     if (!profile?.locationId) {
       return <section className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"><h1 className="text-2xl font-bold">Aucun lieu affecté</h1><p className="mt-3 text-slate-700">Contactez l&apos;administrateur pour associer votre compte à un lieu.</p></section>;
     }
     locationId = profile.locationId;
     locationName = profile.assignedLocation?.name ?? null;
+    locationArchived = Boolean(profile.assignedLocation?.deletedAt);
   }
+
+  const locations = isSupervisor && !locationArchived
+    ? await prisma.location.findMany({
+        where: { deletedAt: null },
+        orderBy: { name: "asc" },
+        select: { name: true },
+      })
+    : [];
+  const placeNames = locations.map((location) => location.name);
 
   const params = await searchParams;
   const q = readParam(params, "q");
@@ -100,7 +111,17 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
         {!isAdmin && (
           <section className="mb-6 h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm xl:mb-0">
             <h2 className="mb-4 text-xl font-semibold text-slate-900">Nouveau passage</h2>
-            <PassageForm />
+            {locationArchived ? (
+              <p role="status" className="rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
+                Ce lieu est archivé. Contactez l&apos;administrateur pour vous affecter à un lieu actif.
+              </p>
+            ) : placeNames.length === 0 ? (
+              <p role="status" className="rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
+                Aucun lieu actif n&apos;est disponible pour les trajets. Contactez l&apos;administrateur.
+              </p>
+            ) : (
+              <PassageForm locations={placeNames} />
+            )}
           </section>
         )}
         <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -139,7 +160,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
                       <td className="px-3 py-4">{item.payment ? <>{ALL_PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod}{item.payment.reference && <p className="text-xs text-slate-700">{item.payment.reference}</p>}</> : "—"}</td>
                       <td className="px-3 py-4">{item.supervisor.user.firstName} {item.supervisor.user.lastName}</td>
                       {(isAdmin || isSupervisor) && !deleted && <td className="min-w-[230px] px-3 py-4">
-                        {item.payment ? <PassageActions canManage={isSupervisor} initial={{
+                        {item.payment ? <PassageActions canManage={isSupervisor} locations={placeNames} initial={{
                           id: item.id, assignedAt: item.assignedAt.toISOString().slice(0, 10), origin: item.origin, destination: item.destination,
                           vehicleInfo: item.vehicleInfo, vehicleRegistration: item.vehicleRegistration,
                           vehicleCharacteristics: item.vehicleCharacteristics, driverName: item.driverName,

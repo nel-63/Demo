@@ -80,11 +80,14 @@ export async function PATCH(
 
       const location = await tx.location.findUnique({
         where: { id: locationId },
-        select: { id: true, name: true },
+        select: { id: true, name: true, deletedAt: true },
       });
 
       if (!location) {
         return { error: "LOCATION_NOT_FOUND" as const };
+      }
+      if (location.deletedAt) {
+        return { error: "LOCATION_ARCHIVED" as const };
       }
 
       if (supervisor.locationId === location.id) {
@@ -147,6 +150,13 @@ export async function PATCH(
         return NextResponse.json(
           { message: "Le lieu sélectionné n'existe pas." },
           { status: 404 }
+        );
+      }
+
+      if (result.error === "LOCATION_ARCHIVED") {
+        return NextResponse.json(
+          { message: "Le lieu sélectionné est archivé." },
+          { status: 400 }
         );
       }
 

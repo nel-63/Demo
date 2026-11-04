@@ -57,6 +57,7 @@ beforeEach(() => {
   vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
   db.supervisor.findUnique.mockResolvedValue({ id: "supervisor-1", locationId: "location-1" });
   db.passage.findUnique.mockResolvedValue(current);
+  db.location.findMany.mockResolvedValue([{ name: "Antsirabe" }, { name: "Toamasina" }]);
   db.recordRevision.findFirst.mockResolvedValue({ version: 1 });
 });
 
@@ -106,6 +107,22 @@ describe("gestion des passages par les régisseurs", () => {
     expect(db.payment.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ paymentMethod: "MOBILE_MONEY", reference: "MVOLA-9" }),
     }));
+  });
+
+  it("conserve un lieu historique inchangé même s'il n'est plus actif", async () => {
+    db.location.findMany.mockResolvedValue([]);
+    const response = await PATCH(jsonRequest("/api/passages/pass-1", "PATCH", valid), context);
+    expect((await read(response)).status).toBe(200);
+  });
+
+  it("refuse de remplacer un lieu historique par un lieu non défini", async () => {
+    const response = await PATCH(
+      jsonRequest("/api/passages/pass-1", "PATCH", { ...valid, origin: "Nouveau lieu libre" }),
+      context,
+    );
+    expect((await read(response)).status).toBe(400);
+    expect(db.passage.update).not.toHaveBeenCalled();
+    expect(db.product.update).not.toHaveBeenCalled();
   });
 
   it.each(["CHECK", "BANK_TRANSFER", "OTHER", "BITCOIN"])(

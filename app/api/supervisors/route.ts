@@ -52,12 +52,12 @@ export async function POST(request: Request) {
 
     const location = await prisma.location.findUnique({
       where: { id: locationId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, deletedAt: true },
     });
 
-    if (!location) {
+    if (!location || location.deletedAt) {
       return NextResponse.json(
-        { message: "Le lieu sélectionné n'existe pas." },
+        { message: "Le lieu sélectionné n'existe pas ou est archivé." },
         { status: 400 }
       );
     }

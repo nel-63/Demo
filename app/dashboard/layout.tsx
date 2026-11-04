@@ -34,9 +34,10 @@ async function Shell({ children }: { children: ReactNode }) {
   if (!isAdmin) {
     const profile = await prisma.supervisor.findUnique({
       where: { userId: user.id },
-      select: { assignedLocation: { select: { name: true } } },
+      select: { assignedLocation: { select: { name: true, deletedAt: true } } },
     });
     placeName = profile?.assignedLocation?.name ?? null;
+    if (profile?.assignedLocation?.deletedAt) placeName = `${placeName} (archivé)`;
   }
 
   const fullName = `${user.firstName} ${user.lastName}`;

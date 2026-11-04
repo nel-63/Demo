@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import LocationForm from "./location-form";
+import LocationActions from "./location-actions";
 import { readParam, type SearchParams } from "../search-params";
 
 export default function LocationsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -34,6 +35,7 @@ async function LocationsContent({ searchParams }: { searchParams: Promise<Search
     select: {
       id: true,
       name: true,
+      deletedAt: true,
       createdAt: true,
       _count: {
         select: {
@@ -54,7 +56,7 @@ async function LocationsContent({ searchParams }: { searchParams: Promise<Search
         <header className="my-6">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Gestion des lieux</h1>
           <p className="mt-2 text-slate-600">
-            Chaque lieu constitue un espace de données partagé entre les régisseurs qui y sont affectés.
+            Les lieux actifs sont proposés dans les formulaires. Archiver un lieu le retire des choix sans effacer son historique.
           </p>
         </header>
 
@@ -75,7 +77,7 @@ async function LocationsContent({ searchParams }: { searchParams: Promise<Search
 
             {locations.length === 0 ? (
               <p className="text-slate-600">
-                Crée d&apos;abord un lieu avant d&apos;enregistrer un régisseur.
+                Aucun lieu ne correspond à cette recherche.
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -85,6 +87,8 @@ async function LocationsContent({ searchParams }: { searchParams: Promise<Search
                       <th className="px-3 py-3">Lieu</th>
                       <th className="px-3 py-3">Régisseurs</th>
                       <th className="px-3 py-3">Passages</th>
+                      <th className="px-3 py-3">Statut</th>
+                      <th className="px-3 py-3">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -97,6 +101,12 @@ async function LocationsContent({ searchParams }: { searchParams: Promise<Search
                         </td>
                         <td className="px-3 py-4">{location._count.supervisors}</td>
                         <td className="px-3 py-4">{location._count.passages}</td>
+                        <td className="px-3 py-4">
+                          {location.deletedAt ? "Archivé" : "Actif"}
+                        </td>
+                        <td className="px-3 py-4">
+                          <LocationActions id={location.id} name={location.name} archived={Boolean(location.deletedAt)} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>

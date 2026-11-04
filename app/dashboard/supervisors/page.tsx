@@ -32,6 +32,7 @@ async function SupervisorsContent({ searchParams }: { searchParams: Promise<Sear
   const q = readParam(params, "q");
   const [locations, supervisors] = await Promise.all([
     prisma.location.findMany({
+      where: { deletedAt: null },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
@@ -52,7 +53,7 @@ async function SupervisorsContent({ searchParams }: { searchParams: Promise<Sear
         nationalId: true,
         address: true,
         locationId: true,
-        assignedLocation: { select: { name: true } },
+        assignedLocation: { select: { name: true, deletedAt: true } },
         user: {
           select: {
             firstName: true,
@@ -127,12 +128,16 @@ async function SupervisorsContent({ searchParams }: { searchParams: Promise<Sear
                         <td className="px-3 py-4">{item.nationalId}</td>
                         <td className="px-3 py-4">
                           {item.assignedLocation?.name ?? "Non affecté"}
+                          {item.assignedLocation?.deletedAt && (
+                            <span className="ml-1 text-xs text-red-700">(archivé)</span>
+                          )}
                         </td>
                         <td className="px-3 py-4">
                           <LocationAssignmentForm
                             supervisorId={item.id}
                             supervisorName={`${item.user.firstName} ${item.user.lastName}`}
                             currentLocationId={item.locationId}
+                            currentLocationName={item.assignedLocation?.name ?? null}
                             locations={locations}
                           />
                         </td>

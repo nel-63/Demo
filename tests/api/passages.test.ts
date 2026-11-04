@@ -15,7 +15,7 @@ const db = prisma as unknown as FakePrisma;
 
 const valid = {
   productName: "Riz blanc",
-  productType: "Céréale",
+  productType: "Agricole",
   tonnage: "8.5",
   origin: "Antsirabe",
   destination: "Toamasina",
@@ -30,14 +30,19 @@ const send = (body: Record<string, unknown>) =>
 beforeEach(() => {
   resetFakePrisma(db);
   vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
-  db.supervisor.findUnique.mockResolvedValue({ id: "sup-1", locationId: "loc-1" });
+  db.supervisor.findUnique.mockResolvedValue({
+    id: "sup-1",
+    locationId: "loc-1",
+    assignedLocation: { deletedAt: null },
+  });
+  db.location.findMany.mockResolvedValue([{ name: "Antsirabe" }, { name: "Toamasina" }]);
   db.product.create.mockResolvedValue({ id: "prod-1" });
   db.passage.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
     id: "pas-1",
     assignedAt: new Date("2026-10-29T12:00:00Z"),
     origin: data.origin,
     destination: data.destination,
-    product: { name: "Riz blanc", type: "Céréale", tonnage: "8.50" },
+    product: { name: "Riz blanc", type: "Agricole", tonnage: "8.50" },
     payment: { id: "pay-1", ...(data.payment as { create: Record<string, unknown> }).create },
   }));
 });
@@ -149,6 +154,7 @@ describe("validation", () => {
   );
 
   it.each([
+    ["catégorie non autorisée", { productType: "Céréale" }],
     ["tonnage nul", { tonnage: "0" }],
     ["tonnage négatif", { tonnage: "-2" }],
     ["tonnage non numérique", { tonnage: "beaucoup" }],
@@ -164,13 +170,37 @@ describe("validation", () => {
     nothingWritten();
   });
 
+  it("refuse un lieu qui ne fait pas partie des choix actifs", async () => {
+    db.location.findMany.mockResolvedValue([{ name: "Antsirabe" }]);
+    const { status } = await read(await send({}));
+    expect(status).toBe(400);
+    expect(db.product.create).not.toHaveBeenCalled();
+    expect(db.passage.create).not.toHaveBeenCalled();
+  });
+
+  it("refuse un passage depuis un lieu archivé", async () => {
+    db.supervisor.findUnique.mockResolvedValue({
+      id: "sup-1",
+      locationId: "loc-1",
+      assignedLocation: { deletedAt: new Date() },
+    });
+    const { status } = await read(await send({}));
+    expect(status).toBe(403);
+    nothingWritten();
+  });
+
   it("véhicule et chauffeur sont facultatifs", async () => {
     await send({});
     expect(created()).toMatchObject({ vehicleInfo: null, driverName: null });
 
     resetFakePrisma(db);
     vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
-    db.supervisor.findUnique.mockResolvedValue({ id: "sup-1", locationId: "loc-1" });
+    db.supervisor.findUnique.mockResolvedValue({
+      id: "sup-1",
+      locationId: "loc-1",
+      assignedLocation: { deletedAt: null },
+    });
+    db.location.findMany.mockResolvedValue([{ name: "Antsirabe" }, { name: "Toamasina" }]);
     db.product.create.mockResolvedValue({ id: "prod-2" });
     db.passage.create.mockResolvedValue({ id: "p", assignedAt: new Date(), product: { tonnage: "1" }, payment: null });
     await send({ vehicleInfo: " Camion benne blanc ", driverName: " Jean " });

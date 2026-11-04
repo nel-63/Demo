@@ -11,11 +11,13 @@ type LocationOption = {
 export default function LocationAssignmentForm({
   supervisorId,
   currentLocationId,
+  currentLocationName,
   supervisorName,
   locations,
 }: {
   supervisorId: string;
   currentLocationId: string | null;
+  currentLocationName: string | null;
   supervisorName: string;
   locations: LocationOption[];
 }) {
@@ -85,6 +87,11 @@ export default function LocationAssignmentForm({
         <option value="" disabled>
           Choisir un lieu
         </option>
+        {currentLocationId && !locations.some((location) => location.id === currentLocationId) && (
+          <option value={currentLocationId} disabled>
+            {currentLocationName ?? "Lieu actuel"} (archivé)
+          </option>
+        )}
         {locations.map((location) => (
           <option key={location.id} value={location.id}>
             {location.name}

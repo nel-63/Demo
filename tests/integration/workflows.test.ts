@@ -20,10 +20,10 @@ const passage = (body: Record<string, unknown> = {}) =>
   createPassage(
     jsonRequest("/api/passages", "POST", {
       productName: "Riz blanc",
-      productType: "Céréale",
+      productType: "Agricole",
       tonnage: "8.5",
-      origin: "Antsirabe",
-      destination: "Toamasina",
+      origin: "Tana",
+      destination: "Tamatave",
       vehicleInfo: "Camion benne blanc",
       driverName: "Jean",
       amountDue: "40000",
@@ -57,8 +57,8 @@ describe("un passage n'existe qu'avec son paiement", () => {
       include: { product: true, payment: true, assignedLocation: true },
     });
     expect(row).toMatchObject({
-      origin: "Antsirabe",
-      destination: "Toamasina",
+      origin: "Tana",
+      destination: "Tamatave",
       vehicleInfo: "Camion benne blanc",
       driverName: "Jean",
       supervisorId: w.supA1.profile.id,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { isProductType } from "@/lib/product-types";
 import {
   checkPayment,
   isPaymentMethod,
@@ -24,11 +25,18 @@ export async function POST(request: Request) {
   try {
     const profile = await prisma.supervisor.findUnique({
       where: { userId: user.id },
-      select: { id: true, locationId: true },
+      select: {
+        id: true,
+        locationId: true,
+        assignedLocation: { select: { deletedAt: true } },
+      },
     });
 
     if (!profile?.locationId) {
       return NextResponse.json({ message: "Votre compte doit être affecté à un lieu." }, { status: 403 });
+    }
+    if (profile.assignedLocation?.deletedAt) {
+      return NextResponse.json({ message: "Votre lieu est archivé. Contactez l'administrateur." }, { status: 403 });
     }
 
     const locationId = profile.locationId;
@@ -59,6 +67,9 @@ export async function POST(request: Request) {
         { message: "Produit, type, tonnage, origine et destination sont obligatoires." },
         { status: 400 },
       );
+    }
+    if (!isProductType(productType)) {
+      return NextResponse.json({ message: "Choisissez une catégorie de produit valide." }, { status: 400 });
     }
 
     if (
@@ -123,6 +134,15 @@ export async function POST(request: Request) {
     const changeReturned = toDecimal(payment.changeCents);
 
     const passage = await prisma.$transaction(async (tx) => {
+      const availablePlaces = await tx.location.findMany({
+        where: { name: { in: [origin, destination] }, deletedAt: null },
+        select: { name: true },
+      });
+      const availableNames = new Set(availablePlaces.map((location) => location.name));
+      if (!availableNames.has(origin) || !availableNames.has(destination)) {
+        return null;
+      }
+
       const product = await tx.product.create({
         data: { name: productName, type: productType, tonnage: tonnageText },
         select: { id: true },
@@ -243,6 +263,13 @@ export async function POST(request: Request) {
 
       return created;
     });
+
+    if (!passage) {
+      return NextResponse.json(
+        { message: "L'origine et la destination doivent être choisies parmi les lieux actifs." },
+        { status: 400 },
+      );
+    }
 
     return NextResponse.json(
       {

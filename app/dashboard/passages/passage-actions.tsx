@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ALL_PAYMENT_METHOD_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/audit";
+import { isProductType, PRODUCT_TYPES } from "@/lib/product-types";
 import PassageHistory from "./passage-history";
 
 type Initial = {
@@ -20,7 +21,15 @@ type Initial = {
   payment: { paymentMethod: keyof typeof ALL_PAYMENT_METHOD_LABELS; reference: string | null; amountDue: string; amountReceived: string };
 };
 
-export default function PassageActions({ initial, canManage }: { initial: Initial; canManage: boolean }) {
+export default function PassageActions({
+  initial,
+  canManage,
+  locations,
+}: {
+  initial: Initial;
+  canManage: boolean;
+  locations: string[];
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -67,11 +76,26 @@ export default function PassageActions({ initial, canManage }: { initial: Initia
         <summary className="cursor-pointer text-sm font-semibold text-blue-700">Modifier</summary>
         <form onSubmit={save} className="mt-3 grid gap-2">
           <label className={label}>Nom du produit<input className={field} name="productName" defaultValue={initial.product.name} required maxLength={150}/></label>
-          <label className={label}>Type de produit<input className={field} name="productType" defaultValue={initial.product.type} required maxLength={100}/></label>
+          <label className={label}>Type de produit
+            <select className={field} name="productType" defaultValue={initial.product.type} required>
+              {!isProductType(initial.product.type) && <option value={initial.product.type}>{initial.product.type} (ancienne catégorie)</option>}
+              {PRODUCT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+            </select>
+          </label>
           <label className={label}>Tonnage (t)<input className={field} name="tonnage" type="number" min="0.01" step="0.01" defaultValue={initial.product.tonnage} required/></label>
           <label className={label}>Date du passage<input className={field} name="assignedAt" type="date" defaultValue={initial.assignedAt} required/></label>
-          <label className={label}>Origine<input className={field} name="origin" defaultValue={initial.origin} required maxLength={150}/></label>
-          <label className={label}>Destination<input className={field} name="destination" defaultValue={initial.destination} required maxLength={150}/></label>
+          <label className={label}>Origine
+            <select className={field} name="origin" defaultValue={initial.origin} required>
+              {!locations.includes(initial.origin) && <option value={initial.origin}>{initial.origin} (lieu archivé ou ancien)</option>}
+              {locations.map((location) => <option key={location} value={location}>{location}</option>)}
+            </select>
+          </label>
+          <label className={label}>Destination
+            <select className={field} name="destination" defaultValue={initial.destination} required>
+              {!locations.includes(initial.destination) && <option value={initial.destination}>{initial.destination} (lieu archivé ou ancien)</option>}
+              {locations.map((location) => <option key={location} value={location}>{location}</option>)}
+            </select>
+          </label>
           <label className={label}>Immatriculation<input className={field} name="vehicleRegistration" defaultValue={initial.vehicleRegistration ?? ""} maxLength={40}/></label>
           <label className={label}>Caractéristiques du véhicule<input className={field} name="vehicleCharacteristics" defaultValue={initial.vehicleCharacteristics ?? initial.vehicleInfo ?? ""} maxLength={200}/></label>
           <label className={label}>Nom du chauffeur<input className={field} name="driverName" defaultValue={initial.driverName ?? ""} maxLength={150}/></label>

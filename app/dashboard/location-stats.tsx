@@ -8,6 +8,7 @@ export default async function LocationStats() {
     select: {
       id: true,
       name: true,
+      deletedAt: true,
       _count: { select: { supervisors: true, passages: { where: { deletedAt: null } } } },
     },
   });
@@ -61,6 +62,7 @@ export default async function LocationStats() {
                     <Link href={`/dashboard/locations/${location.id}`} className="text-blue-700 hover:underline">
                       {location.name}
                     </Link>
+                    {location.deletedAt && <span className="ml-1 text-xs text-red-700">(archivé)</span>}
                   </td>
                   <td className="px-3 py-4 text-right">{location._count.supervisors}</td>
                   <td className="px-3 py-4 text-right">{location._count.passages}</td>

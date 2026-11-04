@@ -24,8 +24,8 @@ beforeEach(() => {
   });
 });
 
-describe("archivage des lieux", () => {
-  it("archive le lieu sans supprimer l'enregistrement et journalise l'action", async () => {
+describe("suppression logique des lieux", () => {
+  it("place le lieu dans la corbeille sans supprimer ses données et journalise l'action", async () => {
     const response = await DELETE(new Request("https://demo.test/api/locations/loc-1", { method: "DELETE" }), context);
     expect((await read(response)).status).toBe(200);
     expect(db.location.update).toHaveBeenCalledWith(expect.objectContaining({
@@ -42,7 +42,7 @@ describe("archivage des lieux", () => {
     expect(db.location.deleteMany).not.toHaveBeenCalled();
   });
 
-  it("réactive un lieu archivé sans perdre son nom", async () => {
+  it("restaure un lieu supprimé sans perdre son nom", async () => {
     db.location.findUnique.mockResolvedValue({
       id: "loc-1",
       name: "Antsirabe",

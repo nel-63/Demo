@@ -76,7 +76,7 @@ export async function PATCH(request: Request, context: Context) {
         select: { id: true, name: true, deletedAt: true },
       });
       if (!location) return "NOT_FOUND" as const;
-      if (!location.deletedAt) return "NOT_ARCHIVED" as const;
+      if (!location.deletedAt) return "NOT_DELETED" as const;
 
       await tx.location.update({
         where: { id },
@@ -97,7 +97,7 @@ export async function PATCH(request: Request, context: Context) {
     if (result === "NOT_FOUND") {
       return NextResponse.json({ message: "Lieu introuvable." }, { status: 404 });
     }
-    if (result === "NOT_ARCHIVED") {
+    if (result === "NOT_DELETED") {
       return NextResponse.json({ message: "Ce lieu est déjà actif." }, { status: 409 });
     }
     return NextResponse.json({ ok: true, message: "Lieu réactivé." });

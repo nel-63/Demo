@@ -46,10 +46,10 @@ async function DashboardContent() {
 async function AdminDashboard({ firstName, lastName }: { firstName: string; lastName: string }) {
   const [supervisors, locations, passages, tonnage, payments] = await Promise.all([
     prisma.supervisor.count(),
-    prisma.location.count(),
-    prisma.passage.count({ where: { deletedAt: null } }),
-    prisma.product.aggregate({ where: { deletedAt: null, passage: { is: { deletedAt: null } } }, _sum: { tonnage: true } }),
-    prisma.payment.aggregate({ where: { deletedAt: null, passage: { is: { deletedAt: null } } }, _sum: { amountReceived: true, changeReturned: true } }),
+    prisma.location.count({ where: { deletedAt: null } }),
+    prisma.passage.count({ where: { deletedAt: null, assignedLocation: { is: { deletedAt: null } } } }),
+    prisma.product.aggregate({ where: { deletedAt: null, passage: { is: { deletedAt: null, assignedLocation: { is: { deletedAt: null } } } } }, _sum: { tonnage: true } }),
+    prisma.payment.aggregate({ where: { deletedAt: null, passage: { is: { deletedAt: null, assignedLocation: { is: { deletedAt: null } } } } }, _sum: { amountReceived: true, changeReturned: true } }),
   ]);
 
   return (
@@ -87,14 +87,14 @@ async function SupervisorDashboard({
 }) {
   const profile = await prisma.supervisor.findUnique({
     where: { userId },
-    select: { locationId: true, assignedLocation: { select: { name: true } } },
+    select: { locationId: true, assignedLocation: { select: { name: true, deletedAt: true } } },
   });
 
-  if (!profile?.locationId) {
+  if (!profile?.locationId || profile.assignedLocation?.deletedAt) {
     return (
       <section className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold">Aucun lieu affecté</h1>
-        <p className="mt-3 text-slate-700">Contactez l&apos;administrateur pour associer votre compte à un lieu.</p>
+        <p className="mt-3 text-slate-700">Votre ancien lieu n&apos;est plus actif. Contactez l&apos;administrateur pour être affecté à un lieu disponible.</p>
       </section>
     );
   }

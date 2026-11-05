@@ -25,8 +25,8 @@ export default function AuditTable({
   showAuthor?: boolean;
 }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
+    <div className="w-full min-w-0 overflow-x-auto">
+      <table className="w-full min-w-max text-left text-sm">
         <thead className="border-b text-slate-600">
           <tr>
             <th className="px-3 py-3">Date</th>

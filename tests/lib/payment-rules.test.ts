@@ -36,7 +36,7 @@ describe("checkPayment", () => {
     expect(checkPayment({ ...base, method: "CASH", receivedCents: 3999999 })).toEqual({ ok: false, error: "INSUFFICIENT" });
   });
 
-  it.each(["MOBILE_MONEY"] as const)(
+  it.each(["MOBILE_MONEY", "CHECK"] as const)(
     "%s : montant exact et référence obligatoires",
     (method) => {
       expect(checkPayment({ ...base, method, reference: "REF-1", receivedCents: 4000000 })).toEqual({ ok: true, changeCents: 0 });
@@ -49,23 +49,28 @@ describe("checkPayment", () => {
   it("reconnaît les modes de paiement valides", () => {
     expect(isPaymentMethod("CASH")).toBe(true);
     expect(isPaymentMethod("MOBILE_MONEY")).toBe(true);
+    expect(isPaymentMethod("CHECK")).toBe(true);
     expect(isPaymentMethod("BITCOIN")).toBe(false);
   });
 
-  it.each(["CHECK", "BANK_TRANSFER", "OTHER", "BITCOIN", "", "cash"])(
+  it.each(["BANK_TRANSFER", "OTHER", "BITCOIN", "", "cash"])(
     "refuse %j pour une nouvelle opération",
     (value) => expect(isPaymentMethod(value)).toBe(false),
   );
 });
 
 describe("modes autorisés et modes historiques", () => {
-  it("n'autorise que Espèces et Mobile Money en saisie", () => {
-    expect([...PAYMENT_METHODS]).toEqual(["CASH", "MOBILE_MONEY"]);
+  it("autorise Espèces, Mobile Money et Chèque en saisie", () => {
+    expect([...PAYMENT_METHODS]).toEqual(["CASH", "MOBILE_MONEY", "CHECK"]);
   });
 
-  it("les formulaires (libellés de saisie) ne proposent que les deux modes autorisés", () => {
+  it("les formulaires proposent tous les modes autorisés", () => {
     expect(Object.keys(PAYMENT_METHOD_LABELS)).toEqual([...PAYMENT_METHODS]);
-    expect(PAYMENT_METHOD_LABELS).toEqual({ CASH: "Espèces", MOBILE_MONEY: "Mobile Money" });
+    expect(PAYMENT_METHOD_LABELS).toEqual({
+      CASH: "Espèces",
+      MOBILE_MONEY: "Mobile Money",
+      CHECK: "Chèque",
+    });
   });
 
   it("chaque ancien mode garde un libellé explicite pour l'historique", () => {

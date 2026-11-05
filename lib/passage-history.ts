@@ -40,6 +40,7 @@ const FIELDS: Field[] = [
   { group: "passage", key: "origin", label: "Provenance", kind: "text" },
   { group: "passage", key: "destination", label: "Destination", kind: "text" },
   { group: "passage", key: "assignedAt", label: "Date du passage", kind: "date" },
+  { group: "passage", key: "dateQuittance", label: "Date de quittance", kind: "date" },
   { group: "passage", key: "vehicleRegistration", label: "Immatriculation du véhicule", kind: "text" },
   { group: "passage", key: "vehicleCharacteristics", label: "Caractéristiques du véhicule", kind: "text" },
   { group: "passage", key: "vehicleInfo", label: "Autres informations sur le véhicule", kind: "text" },
@@ -55,7 +56,7 @@ const FIELDS: Field[] = [
 
 // Champs affichés dans le résumé d'un passage (état d'origine, suppression).
 const SUMMARY_KEYS = new Set([
-  "name", "tonnage", "origin", "destination", "assignedAt",
+  "name", "tonnage", "origin", "destination", "assignedAt", "dateQuittance",
   "vehicleRegistration", "driverName", "paymentMethod", "amountDue",
 ]);
 

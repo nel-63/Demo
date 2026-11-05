@@ -43,6 +43,15 @@ body {
   opacity: 1;
 }
 
+/* Barre fine visible sur la liste des régisseurs, sans élargir la page. */
+.table-scrollbar {
+  scrollbar-color: #94a3b8 #f1f5f9;
+  scrollbar-width: thin;
+}
+.table-scrollbar::-webkit-scrollbar { height: 0.5rem; }
+.table-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 9999px; }
+.table-scrollbar::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 9999px; }
+
 /* Focus clavier visible partout. */
 :focus-visible {
   outline: 2px solid var(--accent);

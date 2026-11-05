@@ -5,6 +5,7 @@ import { checkPayment, isPaymentMethod, parseCents, toDecimal } from "@/lib/paym
 import { isProductType } from "@/lib/product-types";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { readPassagePayload, AttachmentValidationError } from "@/lib/passage-attachments";
+import { parseDateOnly } from "@/lib/date-only";
 
 type Context = { params: Promise<{ id: string }> };
 type PassageSnapshot = {
@@ -17,7 +18,7 @@ function snapshotOf(record: {
   vehicleInfo: string | null; driverName: string | null; vehicleRegistration: string | null;
   vehicleCharacteristics: string | null; driverLicenseNumber: string | null; notes: string | null;
   nomOp: string | null; nomSoc: string | null; coli: string | null; nbColi: number | null;
-  nQuittance: string | null; deletedAt: Date | null;
+  nQuittance: string | null; dateQuittance: Date | null; deletedAt: Date | null;
   product: { id: string; name: string; type: string; tonnage: unknown; description: string | null; deletedAt: Date | null };
   payment: null | { id: string; paymentMethod: string; reference: string | null; amountDue: unknown; amountReceived: unknown; changeReturned: unknown; deletedAt: Date | null };
 }): PassageSnapshot {
@@ -30,6 +31,7 @@ function snapshotOf(record: {
       driverLicenseNumber: record.driverLicenseNumber, notes: record.notes,
       nomOp: record.nomOp, nomSoc: record.nomSoc, coli: record.coli,
       nbColi: record.nbColi, nQuittance: record.nQuittance,
+      dateQuittance: record.dateQuittance?.toISOString().slice(0, 10) ?? null,
       deletedAt: record.deletedAt?.toISOString() ?? null,
     },
     product: {
@@ -96,7 +98,7 @@ async function loadForUpdate(tx: Prisma.TransactionClient, id: string) {
       id: true, productId: true, locationId: true, assignedAt: true, origin: true, destination: true,
       vehicleInfo: true, driverName: true, vehicleRegistration: true, vehicleCharacteristics: true,
       driverLicenseNumber: true, notes: true, nomOp: true, nomSoc: true, coli: true,
-      nbColi: true, nQuittance: true, deletedAt: true,
+      nbColi: true, nQuittance: true, dateQuittance: true, deletedAt: true,
       product: { select: { id: true, name: true, type: true, tonnage: true, description: true, deletedAt: true } },
       payment: { select: { id: true, paymentMethod: true, reference: true, amountDue: true, amountReceived: true, changeReturned: true, deletedAt: true } },
     },
@@ -135,6 +137,8 @@ export async function PATCH(request: Request, context: Context) {
     const nbColiText = text("nbColi");
     const nbColi = nbColiText ? Number(nbColiText) : null;
     const nQuittance = text("nQuittance");
+    const dateQuittanceText = text("dateQuittance");
+    const dateQuittance = dateQuittanceText ? parseDateOnly(dateQuittanceText) : null;
     const method = text("paymentMethod");
     const reference = text("reference");
     const dueText = text("amountDue");
@@ -152,6 +156,9 @@ export async function PATCH(request: Request, context: Context) {
     }
     if (nbColiText && (!/^\d{1,9}$/.test(nbColiText) || !Number.isSafeInteger(nbColi) || (nbColi as number) < 0)) {
       return NextResponse.json({ message: "Le nombre de colis doit être un entier positif ou nul." }, { status: 400 });
+    }
+    if (dateQuittanceText && !dateQuittance) {
+      return NextResponse.json({ message: "Date de quittance invalide." }, { status: 400 });
     }
     if (!/^\d{1,8}(?:\.\d{1,2})?$/.test(tonnage) || Number(tonnage) <= 0) {
       return NextResponse.json({ message: "Tonnage invalide." }, { status: 400 });
@@ -200,9 +207,9 @@ export async function PATCH(request: Request, context: Context) {
           vehicleCharacteristics: vehicleCharacteristics || null,
           driverLicenseNumber: driverLicenseNumber || null, notes: notes || null,
           nomOp: nomOp || null, nomSoc: nomSoc || null, coli: coli || null,
-          nbColi, nQuittance: nQuittance || null,
-          ...(pjt ? { pjt } : {}),
-          ...(quittance ? { quittance } : {}),
+          nbColi, nQuittance: nQuittance || null, dateQuittance,
+          ...(pjt ? { pjt: new Uint8Array(pjt) } : {}),
+          ...(quittance ? { quittance: new Uint8Array(quittance) } : {}),
         },
       });
       await tx.payment.update({ where: { id: current.payment.id }, data: paymentData });

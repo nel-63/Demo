@@ -140,6 +140,7 @@ describe("un passage n'existe qu'avec son paiement", () => {
       coli: "Sacs de 50 kg",
       nbColi: "24",
       nQuittance: "Q-2026-0042",
+      dateQuittance: "2026-10-15",
     }));
     expect(status).toBe(201);
     expect(created()).toMatchObject({
@@ -148,6 +149,7 @@ describe("un passage n'existe qu'avec son paiement", () => {
       coli: "Sacs de 50 kg",
       nbColi: 24,
       nQuittance: "Q-2026-0042",
+      dateQuittance: new Date("2026-10-15T00:00:00.000Z"),
     });
     expect(db.recordRevision.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
@@ -158,6 +160,7 @@ describe("un passage n'existe qu'avec son paiement", () => {
             coli: "Sacs de 50 kg",
             nbColi: 24,
             nQuittance: "Q-2026-0042",
+            dateQuittance: "2026-10-15",
           }),
         }),
       }),
@@ -174,8 +177,17 @@ describe("un passage n'existe qu'avec son paiement", () => {
     });
   });
 
+  it("accepte un chèque avec montant exact et référence", async () => {
+    const { status } = await read(
+      await send({ paymentMethod: "CHECK", reference: "CHQ-1", amountReceived: "40000" }),
+    );
+    expect(status).toBe(201);
+    expect(created().payment).toMatchObject({
+      create: { paymentMethod: "CHECK", reference: "CHQ-1", changeReturned: "0.00" },
+    });
+  });
+
   it.each([
-    ["chèque", "CHECK"],
     ["virement bancaire", "BANK_TRANSFER"],
     ["autre", "OTHER"],
     ["valeur inconnue", "BITCOIN"],
@@ -194,6 +206,9 @@ describe("un passage n'existe qu'avec son paiement", () => {
     ["Mobile Money sans référence", { paymentMethod: "MOBILE_MONEY", amountReceived: "40000" }],
     ["Mobile Money supérieur au montant", { paymentMethod: "MOBILE_MONEY", reference: "R", amountReceived: "40001" }],
     ["Mobile Money inférieur au montant", { paymentMethod: "MOBILE_MONEY", reference: "R", amountReceived: "30000" }],
+    ["chèque sans référence", { paymentMethod: "CHECK", amountReceived: "40000" }],
+    ["chèque supérieur au montant", { paymentMethod: "CHECK", reference: "CHQ-1", amountReceived: "40001" }],
+    ["chèque inférieur au montant", { paymentMethod: "CHECK", reference: "CHQ-1", amountReceived: "39999" }],
   ])("sans paiement valide, pas de passage : %s", async (_label, body) => {
     const { status } = await read(await send(body));
     expect(status).toBe(400);
@@ -307,6 +322,12 @@ describe("validation", () => {
   it("utilise la date fournie", async () => {
     await send({ assignedAt: "2026-10-15" });
     expect(created().assignedAt).toEqual(new Date("2026-10-15T12:00:00.000Z"));
+  });
+
+  it("refuse une date de quittance qui n'existe pas", async () => {
+    const { status } = await read(await send({ dateQuittance: "2026-02-30" }));
+    expect(status).toBe(400);
+    nothingWritten();
   });
 
   it("le lieu vient toujours du profil, jamais de la requête", async () => {

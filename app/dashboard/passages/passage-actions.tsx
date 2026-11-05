@@ -22,6 +22,7 @@ type Initial = {
   coli: string | null;
   nbColi: number | null;
   nQuittance: string | null;
+  dateQuittance: string | null;
   product: { name: string; type: string; tonnage: string };
   payment: { paymentMethod: keyof typeof ALL_PAYMENT_METHOD_LABELS; reference: string | null; amountDue: string; amountReceived: string };
 };
@@ -88,17 +89,18 @@ export default function PassageActions({
           <label className={label}>Tonnage (t)<input className={field} name="tonnage" type="number" min="0.01" step="0.01" defaultValue={initial.product.tonnage} required/></label>
           <label className={label}>Date du passage<input className={field} name="assignedAt" type="date" defaultValue={initial.assignedAt} required/></label>
           <label className={label}>Lieu de départ<input className={field} name="origin" type="text" defaultValue={initial.origin} required maxLength={150}/></label>
-          <label className={label}>Lieu d'arrivée<input className={field} name="destination" type="text" defaultValue={initial.destination} required maxLength={150}/></label>
+          <label className={label}>Lieu d&apos;arrivée<input className={field} name="destination" type="text" defaultValue={initial.destination} required maxLength={150}/></label>
           <label className={label}>Immatriculation<input className={field} name="vehicleRegistration" defaultValue={initial.vehicleRegistration ?? ""} maxLength={40}/></label>
           <label className={label}>Caractéristiques du véhicule<input className={field} name="vehicleCharacteristics" defaultValue={initial.vehicleCharacteristics ?? initial.vehicleInfo ?? ""} maxLength={200}/></label>
           <label className={label}>Nom du chauffeur<input className={field} name="driverName" defaultValue={initial.driverName ?? ""} maxLength={150}/></label>
           <label className={label}>Numéro de permis<input className={field} name="driverLicenseNumber" defaultValue={initial.driverLicenseNumber ?? ""} maxLength={80}/></label>
           <label className={label}>Autres informations véhicule<input className={field} name="vehicleInfo" defaultValue={initial.vehicleInfo ?? ""} maxLength={200}/></label>
-          <label className={label}>Nom de l'opérateur<input className={field} name="nomOp" defaultValue={initial.nomOp ?? ""} maxLength={150}/></label>
+          <label className={label}>Nom de l&apos;opérateur<input className={field} name="nomOp" defaultValue={initial.nomOp ?? ""} maxLength={150}/></label>
           <label className={label}>Nom de la société<input className={field} name="nomSoc" defaultValue={initial.nomSoc ?? ""} maxLength={200}/></label>
           <label className={label}>Mode de colisage<input className={field} name="coli" defaultValue={initial.coli ?? ""} maxLength={100}/></label>
           <label className={label}>Nombre de colis<input className={field} name="nbColi" type="number" min="0" step="1" defaultValue={initial.nbColi ?? ""}/></label>
           <label className={label}>Numéro de quittance<input className={field} name="nQuittance" defaultValue={initial.nQuittance ?? ""} maxLength={100}/></label>
+          <label className={label}>Date de quittance<input className={field} name="dateQuittance" type="date" defaultValue={initial.dateQuittance ?? ""}/></label>
           <label className={label}>Ticket du contrôleur (JPEG, PNG, WebP — 5 Mo max.)<input className={field} name="pjt" type="file" accept="image/jpeg,image/png,image/webp"/></label>
           <label className={label}>Photo de la quittance (JPEG, PNG, WebP — 5 Mo max.)<input className={field} name="quittance" type="file" accept="image/jpeg,image/png,image/webp"/></label>
           <label className={label}>Observations<textarea className={field} name="notes" defaultValue={initial.notes ?? ""} maxLength={2000}/></label>

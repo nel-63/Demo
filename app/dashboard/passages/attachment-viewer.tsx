@@ -36,8 +36,6 @@ export default function AttachmentViewer({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-    // close() is intentionally implemented inline below; only the active modal matters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
   async function open(kind: AttachmentKind) {
@@ -111,7 +109,7 @@ export default function AttachmentViewer({
               </button>
             </div>
             <div className="flex min-h-[240px] flex-1 items-center justify-center overflow-auto rounded-xl bg-slate-100">
-              {loading && <p role="status" className="p-8 text-sm text-slate-600">Chargement de l'image…</p>}
+              {loading && <p role="status" className="p-8 text-sm text-slate-600">Chargement de l&apos;image…</p>}
               {error && <p role="alert" className="p-8 text-sm text-red-700">{error}</p>}
               {imageUrl && !loading && <img src={imageUrl} alt={active === "pjt" ? "Ticket du contrôleur" : "Photo de la quittance"} className="max-h-[82vh] max-w-full object-contain" />}
             </div>

@@ -1,12 +1,12 @@
 // Règles de paiement d'un passage (montants en centimes pour éviter les erreurs d'arrondi).
 
 // Modes acceptés pour toute NOUVELLE opération (création ou modification d'un passage).
-export const PAYMENT_METHODS = ["CASH", "MOBILE_MONEY"] as const;
+export const PAYMENT_METHODS = ["CASH", "MOBILE_MONEY", "CHECK"] as const;
 export type PaymentMethodValue = (typeof PAYMENT_METHODS)[number];
 
 // Modes qui ne peuvent plus être saisis mais restent lisibles dans l'historique, les
 // rapports et les exports (valeurs conservées dans l'enum Prisma et en base).
-export const LEGACY_PAYMENT_METHODS = ["BANK_TRANSFER", "CHECK", "OTHER"] as const;
+export const LEGACY_PAYMENT_METHODS = ["BANK_TRANSFER", "OTHER"] as const;
 export type LegacyPaymentMethodValue = (typeof LEGACY_PAYMENT_METHODS)[number];
 
 // Vrai uniquement pour un mode autorisé en saisie ; refuse les anciens modes et toute valeur inconnue.

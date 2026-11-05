@@ -99,6 +99,7 @@ model Passage {
   coli         String?   @map("coli")
   nbColi       Int?      @map("nbcoli")
   nQuittance   String?   @map("n_quittance")
+  dateQuittance DateTime? @map("date_quittance") @db.Date
   pjt          Bytes?    @map("pjt") @db.ByteA
   quittance    Bytes?    @map("quittance") @db.ByteA
   deletedAt    DateTime?

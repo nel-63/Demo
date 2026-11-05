@@ -86,7 +86,7 @@ async function Shell({ children }: { children: ReactNode }) {
           <LogoutButton variant="sidebar" compact />
         </header>
 
-        <main id="contenu" className="flex-1 p-4 pb-28 sm:p-6 sm:pb-28 md:p-10 md:pb-10">
+        <main id="contenu" className="min-w-0 flex-1 p-4 pb-28 sm:p-6 sm:pb-28 md:p-10 md:pb-10">
           {children}
         </main>
       </div>

@@ -76,13 +76,13 @@ async function LocationsContent({ searchParams }: { searchParams: Promise<Search
         </p>
       </header>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[360px_1fr]">
+      <div className="grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-[360px_minmax(0,1fr)]">
         <section className="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-5 text-xl font-semibold">Nouveau lieu</h2>
           <LocationForm />
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-5 text-xl font-semibold">Lieux enregistrés ({locations.length})</h2>
           <form method="GET" action="/dashboard/locations" className="mb-5 flex gap-2">
             <input name="q" type="search" defaultValue={q} maxLength={100} placeholder="Rechercher un lieu..." className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
@@ -92,7 +92,7 @@ async function LocationsContent({ searchParams }: { searchParams: Promise<Search
           {locations.length === 0 ? (
             <p className="text-slate-600">Aucun lieu actif ne correspond à cette recherche.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="w-full min-w-0 overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-slate-200 text-slate-600">
                   <tr>
@@ -124,7 +124,7 @@ async function LocationsContent({ searchParams }: { searchParams: Promise<Search
         </section>
       </div>
 
-      <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="mt-8 min-w-0 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-semibold">Corbeille ({deletedLocations.length})</h2>
@@ -135,7 +135,7 @@ async function LocationsContent({ searchParams }: { searchParams: Promise<Search
         {deletedLocations.length === 0 ? (
           <p className="text-slate-600">La corbeille est vide.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="w-full min-w-0 overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-slate-200 text-slate-600">
                 <tr>

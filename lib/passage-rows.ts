@@ -14,6 +14,7 @@ export const PASSAGE_ROW_SELECT = {
   coli: true,
   nbColi: true,
   nQuittance: true,
+  dateQuittance: true,
   product: { select: { name: true, type: true, tonnage: true } },
   supervisor: { select: { id: true, user: { select: { firstName: true, lastName: true } } } },
   assignedLocation: { select: { id: true, name: true } },

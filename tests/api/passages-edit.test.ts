@@ -19,6 +19,7 @@ const current = {
   assignedAt: new Date("2026-10-30T12:00:00.000Z"),
   origin: "Antsirabe",
   destination: "Toamasina",
+  dateQuittance: null,
   vehicleInfo: null,
   driverName: "Jean",
   vehicleRegistration: "1234 TAA",
@@ -49,6 +50,7 @@ const valid = {
   reference: "",
   amountDue: "45000",
   amountReceived: "50000",
+  dateQuittance: "2026-10-15",
 };
 const context = { params: Promise.resolve({ id: "pass-1" }) };
 
@@ -78,7 +80,10 @@ describe("gestion des passages par les régisseurs", () => {
     }));
     expect(db.passage.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "pass-1" },
-      data: expect.objectContaining({ origin: "Antsirabe", vehicleRegistration: "1234 TAA" }),
+      data: expect.objectContaining({
+        origin: "Antsirabe", vehicleRegistration: "1234 TAA",
+        dateQuittance: new Date("2026-10-15T00:00:00.000Z"),
+      }),
     }));
     expect(db.payment.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "payment-1" },
@@ -109,6 +114,38 @@ describe("gestion des passages par les régisseurs", () => {
     }));
   });
 
+  it("accepte de passer un paiement par chèque avec référence", async () => {
+    db.passage.findUnique
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce(current);
+    const response = await PATCH(
+      jsonRequest("/api/passages/pass-1", "PATCH", {
+        ...valid, paymentMethod: "CHECK", reference: "CHQ-9", amountReceived: "45000",
+      }),
+      context,
+    );
+    expect((await read(response)).status).toBe(200);
+    expect(db.payment.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ paymentMethod: "CHECK", reference: "CHQ-9" }),
+    }));
+  });
+
+  it.each([
+    ["sans référence", { reference: "" }],
+    ["avec un montant supérieur", { reference: "CHQ-9", amountReceived: "45001" }],
+    ["avec un montant inférieur", { reference: "CHQ-9", amountReceived: "44999" }],
+  ])("refuse un paiement par chèque %s", async (_label, fields) => {
+    const response = await PATCH(
+      jsonRequest("/api/passages/pass-1", "PATCH", {
+        ...valid, paymentMethod: "CHECK", ...fields,
+      }),
+      context,
+    );
+    expect((await read(response)).status).toBe(400);
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(db.payment.update).not.toHaveBeenCalled();
+  });
+
   it("conserve un lieu historique inchangé même s'il n'est plus actif", async () => {
     db.location.findMany.mockResolvedValue([]);
     const response = await PATCH(jsonRequest("/api/passages/pass-1", "PATCH", valid), context);
@@ -133,12 +170,33 @@ describe("gestion des passages par les régisseurs", () => {
         origin: "Point non répertorié", destination: "Quai privé",
         nomOp: "Opérateur Gamma", nomSoc: "Société Delta", coli: "Cartons",
         nbColi: 12, nQuittance: "QT-12",
+        dateQuittance: new Date("2026-10-15T00:00:00.000Z"),
       }),
     }));
     expect(db.location.findMany).not.toHaveBeenCalled();
   });
 
-  it.each(["CHECK", "BANK_TRANSFER", "OTHER", "BITCOIN"])(
+  it("refuse une date de quittance invalide à la modification", async () => {
+    const response = await PATCH(
+      jsonRequest("/api/passages/pass-1", "PATCH", { ...valid, dateQuittance: "2026-13-01" }),
+      context,
+    );
+    expect((await read(response)).status).toBe(400);
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("permet d'effacer la date de quittance", async () => {
+    const response = await PATCH(
+      jsonRequest("/api/passages/pass-1", "PATCH", { ...valid, dateQuittance: "" }),
+      context,
+    );
+    expect((await read(response)).status).toBe(200);
+    expect(db.passage.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ dateQuittance: null }),
+    }));
+  });
+
+  it.each(["BANK_TRANSFER", "OTHER", "BITCOIN"])(
     "refuse une requête forgée qui réintroduit %s à la modification",
     async (paymentMethod) => {
       const response = await PATCH(

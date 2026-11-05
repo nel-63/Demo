@@ -19,6 +19,7 @@ type Row = {
   coli: string | null;
   nbColi: number | null;
   nQuittance: string | null;
+  dateQuittance: Date | null;
   hasPjt: boolean;
   hasQuittance: boolean;
   product: { name: string; type: string; tonnage: unknown };
@@ -99,6 +100,7 @@ export default function PassagesTable({
                 <p>Colisage : {item.coli || "—"}</p>
                 <p>Nombre de colis : {item.nbColi ?? "—"}</p>
                 <p>N° quittance : {item.nQuittance || "—"}</p>
+                <p>Date quittance : {item.dateQuittance ? dateFormatter.format(item.dateQuittance) : "—"}</p>
               </td>
               <td className="px-3 py-4">
                 <AttachmentViewer passageId={item.id} hasPjt={item.hasPjt} hasQuittance={item.hasQuittance} />

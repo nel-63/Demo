@@ -112,10 +112,10 @@ export default function PassageForm() {
 
       <h3 className={sectionClass}>Trajet</h3>
 
-      <Field id="origin" label="Lieu de départ" hint="Saisissez librement le lieu de départ.">
+      <Field id="origin" label="Lieu de départ" hint="">
         <input id="origin" name="origin" type="text" required maxLength={150} placeholder="Lieu de départ" className={inputClass} />
       </Field>
-      <Field id="destination" label="Lieu d'arrivée" hint="Saisissez librement le lieu d'arrivée.">
+      <Field id="destination" label="Lieu d'arrivée" hint="">
         <input id="destination" name="destination" type="text" required maxLength={150} placeholder="Lieu d'arrivée" className={inputClass} />
       </Field>
 
@@ -152,6 +152,9 @@ export default function PassageForm() {
       </Field>
       <Field id="nQuittance" label="Numéro de quittance">
         <input id="nQuittance" name="nQuittance" maxLength={100} className={inputClass} />
+      </Field>
+      <Field id="dateQuittance" label="Date de quittance">
+        <input id="dateQuittance" name="dateQuittance" type="date" className={inputClass} />
       </Field>
       <Field id="pjt" label="Pièce jointe — ticket du contrôleur" hint="JPEG, PNG ou WebP. 5 Mo maximum.">
         <input id="pjt" name="pjt" type="file" accept="image/jpeg,image/png,image/webp" className={inputClass} />

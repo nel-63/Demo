@@ -81,13 +81,13 @@ async function SupervisorsContent({ searchParams }: { searchParams: Promise<Sear
           </p>
         </header>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[400px_1fr]">
+        <div className="grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-[400px_minmax(0,1fr)]">
           <section className="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-5 text-xl font-semibold">Nouveau régisseur</h2>
             <SupervisorForm locations={locations} />
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-semibold">
                 Régisseurs enregistrés ({supervisors.length})
@@ -104,16 +104,16 @@ async function SupervisorsContent({ searchParams }: { searchParams: Promise<Sear
             {supervisors.length === 0 ? (
               <p className="text-slate-600">Aucun régisseur enregistré.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+              <div className="table-scrollbar w-full min-w-0 overflow-x-auto">
+                <table className="w-full min-w-max text-left text-sm">
                   <thead className="border-b border-slate-200 text-slate-600">
                     <tr>
-                      <th className="px-3 py-3">Régisseur</th>
-                      <th className="px-3 py-3">Email</th>
-                      <th className="px-3 py-3">CIN</th>
-                      <th className="px-3 py-3">Lieu actuel</th>
-                      <th className="px-3 py-3">Changer l&apos;affectation</th>
-                      <th className="px-3 py-3">Compte</th>
+                      <th className="whitespace-nowrap px-3 py-3">Régisseur</th>
+                      <th className="whitespace-nowrap px-3 py-3">Email</th>
+                      <th className="whitespace-nowrap px-3 py-3">CIN</th>
+                      <th className="whitespace-nowrap px-3 py-3">Lieu actuel</th>
+                      <th className="whitespace-nowrap px-3 py-3">Changer l&apos;affectation</th>
+                      <th className="whitespace-nowrap px-3 py-3">Compte</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -124,8 +124,8 @@ async function SupervisorsContent({ searchParams }: { searchParams: Promise<Sear
                             {item.user.firstName} {item.user.lastName}
                           </Link>
                         </td>
-                        <td className="px-3 py-4">{item.user.email}</td>
-                        <td className="px-3 py-4">{item.nationalId}</td>
+                        <td className="whitespace-nowrap px-3 py-4">{item.user.email}</td>
+                        <td className="whitespace-nowrap px-3 py-4">{item.nationalId}</td>
                         <td className="px-3 py-4">
                           {item.assignedLocation?.deletedAt ? "Aucun lieu actif" : item.assignedLocation?.name ?? "Non affecté"}
                         </td>

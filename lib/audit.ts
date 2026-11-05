@@ -36,13 +36,13 @@ export const ROLE_LABELS: Record<string, string> = {
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: "Espèces",
   MOBILE_MONEY: "Mobile Money",
+  CHECK: "Chèque",
 };
 
 // Libellés des anciens modes : lecture seule (historique, détails, filtres, exports).
 export const LEGACY_PAYMENT_METHOD_LABELS: Record<string, string> = {
   BANK_TRANSFER: "Virement bancaire",
-  CHECK: "Chèque",
-  OTHER: "Autre",
+    OTHER: "Autre",
 };
 
 // Tous les libellés, pour afficher n'importe quel paiement existant.

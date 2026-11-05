@@ -1,0 +1,9 @@
+ALTER TABLE "TransportAssignment"
+    ADD COLUMN IF NOT EXISTS "pjt" BYTEA,
+    ADD COLUMN IF NOT EXISTS "quittance" BYTEA,
+    ADD COLUMN IF NOT EXISTS "nom_op" TEXT,
+    ADD COLUMN IF NOT EXISTS "nom_soc" TEXT,
+    ADD COLUMN IF NOT EXISTS "coli" TEXT,
+    ADD COLUMN IF NOT EXISTS "nbcoli" INTEGER,
+    ADD COLUMN IF NOT EXISTS "n_quittance" TEXT,
+    ADD COLUMN IF NOT EXISTS date_quittance DATE;

@@ -102,6 +102,16 @@ describe("historique lisible d'un passage", () => {
     expect(entry.changes).toContainEqual({ label: "Observations", before: "Chargement incomplet", after: "Non renseigné" });
   });
 
+  it("affiche la date de quittance dans l'historique et les résumés", () => {
+    const [entry] = buildHistory([
+      revision({
+        action: "BASELINE",
+        snapshot: snapshot({ passage: { dateQuittance: "2026-10-15" } }),
+      }),
+    ]);
+    expect(entry.details).toContainEqual({ label: "Date de quittance", value: "15 octobre 2026" });
+  });
+
   it("résume le passage supprimé et indique qui l'a supprimé", () => {
     const [entry] = buildHistory([
       revision({ action: "DELETE", snapshot: { before: snapshot(), after: snapshot({ passage: { deletedAt: "2026-11-02T09:00:00.000Z" } }) } }),

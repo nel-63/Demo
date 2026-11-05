@@ -9,6 +9,7 @@ import {
   toDecimal,
 } from "@/lib/payment-rules";
 import { readPassagePayload, AttachmentValidationError } from "@/lib/passage-attachments";
+import { parseDateOnly } from "@/lib/date-only";
 
 // Enregistre un passage ET son paiement en une seule opération :
 // pas de paiement valide, pas de passage.
@@ -63,6 +64,8 @@ export async function POST(request: Request) {
     const nbColiText = text("nbColi");
     const nbColi = nbColiText ? Number(nbColiText) : null;
     const nQuittance = text("nQuittance");
+    const dateQuittanceText = text("dateQuittance");
+    const dateQuittance = dateQuittanceText ? parseDateOnly(dateQuittanceText) : null;
     const tonnageText = text("tonnage");
     const assignedAtText = text("assignedAt");
     const method = text("paymentMethod");
@@ -96,13 +99,16 @@ export async function POST(request: Request) {
     if (nbColiText && (!/^\d{1,9}$/.test(nbColiText) || !Number.isSafeInteger(nbColi) || (nbColi as number) < 0)) {
       return NextResponse.json({ message: "Le nombre de colis doit être un entier positif ou nul." }, { status: 400 });
     }
+    if (dateQuittanceText && !dateQuittance) {
+      return NextResponse.json({ message: "Date de quittance invalide." }, { status: 400 });
+    }
 
     if (!/^\d{1,8}(?:\.\d{1,2})?$/.test(tonnageText) || Number(tonnageText) <= 0) {
       return NextResponse.json({ message: "Tonnage invalide." }, { status: 400 });
     }
 
     if (!isPaymentMethod(method)) {
-      return NextResponse.json({ message: "Mode de paiement invalide : Espèces ou Mobile Money uniquement." }, { status: 400 });
+      return NextResponse.json({ message: "Mode de paiement invalide : Espèces,Mobile Money ou Chèque uniquement." }, { status: 400 });
     }
 
     const dueCents = parseCents(dueText);
@@ -171,8 +177,9 @@ export async function POST(request: Request) {
           coli: coli || null,
           nbColi,
           nQuittance: nQuittance || null,
-          pjt: pjt ?? null,
-          quittance: quittance ?? null,
+          dateQuittance,
+          pjt: pjt ? Uint8Array.from(pjt) : null,
+          quittance: quittance == null ? null : Uint8Array.from(quittance),
           ...(assignedAt ? { assignedAt } : {}),
           payment: {
             create: {
@@ -226,6 +233,7 @@ export async function POST(request: Request) {
             coli: coli || null,
             nbColi,
             nQuittance: nQuittance || null,
+            dateQuittance: dateQuittance?.toISOString().slice(0, 10) ?? null,
             attachmentsUpdated: { pjt: Boolean(pjt), quittance: Boolean(quittance) },
           },
         },
@@ -236,7 +244,7 @@ export async function POST(request: Request) {
           userId: user.id,
           action: "CREATE",
           entityType: "Payment",
-          entityId: created.payment?.id ?? null,
+          entityId: null,
           details: {
             passageId: created.id,
             locationId,
@@ -265,7 +273,9 @@ export async function POST(request: Request) {
               driverName: driverName || null, driverLicenseNumber: driverLicenseNumber || null,
               notes: notes || null,
               nomOp: nomOp || null, nomSoc: nomSoc || null, coli: coli || null,
-              nbColi, nQuittance: nQuittance || null, deletedAt: null,
+              nbColi, nQuittance: nQuittance || null,
+              dateQuittance: dateQuittance?.toISOString().slice(0, 10) ?? null,
+              deletedAt: null,
             },
             product: {
               id: product.id, name: productName, type: productType,

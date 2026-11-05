@@ -83,7 +83,7 @@ async function AuditContent({
         </p>
       </header>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-5 text-xl font-semibold">Opérations ({total})</h2>
 
         <ListFilters

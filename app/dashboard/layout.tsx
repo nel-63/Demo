@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import LogoutButton from "./logout-button";
 import NavLinks from "./nav-links";
 
-function Brand() {
+function Brand({ subtitle }: { subtitle: string }) {
   return (
     <div className="flex items-center gap-3">
       <Image
@@ -18,7 +18,7 @@ function Brand() {
       />
       <span className="leading-tight">
         <span className="block font-semibold text-white">REGION MENABE</span>
-        <span className="block text-xs text-slate-300">Régisseur</span>
+        <span className="block text-xs text-slate-300">{subtitle}</span>
       </span>
     </div>
   );
@@ -31,7 +31,7 @@ async function Shell({ children }: { children: ReactNode }) {
   const isAdmin = user.role === "ADMIN";
   let placeName: string | null = null;
 
-  if (!isAdmin) {
+  if (user.role === "SUPERVISOR") {
     const profile = await prisma.supervisor.findUnique({
       where: { userId: user.id },
       select: { assignedLocation: { select: { name: true, deletedAt: true } } },
@@ -43,7 +43,18 @@ async function Shell({ children }: { children: ReactNode }) {
 
   const fullName = `${user.firstName} ${user.lastName}`;
   const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
-  const roleLabel = isAdmin ? "Administrateur" : placeName ? `Régisseur · ${placeName}` : "Régisseur · Aucun lieu actif";
+  const roleLabel = isAdmin
+    ? "Administrateur"
+    : user.role === "USER_MAR"
+      ? "Utilisateur maritime"
+      : placeName
+        ? `Régisseur · ${placeName}`
+        : "Régisseur · Aucun lieu actif";
+  const brandSubtitle = isAdmin
+    ? "Administration"
+    : user.role === "USER_MAR"
+      ? "Espace maritime"
+      : "Régisseur";
 
   return (
     <div className="min-h-screen md:flex">
@@ -57,7 +68,7 @@ async function Shell({ children }: { children: ReactNode }) {
       {/* Barre latérale (ordinateur) */}
       <aside className="hidden bg-slate-900 md:sticky md:top-0 md:flex md:h-screen md:w-64 md:shrink-0 md:flex-col">
         <div className="px-5 py-6">
-          <Brand />
+          <Brand subtitle={brandSubtitle} />
         </div>
         <nav aria-label="Navigation principale" className="flex-1 overflow-y-auto px-3">
           <NavLinks role={user.role} variant="sidebar" />
@@ -82,7 +93,7 @@ async function Shell({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Barre du haut (mobile) */}
         <header className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-slate-900 px-4 py-3 md:hidden">
-          <Brand />
+          <Brand subtitle={brandSubtitle} />
           <LogoutButton variant="sidebar" compact />
         </header>
 

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getTotalPages, PASSAGES_PAGE_SIZE, resolvePage } from "@/lib/pagination";
+import {
+  getTotalPages,
+  MARITIME_DECLARATIONS_PAGE_SIZE,
+  PASSAGES_PAGE_SIZE,
+  resolvePage,
+} from "@/lib/pagination";
 
 describe("resolvePage", () => {
   const total = PASSAGES_PAGE_SIZE * 2 + 1;
@@ -17,6 +22,13 @@ describe("resolvePage", () => {
 
   it("ramène une page au-delà du maximum à la dernière page", () => {
     expect(resolvePage("99", total)).toEqual({ page: 3, totalPages: 3 });
+  });
+
+  it("utilise une taille de page spécifique pour une autre liste", () => {
+    expect(resolvePage("2", 21, MARITIME_DECLARATIONS_PAGE_SIZE)).toEqual({
+      page: 2,
+      totalPages: 3,
+    });
   });
 });
 

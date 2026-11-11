@@ -34,6 +34,7 @@ async function DashboardContent() {
   if (user.role === "SUPERVISOR") {
     return <SupervisorDashboard userId={user.id} firstName={user.firstName} lastName={user.lastName} />;
   }
+  if (user.role === "USER_MAR") redirect("/dashboard/maritime");
 
   return (
     <section className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
@@ -49,7 +50,7 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
     prisma.location.count({ where: { deletedAt: null } }),
     prisma.passage.count({ where: { deletedAt: null, assignedLocation: { is: { deletedAt: null } } } }),
     prisma.product.aggregate({ where: { deletedAt: null, passage: { is: { deletedAt: null, assignedLocation: { is: { deletedAt: null } } } } }, _sum: { tonnage: true } }),
-    prisma.payment.aggregate({ where: { deletedAt: null, passage: { is: { deletedAt: null, assignedLocation: { is: { deletedAt: null } } } } }, _sum: { amountReceived: true, changeReturned: true } }),
+    prisma.payment.aggregate({ where: { deletedAt: null, passage: { is: { deletedAt: null, assignedLocation: { is: { deletedAt: null } } } } }, _sum: { amountDue: true } }),
   ]);
 
   return (
@@ -67,8 +68,7 @@ async function AdminDashboard({ firstName, lastName }: { firstName: string; last
         <StatCard label="Régisseurs" value={supervisors} description="Chacun travaille sur un lieu" kind="supervisors" />
         <StatCard label="Passages" value={passages} description="Produits passés, tous lieux confondus" kind="passages" />
         <StatCard label="Tonnage cumulé" value={tonnageText(tonnage._sum.tonnage)} description="Total des produits passés" kind="tonnage" />
-        <StatCard label="Montant reçu" value={formatMGA(payments._sum.amountReceived)} description="Total encaissé" kind="received" />
-        <StatCard label="Monnaie rendue" value={formatMGA(payments._sum.changeReturned)} description="Total rendu en espèces" kind="change" />
+        <StatCard label="Montant payé" value={formatMGA(payments._sum.amountDue)} description="Total des paiements" kind="paid" />
       </div>
 
       <LocationStats />
@@ -109,7 +109,7 @@ async function SupervisorDashboard({
     }),
     prisma.payment.aggregate({
       where: { deletedAt: null, passage: { is: { locationId, deletedAt: null } } },
-      _sum: { amountReceived: true, changeReturned: true },
+      _sum: { amountDue: true },
     }),
     prisma.passage.findMany({
       where: { locationId, deletedAt: null },
@@ -149,8 +149,7 @@ async function SupervisorDashboard({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Passages du lieu" value={passages} description="Produits passés par ce lieu" kind="passages" />
         <StatCard label="Tonnage cumulé" value={tonnageText(tonnage._sum.tonnage)} description="Total des produits passés" kind="tonnage" />
-        <StatCard label="Montant reçu" value={formatMGA(payments._sum.amountReceived)} description="Total encaissé pour le lieu" kind="received" />
-        <StatCard label="Monnaie rendue" value={formatMGA(payments._sum.changeReturned)} description="Total rendu en espèces" kind="change" />
+        <StatCard label="Montant payé" value={formatMGA(payments._sum.amountDue)} description="Total des paiements pour le lieu" kind="paid" />
       </div>
 
       <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

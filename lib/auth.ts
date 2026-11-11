@@ -1,9 +1,20 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import type { UserRole } from "@/app/generated/prisma/client";
 
 const COOKIE_NAME = "caisse_session";
 const SESSION_DURATION = 8 * 60 * 60;
+
+export type CurrentUser = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: UserRole;
+  designation: string | null;
+  isActive: boolean;
+};
 
 function getSecret(): Uint8Array {
   const secret = process.env.JWT_SECRET;
@@ -53,7 +64,7 @@ export async function endSession() {
   }
 }
 
-export async function getCurrentUser() {
+export async function getCurrentUser(): Promise<CurrentUser | null> {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get(COOKIE_NAME)?.value;

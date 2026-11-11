@@ -11,7 +11,7 @@ export const AUDIT_SELECT = {
 } as const;
 
 // Charge des lignes du journal et complète les anciens logs de paiement
-// (créés avant que le montant soit écrit dans les détails) en relisant le paiement lui-même,
+// en relisant le montant dû sur le paiement lui-même,
 // qui n'est jamais modifié après création.
 export async function fetchAuditRows(args: { where: object; skip?: number; take: number; includeDeletedLocations?: boolean }) {
   const [logs, locations] = await Promise.all([
@@ -32,7 +32,7 @@ export async function fetchAuditRows(args: { where: object; skip?: number; take:
         log.entityType === "Payment" &&
         log.action === "CREATE" &&
         log.entityId &&
-        details?.amountReceived === undefined
+        details?.amountDue === undefined
       );
     })
     .map((log) => log.entityId as string);
@@ -44,8 +44,6 @@ export async function fetchAuditRows(args: { where: object; skip?: number; take:
           select: {
             id: true,
             amountDue: true,
-            amountReceived: true,
-            changeReturned: true,
             paymentMethod: true,
             reference: true,
           },
@@ -65,8 +63,6 @@ export async function fetchAuditRows(args: { where: object; skip?: number; take:
         ? {
             ...base,
             amountDue: String(legacy.amountDue),
-            amountReceived: String(legacy.amountReceived),
-            changeReturned: String(legacy.changeReturned),
             paymentMethod: legacy.paymentMethod,
             reference: legacy.reference,
           }

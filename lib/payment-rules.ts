@@ -1,4 +1,4 @@
-// Règles de paiement d'un passage (montants en centimes pour éviter les erreurs d'arrondi).
+// Règles de paiement d'un passage.
 
 // Modes acceptés pour toute NOUVELLE opération (création ou modification d'un passage).
 export const PAYMENT_METHODS = ["CASH", "MOBILE_MONEY", "CHECK"] as const;
@@ -25,25 +25,14 @@ export function toDecimal(cents: number): string {
   return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
 }
 
-export type PaymentCheck =
-  | { ok: true; changeCents: number }
-  | { ok: false; error: "INSUFFICIENT" | "EXACT_REQUIRED" };
+export type PaymentCheck = { ok: true } | { ok: false; error: "REFERENCE_REQUIRED" };
 
-// Espèces : le montant reçu couvre au moins le montant dû, la monnaie est rendue.
-// Mobile Money : montant exact et référence obligatoire. Jamais de paiement partiel.
 export function checkPayment(input: {
   method: PaymentMethodValue;
   reference: string;
-  dueCents: number;
-  receivedCents: number;
 }): PaymentCheck {
-  if (input.method === "CASH") {
-    if (input.receivedCents < input.dueCents) return { ok: false, error: "INSUFFICIENT" };
-    return { ok: true, changeCents: input.receivedCents - input.dueCents };
+  if (input.method !== "CASH" && !input.reference) {
+    return { ok: false, error: "REFERENCE_REQUIRED" };
   }
-
-  if (!input.reference || input.receivedCents !== input.dueCents) {
-    return { ok: false, error: "EXACT_REQUIRED" };
-  }
-  return { ok: true, changeCents: 0 };
+  return { ok: true };
 }

@@ -55,7 +55,7 @@ export default function AuditTable({
                     </p>
                   </td>
                 )}
-                <td className="px-3 py-4">{actionLabel(log.action)}</td>
+                <td className="px-3 py-4">{actionLabel(log.action, log.entityType)}</td>
                 <td className="px-3 py-4">
                   <p>{entityLabel(log.entityType)}</p>
                   {log.entityId && (

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { buildHistory, type RawRevision } from "@/lib/passage-history";
-import { formatMGA } from "@/lib/audit";
 
 const actor = { firstName: "Rina", lastName: "Rakoto" };
 
@@ -10,12 +9,10 @@ const snapshot = (over: { passage?: object; product?: object; payment?: object |
     assignedAt: "2026-10-29T12:00:00.000Z",
     origin: "Antsirabe",
     destination: "Toamasina",
-    vehicleInfo: null,
     driverName: "Jean",
     vehicleRegistration: "1234 TAA",
     vehicleCharacteristics: "Camion benne blanc",
     driverLicenseNumber: "P-998877",
-    notes: null,
     deletedAt: null,
     ...over.passage,
   },
@@ -25,7 +22,7 @@ const snapshot = (over: { passage?: object; product?: object; payment?: object |
       ? null
       : {
           id: "pay-1", paymentMethod: "CASH", reference: null,
-          amountDue: "40000.00", amountReceived: "50000.00", changeReturned: "10000.00", deletedAt: null,
+          amountDue: "40000.00", deletedAt: null,
           ...over.payment,
         },
 });
@@ -54,7 +51,7 @@ describe("historique lisible d'un passage", () => {
           before: snapshot(),
           after: snapshot({
             product: { tonnage: "9.00" },
-            payment: { paymentMethod: "BANK_TRANSFER", reference: "VIR-1", amountReceived: "40000.00", changeReturned: "0.00" },
+            payment: { paymentMethod: "BANK_TRANSFER", reference: "VIR-1" },
           }),
         },
       }),
@@ -64,8 +61,6 @@ describe("historique lisible d'un passage", () => {
       { label: "Tonnage", before: "8,5 t", after: "9 t" },
       { label: "Mode de paiement", before: "Espèces", after: "Virement bancaire" },
       { label: "Référence du paiement", before: "Non renseigné", after: "VIR-1" },
-      { label: "Montant reçu", before: formatMGA(50000), after: formatMGA(40000) },
-      { label: "Monnaie rendue", before: formatMGA(10000), after: formatMGA(0) },
     ]);
   });
 
@@ -73,8 +68,8 @@ describe("historique lisible d'un passage", () => {
     const [entry] = buildHistory([
       revision({
         snapshot: {
-          before: snapshot({ payment: { paymentMethod: "CHECK", reference: "CHQ-1", amountReceived: "50000.00", changeReturned: "10000.00" } }),
-          after: snapshot({ payment: { paymentMethod: "OTHER", reference: "CHQ-1", amountReceived: "50000.00", changeReturned: "10000.00" } }),
+          before: snapshot({ payment: { paymentMethod: "CHECK", reference: "CHQ-1" } }),
+          after: snapshot({ payment: { paymentMethod: "OTHER", reference: "CHQ-1" } }),
         },
       }),
     ]);
@@ -88,18 +83,37 @@ describe("historique lisible d'un passage", () => {
     expect(entry.changes).toEqual([]);
   });
 
-  it("formate la date du passage et les champs vides", () => {
+  it("formate la date du passage", () => {
     const [entry] = buildHistory([
       revision({
         snapshot: {
-          before: snapshot({ passage: { notes: "Chargement incomplet" } }),
-          after: snapshot({ passage: { assignedAt: "2026-10-30T12:00:00.000Z", notes: null } }),
+          before: snapshot(),
+          after: snapshot({ passage: { assignedAt: "2026-10-30T12:00:00.000Z" } }),
         },
       }),
     ]);
 
     expect(entry.changes).toContainEqual({ label: "Date du passage", before: "29 octobre 2026", after: "30 octobre 2026" });
-    expect(entry.changes).toContainEqual({ label: "Observations", before: "Chargement incomplet", after: "Non renseigné" });
+  });
+
+  it("ignore les champs retirés des anciennes révisions", () => {
+    const [entry] = buildHistory([
+      revision({
+        snapshot: {
+          before: snapshot({
+            passage: { vehicleInfo: "Ancienne description", notes: "Ancienne observation" },
+            payment: { amountReceived: "50000.00", changeReturned: "10000.00" },
+          }),
+          after: snapshot({
+            passage: { vehicleInfo: null, notes: null },
+            payment: { amountReceived: "40000.00", changeReturned: "0.00" },
+          }),
+        },
+      }),
+    ]);
+
+    expect(entry.changes).toEqual([]);
+    expect(JSON.stringify(entry)).not.toContain("Ancienne");
   });
 
   it("affiche la date de quittance dans l'historique et les résumés", () => {

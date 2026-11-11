@@ -9,6 +9,9 @@ import { POST as locationsPost } from "@/app/api/locations/route";
 import { POST as supervisorsPost } from "@/app/api/supervisors/route";
 import { PATCH as supervisorsPatch } from "@/app/api/supervisors/[id]/route";
 import { POST as supervisorsPassword } from "@/app/api/supervisors/[id]/password/route";
+import { GET as maritimeUsersGet, POST as maritimeUsersPost } from "@/app/api/maritime-users/route";
+import { DELETE as maritimeUserDelete, PATCH as maritimeUserPatch } from "@/app/api/maritime-users/[id]/route";
+import { POST as maritimeUserPassword } from "@/app/api/maritime-users/[id]/password/route";
 import { GET as dbTest } from "@/app/api/db-test/route";
 import { GET as detailsGet } from "@/app/api/details/[kind]/route";
 
@@ -37,6 +40,11 @@ const adminRoutes: Array<[string, Call]> = [
   ["POST /api/supervisors", () => supervisorsPost(post("/api/supervisors"))],
   ["PATCH /api/supervisors/[id]", () => supervisorsPatch(patch("/api/supervisors/x"), params())],
   ["POST /api/supervisors/[id]/password", () => supervisorsPassword(post("/api/supervisors/x/password"), params())],
+  ["GET /api/maritime-users", () => maritimeUsersGet(new Request("http://localhost/api/maritime-users"))],
+  ["POST /api/maritime-users", () => maritimeUsersPost(post("/api/maritime-users"))],
+  ["PATCH /api/maritime-users/[id]", () => maritimeUserPatch(patch("/api/maritime-users/x"), params())],
+  ["DELETE /api/maritime-users/[id]", () => maritimeUserDelete(new Request("http://localhost", { method: "DELETE" }), params())],
+  ["POST /api/maritime-users/[id]/password", () => maritimeUserPassword(post("/api/maritime-users/x/password"), params())],
   ["GET /api/db-test", () => dbTest()],
 ];
 
@@ -92,8 +100,8 @@ describe("un régisseur n'accède pas à l'administration", () => {
   });
 });
 
-describe("rôles non prévus (CASHIER, MANAGER, ANALYST)", () => {
-  it.each(["CASHIER", "MANAGER", "ANALYST"] as const)(
+describe("rôles non prévus (USER_MAR, CASHIER, MANAGER, ANALYST)", () => {
+  it.each(["USER_MAR", "CASHIER", "MANAGER", "ANALYST"] as const)(
     "%s est refusé partout",
     async (role) => {
       vi.mocked(getCurrentUser).mockResolvedValue({ ...SUPERVISOR, role });

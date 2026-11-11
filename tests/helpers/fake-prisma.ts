@@ -6,6 +6,9 @@ import { vi, type Mock } from "vitest";
 const MODELS = [
   "user",
   "supervisor",
+  "maritimeUser",
+  "maritimeDeclaration",
+  "maritimeDeclarationProduct",
   "location",
   "product",
   "passage",
@@ -17,11 +20,13 @@ const MODELS = [
 
 const METHODS = [
   "findUnique",
+  "findUniqueOrThrow",
   "findFirst",
   "findMany",
   "create",
   "update",
   "deleteMany",
+  "delete",
   "count",
 ] as const;
 

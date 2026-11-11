@@ -12,8 +12,10 @@ type Row = {
   assignedAt: Date;
   origin: string;
   destination: string;
-  vehicleInfo: string | null;
-  driverName: string | null;
+  vehicleRegistration: string;
+  vehicleCharacteristics: string;
+  driverName: string;
+  driverLicenseNumber: string;
   nomOp: string | null;
   nomSoc: string | null;
   coli: string | null;
@@ -85,10 +87,12 @@ export default function PassagesTable({
               )}
               <td className="px-3 py-4">{item.destination}</td>
               <td className="px-3 py-4">
-                {item.vehicleInfo || item.driverName ? (
+                {item.vehicleRegistration || item.vehicleCharacteristics || item.driverName || item.driverLicenseNumber ? (
                   <>
-                    {item.vehicleInfo && <p>{item.vehicleInfo}</p>}
-                    {item.driverName && <p className="text-xs text-slate-700">{item.driverName}</p>}
+                    <p>{item.vehicleRegistration}</p>
+                    <p>{item.vehicleCharacteristics}</p>
+                    <p className="text-xs text-slate-700">{item.driverName}</p>
+                    <p className="text-xs text-slate-700">{item.driverLicenseNumber}</p>
                   </>
                 ) : (
                   <span className="text-slate-600">—</span>

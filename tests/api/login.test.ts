@@ -58,6 +58,15 @@ describe("connexion réussie", () => {
     expect(db.loginFailure.deleteMany).toHaveBeenCalled();
     expect(JSON.stringify(body)).not.toContain("passwordHash");
   });
+
+  it("authentifie un utilisateur maritime avec le même mécanisme de session", async () => {
+    db.user.findUnique.mockResolvedValue(user({ role: "USER_MAR" }));
+    const { status, body } = await read(await attempt("rina@test.mg", PASSWORD));
+
+    expect(status).toBe(200);
+    expect((body.user as { role: string }).role).toBe("USER_MAR");
+    expect(createSession).toHaveBeenCalledWith({ id: "u1", sessionVersion: 3 });
+  });
 });
 
 describe("erreurs de connexion", () => {
@@ -84,6 +93,23 @@ describe("erreurs de connexion", () => {
 
   it("refuse un compte désactivé même avec le bon mot de passe", async () => {
     db.user.findUnique.mockResolvedValue(user({ isActive: false }));
+    const { status } = await read(await attempt("rina@test.mg", PASSWORD));
+
+    expect(status).toBe(401);
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it("refuse un mauvais mot de passe pour un utilisateur maritime et enregistre l'échec", async () => {
+    db.user.findUnique.mockResolvedValue(user({ role: "USER_MAR" }));
+    const { status } = await read(await attempt("rina@test.mg", "mot-de-passe-incorrect"));
+
+    expect(status).toBe(401);
+    expect(db.loginFailure.create).toHaveBeenCalledTimes(1);
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it("refuse un compte maritime désactivé", async () => {
+    db.user.findUnique.mockResolvedValue(user({ role: "USER_MAR", isActive: false }));
     const { status } = await read(await attempt("rina@test.mg", PASSWORD));
 
     expect(status).toBe(401);

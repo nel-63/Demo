@@ -101,7 +101,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
         OR: [
           { product: { name: has(word) } }, { product: { type: has(word) } },
           { origin: has(word) }, { destination: has(word) },
-          { vehicleInfo: has(word) }, { vehicleRegistration: has(word) },
+          { vehicleRegistration: has(word) },
           { vehicleCharacteristics: has(word) }, { driverName: has(word) },
           { driverLicenseNumber: has(word) },
           { supervisor: { user: { lastName: has(word) } } },
@@ -120,12 +120,12 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
     orderBy: [{ assignedAt: "desc" }, { id: "desc" }],
     select: {
       id: true, assignedAt: true, origin: true, destination: true,
-      vehicleInfo: true, vehicleRegistration: true, vehicleCharacteristics: true,
-      driverName: true, driverLicenseNumber: true, notes: true, deletedAt: true,
+      vehicleRegistration: true, vehicleCharacteristics: true,
+      driverName: true, driverLicenseNumber: true, deletedAt: true,
       nomOp: true, nomSoc: true, coli: true, nbColi: true, nQuittance: true, dateQuittance: true,
       product: { select: { name: true, type: true, tonnage: true } },
       supervisor: { select: { user: { select: { firstName: true, lastName: true } } } },
-      payment: { select: { paymentMethod: true, reference: true, amountDue: true, amountReceived: true, changeReturned: true } },
+      payment: { select: { paymentMethod: true, reference: true, amountDue: true } },
     },
   });
   const passages = await addAttachmentFlags(passageRows);
@@ -185,8 +185,7 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
               {passages.map((item) => {
                 const style = item.payment ? (METHOD_STYLE[item.payment.paymentMethod] ?? LEGACY_STYLE) : LEGACY_STYLE;
                 const methodLabel = item.payment ? (ALL_PAYMENT_METHOD_LABELS[item.payment.paymentMethod] ?? item.payment.paymentMethod) : null;
-                const vehicle = item.vehicleCharacteristics || item.vehicleInfo;
-                const hasChange = item.payment ? Number(item.payment.changeReturned) > 0 : false;
+                const vehicle = item.vehicleCharacteristics;
                 const canAct = (isAdmin || isSupervisor) && !deleted && Boolean(item.payment);
                 return (
                   <li key={item.id}>
@@ -247,17 +246,9 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
                           ["Date de quittance", item.dateQuittance ? dateFormatter.format(item.dateQuittance) : null],
                         ]} />
                         <InfoGroup title="Paiement" rows={[
-                          ["Montant dû", item.payment ? formatMGA(item.payment.amountDue) : null],
-                          ["Montant reçu", item.payment ? formatMGA(item.payment.amountReceived) : null],
-                          ["Monnaie rendue", item.payment && hasChange ? formatMGA(item.payment.changeReturned) : null],
+                          ["Montant payé", item.payment ? formatMGA(item.payment.amountDue) : null],
                         ]} />
                       </div>
-
-                      {item.notes && (
-                        <p className="mx-5 mb-5 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                          <span className="font-semibold">Observations : </span>{item.notes}
-                        </p>
-                      )}
 
                       {/* Pied de fiche : pièces jointes, régisseur, suppression */}
                       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-slate-100 bg-slate-50/70 px-5 py-3.5">
@@ -279,13 +270,13 @@ async function PassagesContent({ searchParams }: { searchParams: Promise<SearchP
                           <div className="max-w-xl">
                             <PassageActions canManage={isSupervisor} initial={{
                               id: item.id, assignedAt: item.assignedAt.toISOString().slice(0, 10), origin: item.origin, destination: item.destination,
-                              vehicleInfo: item.vehicleInfo, vehicleRegistration: item.vehicleRegistration,
+                              vehicleRegistration: item.vehicleRegistration,
                               vehicleCharacteristics: item.vehicleCharacteristics, driverName: item.driverName,
-                              driverLicenseNumber: item.driverLicenseNumber, notes: item.notes,
+                              driverLicenseNumber: item.driverLicenseNumber,
                               nomOp: item.nomOp, nomSoc: item.nomSoc, coli: item.coli, nbColi: item.nbColi, nQuittance: item.nQuittance,
                               dateQuittance: item.dateQuittance?.toISOString().slice(0, 10) ?? null,
                               product: { name: item.product.name, type: item.product.type, tonnage: String(item.product.tonnage) },
-                              payment: { paymentMethod: item.payment.paymentMethod as keyof typeof ALL_PAYMENT_METHOD_LABELS, reference: item.payment.reference, amountDue: String(item.payment.amountDue), amountReceived: String(item.payment.amountReceived) },
+                              payment: { paymentMethod: item.payment.paymentMethod as keyof typeof ALL_PAYMENT_METHOD_LABELS, reference: item.payment.reference, amountDue: String(item.payment.amountDue) },
                             }}/>
                           </div>
                         </div>

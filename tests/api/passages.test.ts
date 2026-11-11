@@ -19,9 +19,12 @@ const valid = {
   tonnage: "8.5",
   origin: "Antsirabe",
   destination: "Toamasina",
+  vehicleRegistration: "1234 TAA",
+  vehicleCharacteristics: "Camion benne blanc",
+  driverName: "Jean Rakoto",
+  driverLicenseNumber: "PER-123",
   amountDue: "40000",
   paymentMethod: "CASH",
-  amountReceived: "40000",
 };
 
 const send = (body: Record<string, unknown>) =>
@@ -77,8 +80,8 @@ describe("accès", () => {
 });
 
 describe("un passage n'existe qu'avec son paiement", () => {
-  it("espèces avec monnaie : tout est créé ensemble", async () => {
-    const { status } = await read(await send({ amountReceived: "50000" }));
+  it("utilise uniquement le montant à payer", async () => {
+    const { status } = await read(await send({ amountDue: "50000" }));
 
     expect(status).toBe(201);
     expect(db.$transaction).toHaveBeenCalledTimes(1);
@@ -92,9 +95,7 @@ describe("un passage n'existe qu'avec son paiement", () => {
         create: {
           recordedById: SUPERVISOR.id,
           paymentMethod: "CASH",
-          amountDue: "40000.00",
-          amountReceived: "50000.00",
-          changeReturned: "10000.00",
+          amountDue: "50000.00",
         },
       },
     });
@@ -169,21 +170,21 @@ describe("un passage n'existe qu'avec son paiement", () => {
 
   it("Mobile Money exact avec référence", async () => {
     const { status } = await read(
-      await send({ paymentMethod: "MOBILE_MONEY", reference: "MVOLA-1", amountReceived: "40000" }),
+      await send({ paymentMethod: "MOBILE_MONEY", reference: "MVOLA-1" }),
     );
     expect(status).toBe(201);
     expect(created().payment).toMatchObject({
-      create: { paymentMethod: "MOBILE_MONEY", reference: "MVOLA-1", changeReturned: "0.00" },
+      create: { paymentMethod: "MOBILE_MONEY", reference: "MVOLA-1", amountDue: "40000.00" },
     });
   });
 
   it("accepte un chèque avec montant exact et référence", async () => {
     const { status } = await read(
-      await send({ paymentMethod: "CHECK", reference: "CHQ-1", amountReceived: "40000" }),
+      await send({ paymentMethod: "CHECK", reference: "CHQ-1" }),
     );
     expect(status).toBe(201);
     expect(created().payment).toMatchObject({
-      create: { paymentMethod: "CHECK", reference: "CHQ-1", changeReturned: "0.00" },
+      create: { paymentMethod: "CHECK", reference: "CHQ-1", amountDue: "40000.00" },
     });
   });
 
@@ -195,20 +196,15 @@ describe("un passage n'existe qu'avec son paiement", () => {
     ["casse différente", "cash"],
   ])("refuse côté serveur un nouveau paiement par %s", async (_label, paymentMethod) => {
     const { status } = await read(
-      await send({ paymentMethod, reference: "REF-1", amountReceived: "40000" }),
+      await send({ paymentMethod, reference: "REF-1" }),
     );
     expect(status).toBe(400);
     nothingWritten();
   });
 
   it.each([
-    ["espèces insuffisantes", { amountReceived: "39999.99" }],
-    ["Mobile Money sans référence", { paymentMethod: "MOBILE_MONEY", amountReceived: "40000" }],
-    ["Mobile Money supérieur au montant", { paymentMethod: "MOBILE_MONEY", reference: "R", amountReceived: "40001" }],
-    ["Mobile Money inférieur au montant", { paymentMethod: "MOBILE_MONEY", reference: "R", amountReceived: "30000" }],
-    ["chèque sans référence", { paymentMethod: "CHECK", amountReceived: "40000" }],
-    ["chèque supérieur au montant", { paymentMethod: "CHECK", reference: "CHQ-1", amountReceived: "40001" }],
-    ["chèque inférieur au montant", { paymentMethod: "CHECK", reference: "CHQ-1", amountReceived: "39999" }],
+    ["Mobile Money sans référence", { paymentMethod: "MOBILE_MONEY" }],
+    ["chèque sans référence", { paymentMethod: "CHECK" }],
   ])("sans paiement valide, pas de passage : %s", async (_label, body) => {
     const { status } = await read(await send(body));
     expect(status).toBe(400);
@@ -237,9 +233,8 @@ describe("validation", () => {
     ["tonnage nul", { tonnage: "0" }],
     ["tonnage négatif", { tonnage: "-2" }],
     ["tonnage non numérique", { tonnage: "beaucoup" }],
-    ["montant à payer nul", { amountDue: "0", amountReceived: "0" }],
+    ["montant à payer nul", { amountDue: "0" }],
     ["montant à payer à 3 décimales", { amountDue: "10.123" }],
-    ["montant reçu absent", { amountReceived: "" }],
     ["mode inconnu", { paymentMethod: "BITCOIN" }],
     ["date invalide", { assignedAt: "2026-02-31" }],
     ["format de date invalide", { assignedAt: "29/10/2026" }],
@@ -270,22 +265,11 @@ describe("validation", () => {
     nothingWritten();
   });
 
-  it("véhicule et chauffeur sont facultatifs", async () => {
-    await send({});
-    expect(created()).toMatchObject({ vehicleInfo: null, driverName: null });
-
-    resetFakePrisma(db);
-    vi.mocked(getCurrentUser).mockResolvedValue(SUPERVISOR);
-    db.supervisor.findUnique.mockResolvedValue({
-      id: "sup-1",
-      locationId: "loc-1",
-      assignedLocation: { deletedAt: null },
-    });
-    db.location.findMany.mockResolvedValue([{ name: "Antsirabe" }, { name: "Toamasina" }]);
-    db.product.create.mockResolvedValue({ id: "prod-2" });
-    db.passage.create.mockResolvedValue({ id: "p", assignedAt: new Date(), product: { tonnage: "1" }, payment: null });
-    await send({ vehicleInfo: " Camion benne blanc ", driverName: " Jean " });
-    expect(created()).toMatchObject({ vehicleInfo: "Camion benne blanc", driverName: "Jean" });
+  it("refuse les champs véhicule/chauffeur absents ou vides", async () => {
+    for (const field of ["vehicleRegistration", "vehicleCharacteristics", "driverName", "driverLicenseNumber"]) {
+      expect((await read(await send({ [field]: " " }))).status).toBe(400);
+      nothingWritten();
+    }
   });
 
   it("conserve les données du véhicule et du chauffeur dans le passage et sa première version", async () => {
@@ -338,7 +322,7 @@ describe("validation", () => {
 
 describe("traçabilité", () => {
   it("journalise le passage (trajet) et le paiement (montants, mode)", async () => {
-    await send({ amountReceived: "50000" });
+    await send({ amountDue: "50000" });
 
     const entries = auditEntries(db);
     expect(entries.map((e) => `${e.action} ${e.entityType}`)).toEqual(["CREATE Passage", "CREATE Payment"]);
@@ -350,9 +334,7 @@ describe("traçabilité", () => {
     expect(entries[1].details).toMatchObject({
       passageId: "pas-1",
       paymentMethod: "CASH",
-      amountDue: "40000.00",
-      amountReceived: "50000.00",
-      changeReturned: "10000.00",
+      amountDue: "50000.00",
     });
   });
 });

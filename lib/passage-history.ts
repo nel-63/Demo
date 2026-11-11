@@ -31,7 +31,7 @@ type Group = "passage" | "product" | "payment";
 type Kind = "text" | "date" | "tonnage" | "money" | "method";
 type Field = { group: Group; key: string; label: string; kind: Kind };
 
-// L'ordre est celui du formulaire : produit, trajet, véhicule et chauffeur, paiement, observations.
+// L'ordre suit les informations encore présentes dans le formulaire.
 const FIELDS: Field[] = [
   { group: "product", key: "name", label: "Nom du produit", kind: "text" },
   { group: "product", key: "type", label: "Type de produit", kind: "text" },
@@ -43,15 +43,11 @@ const FIELDS: Field[] = [
   { group: "passage", key: "dateQuittance", label: "Date de quittance", kind: "date" },
   { group: "passage", key: "vehicleRegistration", label: "Immatriculation du véhicule", kind: "text" },
   { group: "passage", key: "vehicleCharacteristics", label: "Caractéristiques du véhicule", kind: "text" },
-  { group: "passage", key: "vehicleInfo", label: "Autres informations sur le véhicule", kind: "text" },
   { group: "passage", key: "driverName", label: "Chauffeur", kind: "text" },
   { group: "passage", key: "driverLicenseNumber", label: "N° de permis du chauffeur", kind: "text" },
   { group: "payment", key: "paymentMethod", label: "Mode de paiement", kind: "method" },
   { group: "payment", key: "reference", label: "Référence du paiement", kind: "text" },
   { group: "payment", key: "amountDue", label: "Montant à payer", kind: "money" },
-  { group: "payment", key: "amountReceived", label: "Montant reçu", kind: "money" },
-  { group: "payment", key: "changeReturned", label: "Monnaie rendue", kind: "money" },
-  { group: "passage", key: "notes", label: "Observations", kind: "text" },
 ];
 
 // Champs affichés dans le résumé d'un passage (état d'origine, suppression).

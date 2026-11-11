@@ -62,7 +62,7 @@ async function SupervisorSheet({ params, searchParams }: Props) {
     prisma.product.aggregate({ where: { deletedAt: null, passage: { is: { supervisorId: id, deletedAt: null, assignedLocation: { is: { deletedAt: null } } } } }, _sum: { tonnage: true } }),
     prisma.payment.aggregate({
       where: { deletedAt: null, passage: { is: { supervisorId: id, deletedAt: null, assignedLocation: { is: { deletedAt: null } } } } },
-      _sum: { amountReceived: true },
+      _sum: { amountDue: true },
     }),
   ]);
 
@@ -115,7 +115,7 @@ async function SupervisorSheet({ params, searchParams }: Props) {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Stat label="Passages enregistrés" value={total} />
         <Stat label="Tonnage cumulé" value={`${Number(tonnage._sum.tonnage ?? 0).toLocaleString("fr-FR")} t`} />
-        <Stat label="Montant reçu" value={formatMGA(payments._sum.amountReceived ?? 0)} />
+        <Stat label="Montant payé" value={formatMGA(payments._sum.amountDue ?? 0)} />
       </div>
 
       <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

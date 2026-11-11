@@ -22,14 +22,14 @@ export default async function LocationStats() {
         }),
         prisma.payment.aggregate({
           where: { deletedAt: null, passage: { is: { locationId: location.id, deletedAt: null } } },
-          _sum: { amountReceived: true },
+          _sum: { amountDue: true },
         }),
       ]);
 
       return {
         ...location,
         tonnage: tonnage._sum.tonnage,
-        amountReceived: payments._sum.amountReceived,
+        amountPaid: payments._sum.amountDue,
       };
     }),
   );
@@ -52,7 +52,7 @@ export default async function LocationStats() {
                 <th className="px-3 py-3 text-right font-medium">Régisseurs</th>
                 <th className="px-3 py-3 text-right font-medium">Passages</th>
                 <th className="px-3 py-3 text-right font-medium">Tonnage</th>
-                <th className="px-3 py-3 text-right font-medium">Montant reçu</th>
+                <th className="px-3 py-3 text-right font-medium">Montant payé</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -69,7 +69,7 @@ export default async function LocationStats() {
                     {Number(location.tonnage ?? 0).toLocaleString("fr-FR")} t
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-right font-medium">
-                    {formatMGA(location.amountReceived ?? 0)}
+                    {formatMGA(location.amountPaid ?? 0)}
                   </td>
                 </tr>
               ))}

@@ -22,8 +22,8 @@ async function call(kind: string, query = "") {
 
 async function addPassage(opts: {
   side: "A" | "B"; name: string; tonnage: string; origin: string; destination: string;
-  due: string; received: string; change: string; method?: "CASH" | "BANK_TRANSFER" | "MOBILE_MONEY"; reference?: string;
-  vehicleInfo?: string;
+  due: string; method?: "CASH" | "BANK_TRANSFER" | "MOBILE_MONEY"; reference?: string;
+  vehicleCharacteristics?: string;
 }) {
   const a = opts.side === "A";
   const supervisor = a ? w.supA1 : w.supB;
@@ -36,22 +36,23 @@ async function addPassage(opts: {
       locationId: a ? w.locA.id : w.locB.id,
       origin: opts.origin,
       destination: opts.destination,
-      vehicleInfo: opts.vehicleInfo ?? null,
+      vehicleRegistration: "1234 TAA",
+      vehicleCharacteristics: opts.vehicleCharacteristics ?? "Camion benne",
+      driverName: "Jean",
+      driverLicenseNumber: "PER-123",
       payment: {
         create: {
           recordedById: supervisor.user.id,
           paymentMethod: opts.method ?? "CASH",
           reference: opts.reference ?? null,
           amountDue: opts.due,
-          amountReceived: opts.received,
-          changeReturned: opts.change,
         },
       },
     },
   });
 }
 
-// Lieu A (Tana) : Riz 2,5 t (50 000 reçus pour 40 000), Ciment 3 t (30 000), Farine 1,5 t (25 000 virement)
+// Lieu A (Tana) : Riz 2,5 t (40 000), Ciment 3 t (30 000), Farine 1,5 t (25 000 virement)
 // Lieu B (Tamatave) : Sucre 6 t (70 000 mobile money)
 beforeAll(() => assertTestDatabase());
 afterAll(() => prisma.$disconnect());
@@ -59,10 +60,10 @@ afterAll(() => prisma.$disconnect());
 beforeEach(async () => {
   await resetDatabase();
   w = await seed();
-  await addPassage({ side: "A", name: "Riz", tonnage: "2.5", origin: "Antsirabe", destination: "Toamasina", due: "40000", received: "50000", change: "10000", vehicleInfo: "Camion blanc" });
-  await addPassage({ side: "A", name: "Ciment", tonnage: "3", origin: "Moramanga", destination: "Tana", due: "30000", received: "30000", change: "0" });
-  await addPassage({ side: "A", name: "Farine", tonnage: "1.5", origin: "Ambatolampy", destination: "Mahajanga", due: "25000", received: "25000", change: "0", method: "BANK_TRANSFER", reference: "VIR-1" });
-  await addPassage({ side: "B", name: "Sucre", tonnage: "6", origin: "Brickaville", destination: "Tana", due: "70000", received: "70000", change: "0", method: "MOBILE_MONEY", reference: "MVOLA-1" });
+  await addPassage({ side: "A", name: "Riz", tonnage: "2.5", origin: "Antsirabe", destination: "Toamasina", due: "40000", vehicleCharacteristics: "Camion blanc" });
+  await addPassage({ side: "A", name: "Ciment", tonnage: "3", origin: "Moramanga", destination: "Tana", due: "30000" });
+  await addPassage({ side: "A", name: "Farine", tonnage: "1.5", origin: "Ambatolampy", destination: "Mahajanga", due: "25000", method: "BANK_TRANSFER", reference: "VIR-1" });
+  await addPassage({ side: "B", name: "Sucre", tonnage: "6", origin: "Brickaville", destination: "Tana", due: "70000", method: "MOBILE_MONEY", reference: "MVOLA-1" });
 });
 
 describe("accès", () => {
@@ -123,12 +124,12 @@ describe("administrateur : tous les lieux", () => {
     expect(search.body.total).toBe("4");
   });
 
-  it("montant reçu, monnaie rendue et tonnage cumulé", async () => {
-    expect((await call("received")).body.total).toMatch(/^175.000,00 MGA$/);
-    const change = await call("change");
-    expect(change.body.total).toMatch(/^10.000,00 MGA$/);
-    expect(change.body.rows).toHaveLength(1);
-    expect(change.body.rows[0].cells.route.t).toBe("Antsirabe → Toamasina");
+  it("montant payé et tonnage cumulé", async () => {
+    const paid = await call("paid");
+    expect(paid.body.total).toMatch(/^165.000,00 MGA$/);
+    expect(paid.body.title).toBe("Montant payé");
+    expect(paid.body.rows).toHaveLength(4);
+    expect(paid.body.rows[0].cells.amount).toBeDefined();
     const tonnage = await call("tonnage");
     expect(tonnage.body.total).toBe("13 t");
     expect(tonnage.body.title).toBe("Tonnage cumulé");
@@ -177,14 +178,14 @@ describe("régisseur : uniquement son lieu", () => {
     const { body } = await call("passages");
     expect(body.total).toBe("1");
     expect(body.rows[0].cells.product.t).toBe("Sucre");
-    expect((await call("received")).body.total).toMatch(/^70.000,00 MGA$/);
+    expect((await call("paid")).body.total).toMatch(/^70.000,00 MGA$/);
     expect((await call("tonnage")).body.total).toBe("6 t");
-    expect((await call("change")).body.total).toMatch(/^0,00 MGA$/);
+    expect((await call("change")).status).toBe(404);
   });
 
   it("montants du lieu A", async () => {
     as(w.supA1.user);
-    expect((await call("received")).body.total).toMatch(/^105.000,00 MGA$/);
+    expect((await call("paid")).body.total).toMatch(/^95.000,00 MGA$/);
     expect((await call("tonnage")).body.total).toBe("7 t");
   });
 });

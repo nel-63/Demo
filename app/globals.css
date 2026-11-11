@@ -17,14 +17,11 @@
   --warning-soft: #fffbeb;
   --danger: #b91c1c;
   --danger-soft: #fef2f2;
-  color-scheme: light;
-}
-
-@theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  color-scheme: light;
 }
 
 /* Pas de thème sombre : les écrans utilisent des surfaces claires, inverser la couleur du

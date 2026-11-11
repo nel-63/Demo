@@ -6,6 +6,7 @@ export default function Pager({
   page,
   pageCount,
   total,
+  totalLabel = "passages",
   ariaLabel = "Pagination",
   previousLabel = "Précédent",
   nextLabel = "Suivant",
@@ -14,6 +15,7 @@ export default function Pager({
   page: number;
   pageCount: number;
   total?: number;
+  totalLabel?: string;
   ariaLabel?: string;
   previousLabel?: string;
   nextLabel?: string;
@@ -37,7 +39,7 @@ export default function Pager({
         </span>
       )}
       <span aria-current="page" className="order-1 w-full text-center text-sm text-slate-700 sm:order-2 sm:w-auto">
-        Page {page} sur {pageCount}{total === undefined ? "" : ` · ${total} passages`}
+        Page {page} sur {pageCount}{total === undefined ? "" : ` · ${total} ${totalLabel}`}
       </span>
       {page < pageCount ? (
         <Link href={href(page + 1)} className={`${linkClass} order-3 flex-1`}>

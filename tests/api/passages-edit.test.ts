@@ -20,17 +20,15 @@ const current = {
   origin: "Antsirabe",
   destination: "Toamasina",
   dateQuittance: null,
-  vehicleInfo: null,
   driverName: "Jean",
   vehicleRegistration: "1234 TAA",
   vehicleCharacteristics: "Camion benne",
   driverLicenseNumber: "PER-123",
-  notes: null,
   deletedAt: null,
   product: { id: "product-1", name: "Riz", type: "Céréale", tonnage: "8.00", description: null, deletedAt: null },
   payment: {
     id: "payment-1", paymentMethod: "CASH", reference: null,
-    amountDue: "40000.00", amountReceived: "50000.00", changeReturned: "10000.00", deletedAt: null,
+    amountDue: "40000.00", deletedAt: null,
   },
 };
 const valid = {
@@ -40,16 +38,13 @@ const valid = {
   tonnage: "9",
   origin: "Antsirabe",
   destination: "Toamasina",
-  vehicleInfo: "",
   driverName: "Jean Rakoto",
   vehicleRegistration: "1234 TAA",
   vehicleCharacteristics: "Camion benne blanc",
   driverLicenseNumber: "PER-123",
-  notes: "",
   paymentMethod: "CASH",
   reference: "",
   amountDue: "45000",
-  amountReceived: "50000",
   dateQuittance: "2026-10-15",
 };
 const context = { params: Promise.resolve({ id: "pass-1" }) };
@@ -87,7 +82,7 @@ describe("gestion des passages par les régisseurs", () => {
     }));
     expect(db.payment.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "payment-1" },
-      data: expect.objectContaining({ amountDue: "45000.00", amountReceived: "50000.00" }),
+      data: expect.objectContaining({ amountDue: "45000.00" }),
     }));
     expect(db.recordRevision.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
@@ -104,7 +99,7 @@ describe("gestion des passages par les régisseurs", () => {
       .mockResolvedValueOnce(current);
     const response = await PATCH(
       jsonRequest("/api/passages/pass-1", "PATCH", {
-        ...valid, paymentMethod: "MOBILE_MONEY", reference: "MVOLA-9", amountReceived: "45000",
+        ...valid, paymentMethod: "MOBILE_MONEY", reference: "MVOLA-9",
       }),
       context,
     );
@@ -120,7 +115,7 @@ describe("gestion des passages par les régisseurs", () => {
       .mockResolvedValueOnce(current);
     const response = await PATCH(
       jsonRequest("/api/passages/pass-1", "PATCH", {
-        ...valid, paymentMethod: "CHECK", reference: "CHQ-9", amountReceived: "45000",
+        ...valid, paymentMethod: "CHECK", reference: "CHQ-9",
       }),
       context,
     );
@@ -130,14 +125,10 @@ describe("gestion des passages par les régisseurs", () => {
     }));
   });
 
-  it.each([
-    ["sans référence", { reference: "" }],
-    ["avec un montant supérieur", { reference: "CHQ-9", amountReceived: "45001" }],
-    ["avec un montant inférieur", { reference: "CHQ-9", amountReceived: "44999" }],
-  ])("refuse un paiement par chèque %s", async (_label, fields) => {
+  it("refuse un paiement par chèque sans référence", async () => {
     const response = await PATCH(
       jsonRequest("/api/passages/pass-1", "PATCH", {
-        ...valid, paymentMethod: "CHECK", ...fields,
+        ...valid, paymentMethod: "CHECK", reference: "",
       }),
       context,
     );
@@ -145,6 +136,18 @@ describe("gestion des passages par les régisseurs", () => {
     expect(db.$transaction).not.toHaveBeenCalled();
     expect(db.payment.update).not.toHaveBeenCalled();
   });
+
+  it.each(["vehicleRegistration", "vehicleCharacteristics", "driverName", "driverLicenseNumber"])(
+    "refuse de modifier un passage sans %s",
+    async (field) => {
+      const response = await PATCH(
+        jsonRequest("/api/passages/pass-1", "PATCH", { ...valid, [field]: " " }),
+        context,
+      );
+      expect((await read(response)).status).toBe(400);
+      expect(db.$transaction).not.toHaveBeenCalled();
+    },
+  );
 
   it("conserve un lieu historique inchangé même s'il n'est plus actif", async () => {
     db.location.findMany.mockResolvedValue([]);
@@ -201,7 +204,7 @@ describe("gestion des passages par les régisseurs", () => {
     async (paymentMethod) => {
       const response = await PATCH(
         jsonRequest("/api/passages/pass-1", "PATCH", {
-          ...valid, paymentMethod, reference: "REF-1", amountReceived: "45000",
+          ...valid, paymentMethod, reference: "REF-1",
         }),
         context,
       );

@@ -11,12 +11,10 @@ type Initial = {
   assignedAt: string;
   origin: string;
   destination: string;
-  vehicleInfo: string | null;
-  driverName: string | null;
-  vehicleRegistration: string | null;
-  vehicleCharacteristics: string | null;
-  driverLicenseNumber: string | null;
-  notes: string | null;
+  driverName: string;
+  vehicleRegistration: string;
+  vehicleCharacteristics: string;
+  driverLicenseNumber: string;
   nomOp: string | null;
   nomSoc: string | null;
   coli: string | null;
@@ -24,7 +22,7 @@ type Initial = {
   nQuittance: string | null;
   dateQuittance: string | null;
   product: { name: string; type: string; tonnage: string };
-  payment: { paymentMethod: keyof typeof ALL_PAYMENT_METHOD_LABELS; reference: string | null; amountDue: string; amountReceived: string };
+  payment: { paymentMethod: keyof typeof ALL_PAYMENT_METHOD_LABELS; reference: string | null; amountDue: string };
 };
 
 export default function PassageActions({
@@ -40,11 +38,38 @@ export default function PassageActions({
   // Un paiement historique (chèque, virement, autre) ne peut plus être ressaisi tel quel.
   const initialMethodAllowed = Object.hasOwn(PAYMENT_METHOD_LABELS, initial.payment.paymentMethod);
 
+  function handleInvalid(event: FormEvent<HTMLFormElement>) {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    const fields: Record<string, string> = {
+      vehicleRegistration: "le numéro d'immatriculation",
+      vehicleCharacteristics: "les caractéristiques du véhicule",
+      driverName: "le nom du chauffeur",
+      driverLicenseNumber: "le numéro de permis du chauffeur",
+    };
+    const label = fields[target.name];
+    if (label) setMessage(`Le champ ${label} est obligatoire.`);
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setBusy(true);
     setMessage("");
     const values = new FormData(event.currentTarget);
+    const requiredFields = [
+      ["vehicleRegistration", "l'immatriculation du véhicule"],
+      ["vehicleCharacteristics", "les caractéristiques du véhicule"],
+      ["driverName", "le nom du chauffeur"],
+      ["driverLicenseNumber", "le numéro de permis du chauffeur"],
+    ] as const;
+    const missingFields = requiredFields
+      .filter(([name]) => !String(values.get(name) ?? "").trim())
+      .map(([, label]) => label);
+    if (missingFields.length > 0) {
+      setMessage(`Renseignez ${missingFields.join(", ")} avant d'enregistrer les modifications.`);
+      return;
+    }
+
+    setBusy(true);
     try {
       const response = await fetch(`/api/passages/${initial.id}`, {
         method: "PATCH",
@@ -78,7 +103,7 @@ export default function PassageActions({
     <div className="min-w-[220px] space-y-2">
       {canManage && <details className="rounded-lg border border-slate-200 p-2">
         <summary className="cursor-pointer text-sm font-semibold text-blue-700">Modifier</summary>
-        <form onSubmit={save} className="mt-3 grid gap-2">
+        <form onSubmit={save} onInvalidCapture={handleInvalid} className="mt-3 grid gap-2">
           <label className={label}>Nom du produit<input className={field} name="productName" defaultValue={initial.product.name} required maxLength={150}/></label>
           <label className={label}>Type de produit
             <select className={field} name="productType" defaultValue={initial.product.type} required>
@@ -90,11 +115,10 @@ export default function PassageActions({
           <label className={label}>Date du passage<input className={field} name="assignedAt" type="date" defaultValue={initial.assignedAt} required/></label>
           <label className={label}>Lieu de départ<input className={field} name="origin" type="text" defaultValue={initial.origin} required maxLength={150}/></label>
           <label className={label}>Lieu d&apos;arrivée<input className={field} name="destination" type="text" defaultValue={initial.destination} required maxLength={150}/></label>
-          <label className={label}>Immatriculation<input className={field} name="vehicleRegistration" defaultValue={initial.vehicleRegistration ?? ""} maxLength={40}/></label>
-          <label className={label}>Caractéristiques du véhicule<input className={field} name="vehicleCharacteristics" defaultValue={initial.vehicleCharacteristics ?? initial.vehicleInfo ?? ""} maxLength={200}/></label>
-          <label className={label}>Nom du chauffeur<input className={field} name="driverName" defaultValue={initial.driverName ?? ""} maxLength={150}/></label>
-          <label className={label}>Numéro de permis<input className={field} name="driverLicenseNumber" defaultValue={initial.driverLicenseNumber ?? ""} maxLength={80}/></label>
-          <label className={label}>Autres informations véhicule<input className={field} name="vehicleInfo" defaultValue={initial.vehicleInfo ?? ""} maxLength={200}/></label>
+          <label className={label}>Immatriculation <span aria-hidden="true" className="text-red-600">*</span><input className={field} name="vehicleRegistration" defaultValue={initial.vehicleRegistration} maxLength={40} required/></label>
+          <label className={label}>Caractéristiques du véhicule <span aria-hidden="true" className="text-red-600">*</span><input className={field} name="vehicleCharacteristics" defaultValue={initial.vehicleCharacteristics} maxLength={200} required/></label>
+          <label className={label}>Nom du chauffeur <span aria-hidden="true" className="text-red-600">*</span><input className={field} name="driverName" defaultValue={initial.driverName} maxLength={150} required/></label>
+          <label className={label}>Numéro de permis <span aria-hidden="true" className="text-red-600">*</span><input className={field} name="driverLicenseNumber" defaultValue={initial.driverLicenseNumber} maxLength={80} required/></label>
           <label className={label}>Nom de l&apos;opérateur<input className={field} name="nomOp" defaultValue={initial.nomOp ?? ""} maxLength={150}/></label>
           <label className={label}>Nom de la société<input className={field} name="nomSoc" defaultValue={initial.nomSoc ?? ""} maxLength={200}/></label>
           <label className={label}>Mode de colisage<input className={field} name="coli" defaultValue={initial.coli ?? ""} maxLength={100}/></label>
@@ -103,9 +127,7 @@ export default function PassageActions({
           <label className={label}>Date de quittance<input className={field} name="dateQuittance" type="date" defaultValue={initial.dateQuittance ?? ""}/></label>
           <label className={label}>Ticket du contrôleur (JPEG, PNG, WebP — 5 Mo max.)<input className={field} name="pjt" type="file" accept="image/jpeg,image/png,image/webp"/></label>
           <label className={label}>Photo de la quittance (JPEG, PNG, WebP — 5 Mo max.)<input className={field} name="quittance" type="file" accept="image/jpeg,image/png,image/webp"/></label>
-          <label className={label}>Observations<textarea className={field} name="notes" defaultValue={initial.notes ?? ""} maxLength={2000}/></label>
           <label className={label}>Montant dû (MGA)<input className={field} name="amountDue" type="number" min="0.01" step="0.01" defaultValue={initial.payment.amountDue} required/></label>
-          <label className={label}>Montant reçu (MGA)<input className={field} name="amountReceived" type="number" min="0.01" step="0.01" defaultValue={initial.payment.amountReceived} required/></label>
           <label className={label}>Mode de paiement<select className={field} name="paymentMethod" required defaultValue={initialMethodAllowed ? initial.payment.paymentMethod : ""}>{!initialMethodAllowed && <option value="" disabled>{`${ALL_PAYMENT_METHOD_LABELS[initial.payment.paymentMethod] ?? initial.payment.paymentMethod} (ancien mode : choisir Espèces ou Mobile Money)`}</option>}{Object.entries(PAYMENT_METHOD_LABELS).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>
           <label className={label}>Référence paiement<input className={field} name="reference" defaultValue={initial.payment.reference ?? ""} maxLength={150}/></label>
           <button disabled={busy} className="rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "En cours…" : "Enregistrer les modifications"}</button>
@@ -113,7 +135,7 @@ export default function PassageActions({
       </details>}
       {canManage && <button type="button" onClick={remove} disabled={busy} className="w-full rounded-lg border border-red-300 px-3 py-2 text-left text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">Supprimer logiquement</button>}
       <PassageHistory passageId={initial.id} productName={initial.product.name} />
-      {message && <p role="status" className="text-xs text-slate-700">{message}</p>}
+      {message && <p role="alert" className="text-xs text-slate-700">{message}</p>}
     </div>
   );
 }

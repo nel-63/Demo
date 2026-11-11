@@ -9,8 +9,7 @@ export const DETAIL_KINDS = [
   "supervisors",
   "passages",
   "tonnage",
-  "received",
-  "change",
+  "paid",
 ] as const;
 
 // Ces deux listes n'ont pas de sens pour un régisseur (un seul lieu, pas d'autres comptes).
@@ -191,12 +190,10 @@ export async function getDetails(
       );
     }
 
-    case "received":
-    case "change": {
+    case "paid": {
       const base = {
         deletedAt: null,
         ...viaPassage,
-        ...(kind === "change" ? { changeReturned: { gt: 0 } } : {}),
       };
       const where = {
         AND: [
@@ -215,7 +212,7 @@ export async function getDetails(
         prisma.payment.count({ where }),
         prisma.payment.aggregate({
           where: base,
-          _sum: { amountReceived: true, changeReturned: true },
+          _sum: { amountDue: true },
         }),
         prisma.payment.findMany({
           where,
@@ -227,8 +224,6 @@ export async function getDetails(
             paymentMethod: true,
             reference: true,
             amountDue: true,
-            amountReceived: true,
-            changeReturned: true,
             recordedBy: { select: { firstName: true, lastName: true } },
             passage: {
               select: {
@@ -242,17 +237,15 @@ export async function getDetails(
         }),
       ]);
       return finish(
-        kind === "received" ? "Montant reçu" : "Monnaie rendue",
-        formatMGA((kind === "received" ? agg._sum.amountReceived : agg._sum.changeReturned) ?? 0),
+        "Montant payé",
+        formatMGA(agg._sum.amountDue ?? 0),
         count,
         [
           col("date", "Date"),
           col("product", "Produit"),
           col("route", "Trajet"),
           col("method", "Mode"),
-          col("due", "Dû", "right"),
-          col("received", "Reçu", "right"),
-          col("change", "Monnaie", "right"),
+          col("amount", "Montant payé", "right"),
           col("by", "Enregistré par"),
           ...locationColumn(admin),
         ],
@@ -265,9 +258,7 @@ export async function getDetails(
             method: text(
               `${ALL_PAYMENT_METHOD_LABELS[r.paymentMethod] ?? r.paymentMethod}${r.reference ? ` (${r.reference})` : ""}`,
             ),
-            due: num(r.amountDue, formatMGA(r.amountDue)),
-            received: num(r.amountReceived, formatMGA(r.amountReceived)),
-            change: num(r.changeReturned, formatMGA(r.changeReturned)),
+            amount: num(r.amountDue, formatMGA(r.amountDue)),
             by: text(fullName(r.recordedBy)),
             ...withLocation(admin, r.passage.assignedLocation?.name),
           },
@@ -287,7 +278,6 @@ export async function getDetails(
             { product: { type: has(w) } },
             { origin: has(w) },
             { destination: has(w) },
-            { vehicleInfo: has(w) },
             { vehicleRegistration: has(w) },
             { vehicleCharacteristics: has(w) },
             { driverName: has(w) },

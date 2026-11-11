@@ -7,6 +7,7 @@ import {
   MapPin,
   Route,
   ShieldCheck,
+  Ship,
   UserCog,
   type LucideIcon,
 } from "lucide-react";
@@ -17,6 +18,7 @@ const ADMIN_ITEMS: Item[] = [
   { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard, exact: true },
   { href: "/dashboard/locations", label: "Lieux", icon: MapPin },
   { href: "/dashboard/supervisors", label: "Régisseurs", icon: UserCog },
+  { href: "/dashboard/maritime-users", label: "Utilisateurs maritimes", icon: Ship },
   { href: "/dashboard/passages", label: "Passages", icon: Route },
   { href: "/dashboard/audit", label: "Journal d'audit", icon: ShieldCheck },
 ];
@@ -24,6 +26,10 @@ const ADMIN_ITEMS: Item[] = [
 const SUPERVISOR_ITEMS: Item[] = [
   { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard, exact: true },
   { href: "/dashboard/passages", label: "Passages", icon: Route },
+];
+
+const MARITIME_ITEMS: Item[] = [
+  { href: "/dashboard/maritime", label: "Déclarations maritimes", icon: Ship },
 ];
 
 export default function NavLinks({
@@ -34,7 +40,11 @@ export default function NavLinks({
   variant: "sidebar" | "bottom";
 }) {
   const pathname = usePathname();
-  const items = role === "ADMIN" ? ADMIN_ITEMS : SUPERVISOR_ITEMS;
+  const items =
+    role === "ADMIN" ? ADMIN_ITEMS
+      : role === "SUPERVISOR" ? SUPERVISOR_ITEMS
+        : role === "USER_MAR" ? MARITIME_ITEMS
+          : [];
 
   return (
     <ul className={variant === "sidebar" ? "space-y-1" : "flex"}>

@@ -19,7 +19,6 @@ import {
   CircleCheck,
   CircleX,
   Clock3,
-  Coins,
   CreditCard,
   ExternalLink,
   Hourglass,
@@ -53,8 +52,7 @@ const KIND_ICONS: Record<string, LucideIcon> = {
   products: Package,
   tonnage: Scale,
   payments: CreditCard,
-  received: Banknote,
-  change: Coins,
+  paid: Banknote,
   outstanding: Hourglass,
 };
 
@@ -470,4 +468,3 @@ export default function DetailsDrawer({
     document.body,
   );
 }
-

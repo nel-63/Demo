@@ -25,24 +25,15 @@ describe("parseCents / toDecimal", () => {
 });
 
 describe("checkPayment", () => {
-  const base = { reference: "", dueCents: 4000000 };
-
-  it("espèces : montant exact ou supérieur avec monnaie", () => {
-    expect(checkPayment({ ...base, method: "CASH", receivedCents: 4000000 })).toEqual({ ok: true, changeCents: 0 });
-    expect(checkPayment({ ...base, method: "CASH", receivedCents: 5000000 })).toEqual({ ok: true, changeCents: 1000000 });
-  });
-
-  it("espèces : jamais de paiement partiel", () => {
-    expect(checkPayment({ ...base, method: "CASH", receivedCents: 3999999 })).toEqual({ ok: false, error: "INSUFFICIENT" });
+  it("n'exige pas de référence pour les espèces", () => {
+    expect(checkPayment({ method: "CASH", reference: "" })).toEqual({ ok: true });
   });
 
   it.each(["MOBILE_MONEY", "CHECK"] as const)(
-    "%s : montant exact et référence obligatoires",
+    "%s : référence obligatoire",
     (method) => {
-      expect(checkPayment({ ...base, method, reference: "REF-1", receivedCents: 4000000 })).toEqual({ ok: true, changeCents: 0 });
-      expect(checkPayment({ ...base, method, reference: "", receivedCents: 4000000 })).toEqual({ ok: false, error: "EXACT_REQUIRED" });
-      expect(checkPayment({ ...base, method, reference: "REF-1", receivedCents: 4000001 })).toEqual({ ok: false, error: "EXACT_REQUIRED" });
-      expect(checkPayment({ ...base, method, reference: "REF-1", receivedCents: 3999999 })).toEqual({ ok: false, error: "EXACT_REQUIRED" });
+      expect(checkPayment({ method, reference: "REF-1" })).toEqual({ ok: true });
+      expect(checkPayment({ method, reference: "" })).toEqual({ ok: false, error: "REFERENCE_REQUIRED" });
     },
   );
 

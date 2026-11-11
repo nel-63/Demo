@@ -15,20 +15,20 @@ type PassageSnapshot = {
 };
 function snapshotOf(record: {
   id: string; assignedAt: Date; origin: string; destination: string;
-  vehicleInfo: string | null; driverName: string | null; vehicleRegistration: string | null;
-  vehicleCharacteristics: string | null; driverLicenseNumber: string | null; notes: string | null;
+  driverName: string; vehicleRegistration: string;
+  vehicleCharacteristics: string; driverLicenseNumber: string;
   nomOp: string | null; nomSoc: string | null; coli: string | null; nbColi: number | null;
   nQuittance: string | null; dateQuittance: Date | null; deletedAt: Date | null;
   product: { id: string; name: string; type: string; tonnage: unknown; description: string | null; deletedAt: Date | null };
-  payment: null | { id: string; paymentMethod: string; reference: string | null; amountDue: unknown; amountReceived: unknown; changeReturned: unknown; deletedAt: Date | null };
+  payment: null | { id: string; paymentMethod: string; reference: string | null; amountDue: unknown; deletedAt: Date | null };
 }): PassageSnapshot {
   return {
     passage: {
       id: record.id, assignedAt: record.assignedAt.toISOString(), origin: record.origin,
-      destination: record.destination, vehicleInfo: record.vehicleInfo,
+      destination: record.destination,
       driverName: record.driverName, vehicleRegistration: record.vehicleRegistration,
       vehicleCharacteristics: record.vehicleCharacteristics,
-      driverLicenseNumber: record.driverLicenseNumber, notes: record.notes,
+      driverLicenseNumber: record.driverLicenseNumber,
       nomOp: record.nomOp, nomSoc: record.nomSoc, coli: record.coli,
       nbColi: record.nbColi, nQuittance: record.nQuittance,
       dateQuittance: record.dateQuittance?.toISOString().slice(0, 10) ?? null,
@@ -42,8 +42,6 @@ function snapshotOf(record: {
     payment: record.payment ? {
       id: record.payment.id, paymentMethod: record.payment.paymentMethod,
       reference: record.payment.reference, amountDue: String(record.payment.amountDue),
-      amountReceived: String(record.payment.amountReceived),
-      changeReturned: String(record.payment.changeReturned),
       deletedAt: record.payment.deletedAt?.toISOString() ?? null,
     } : null,
   };
@@ -96,11 +94,11 @@ async function loadForUpdate(tx: Prisma.TransactionClient, id: string) {
     where: { id },
     select: {
       id: true, productId: true, locationId: true, assignedAt: true, origin: true, destination: true,
-      vehicleInfo: true, driverName: true, vehicleRegistration: true, vehicleCharacteristics: true,
-      driverLicenseNumber: true, notes: true, nomOp: true, nomSoc: true, coli: true,
+      driverName: true, vehicleRegistration: true, vehicleCharacteristics: true,
+      driverLicenseNumber: true, nomOp: true, nomSoc: true, coli: true,
       nbColi: true, nQuittance: true, dateQuittance: true, deletedAt: true,
       product: { select: { id: true, name: true, type: true, tonnage: true, description: true, deletedAt: true } },
-      payment: { select: { id: true, paymentMethod: true, reference: true, amountDue: true, amountReceived: true, changeReturned: true, deletedAt: true } },
+      payment: { select: { id: true, paymentMethod: true, reference: true, amountDue: true, deletedAt: true } },
     },
   });
 }
@@ -125,12 +123,10 @@ export async function PATCH(request: Request, context: Context) {
     const origin = text("origin");
     const assignedAtText = text("assignedAt");
     const destination = text("destination");
-    const vehicleInfo = text("vehicleInfo");
     const driverName = text("driverName");
     const vehicleRegistration = text("vehicleRegistration");
     const vehicleCharacteristics = text("vehicleCharacteristics");
     const driverLicenseNumber = text("driverLicenseNumber");
-    const notes = text("notes");
     const nomOp = text("nomOp");
     const nomSoc = text("nomSoc");
     const coli = text("coli");
@@ -142,15 +138,20 @@ export async function PATCH(request: Request, context: Context) {
     const method = text("paymentMethod");
     const reference = text("reference");
     const dueText = text("amountDue");
-    const receivedText = text("amountReceived");
 
     if (!productName || !productType || !tonnage || !origin || !destination) {
       return NextResponse.json({ message: "Produit, type, tonnage, origine et destination sont obligatoires." }, { status: 400 });
     }
+    if (!vehicleRegistration || !vehicleCharacteristics || !driverName || !driverLicenseNumber) {
+      return NextResponse.json(
+        { message: "L'immatriculation, les caractéristiques du véhicule, le nom et le permis du chauffeur sont obligatoires." },
+        { status: 400 },
+      );
+    }
     if (productName.length > 150 || productType.length > 100 || origin.length > 150 ||
-        destination.length > 150 || vehicleInfo.length > 200 || driverName.length > 150 ||
+        destination.length > 150 || driverName.length > 150 ||
         vehicleRegistration.length > 40 || vehicleCharacteristics.length > 200 ||
-        driverLicenseNumber.length > 80 || notes.length > 2000 || reference.length > 150 ||
+        driverLicenseNumber.length > 80 || reference.length > 150 ||
         nomOp.length > 150 || nomSoc.length > 200 || coli.length > 100 || nQuittance.length > 100) {
       return NextResponse.json({ message: "Un champ dépasse la longueur autorisée." }, { status: 400 });
     }
@@ -169,15 +170,14 @@ export async function PATCH(request: Request, context: Context) {
       return NextResponse.json({ message: "Date de passage invalide." }, { status: 400 });
     }
     const dueCents = parseCents(dueText);
-    const receivedCents = parseCents(receivedText);
-    if (dueCents === null || dueCents <= 0 || receivedCents === null || receivedCents <= 0) {
-      return NextResponse.json({ message: "Montants de paiement invalides." }, { status: 400 });
+    if (dueCents === null || dueCents <= 0) {
+      return NextResponse.json({ message: "Le montant à payer doit être positif, avec au maximum deux décimales." }, { status: 400 });
     }
-    const check = checkPayment({ method, reference, dueCents, receivedCents });
-    if (!check.ok) return NextResponse.json({
-      message: check.error === "INSUFFICIENT" ? "Le montant reçu est inférieur au montant dû." :
-        "Le paiement doit être exact et comporter une référence pour ce mode.",
-    }, { status: 400 });
+    const check = checkPayment({ method, reference });
+    if (!check.ok) return NextResponse.json(
+      { message: "Une référence est obligatoire pour ce mode de paiement." },
+      { status: 400 },
+    );
 
     const updated = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "TransportAssignment" WHERE "id" = ${id} FOR UPDATE`;
@@ -191,8 +191,7 @@ export async function PATCH(request: Request, context: Context) {
       const before = snapshotOf(current);
       const paymentData = {
         paymentMethod: method, reference: reference || null,
-        amountDue: toDecimal(dueCents), amountReceived: toDecimal(receivedCents),
-        changeReturned: toDecimal(check.changeCents),
+        amountDue: toDecimal(dueCents),
       };
 
       await tx.product.update({
@@ -202,10 +201,8 @@ export async function PATCH(request: Request, context: Context) {
       await tx.passage.update({
         where: { id },
         data: {
-          origin, destination, assignedAt, vehicleInfo: vehicleInfo || null, driverName: driverName || null,
-          vehicleRegistration: vehicleRegistration || null,
-          vehicleCharacteristics: vehicleCharacteristics || null,
-          driverLicenseNumber: driverLicenseNumber || null, notes: notes || null,
+          origin, destination, assignedAt, driverName,
+          vehicleRegistration, vehicleCharacteristics, driverLicenseNumber,
           nomOp: nomOp || null, nomSoc: nomSoc || null, coli: coli || null,
           nbColi, nQuittance: nQuittance || null, dateQuittance,
           ...(pjt ? { pjt: new Uint8Array(pjt) } : {}),

@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { CircleAlert, Eye, EyeOff } from "lucide-react";
+import { dashboardPathForRole } from "@/lib/role-routes";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,7 +25,7 @@ export default function LoginPage() {
       });
       const data = await response.json();
       if (!response.ok) { setError(data.message ?? "Connexion impossible."); return; }
-      router.replace("/dashboard");
+      router.replace(dashboardPathForRole(data.user?.role ?? ""));
       router.refresh();
     } catch {
       setError("Impossible de contacter le serveur.");
@@ -38,7 +39,7 @@ export default function LoginPage() {
       <section className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-lg sm:p-10">
         <div className="mb-7 flex items-center gap-3">
                       <Image src="/Baobab Landscape Emblem.png" alt="Logo Région Menabe" width={408} height={408} className="h-26 w-26"/>
-          <span className="text-center text-lg font-semibold text-slate-900">REGION MENABE <br /> Régisseur</span>
+          <span className="text-center text-lg font-semibold text-slate-900">REGION MENABE <br /> Gestion des opérations</span>
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Connexion</h1>
         <form method="post" onSubmit={handleSubmit} className="mt-8 space-y-5">

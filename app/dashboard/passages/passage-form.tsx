@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { PAYMENT_METHOD_LABELS, formatMGA } from "@/lib/audit";
+import { PAYMENT_METHOD_LABELS } from "@/lib/audit";
 import { PRODUCT_TYPES } from "@/lib/product-types";
 
 const inputClass =
@@ -14,17 +14,20 @@ function Field({
   id,
   label,
   hint,
+  required = false,
   children,
 }: {
   id: string;
   label: string;
   hint?: string;
+  required?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div>
       <label htmlFor={id} className={labelClass}>
         {label}
+        {required && <span aria-hidden="true" className="ml-1 text-red-600">*</span>}
       </label>
       {children}
       {hint && <p className="mt-1 text-sm text-slate-600">{hint}</p>}
@@ -39,27 +42,45 @@ export default function PassageForm() {
   const [loading, setLoading] = useState(false);
   const [method, setMethod] = useState("CASH");
   const [due, setDue] = useState("");
-  const [received, setReceived] = useState("");
-
   const isCash = method === "CASH";
-  // Hors espèces, le montant reçu est forcément le montant à payer.
-  const receivedValue = isCash ? received : due;
-  const dueNumber = Number(due);
-  const receivedNumber = Number(receivedValue);
-  const hasAmounts = due !== "" && receivedValue !== "" && dueNumber > 0 && receivedNumber > 0;
-  const change = hasAmounts && isCash ? receivedNumber - dueNumber : 0;
+
+  function handleInvalid(event: FormEvent<HTMLFormElement>) {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLSelectElement)) return;
+    const fields: Record<string, string> = {
+      vehicleRegistration: "le numéro d'immatriculation",
+      vehicleCharacteristics: "les caractéristiques du véhicule",
+      driverName: "le nom du chauffeur",
+      driverLicenseNumber: "le numéro de permis du chauffeur",
+    };
+    const label = fields[target.name];
+    if (label) setError(`Le champ ${label} est obligatoire.`);
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setSuccess("");
-    setLoading(true);
 
     const form = event.currentTarget;
     const values = new FormData(form);
+    const requiredFields = [
+      ["vehicleRegistration", "l'immatriculation du véhicule"],
+      ["vehicleCharacteristics", "les caractéristiques du véhicule"],
+      ["driverName", "le nom du chauffeur"],
+      ["driverLicenseNumber", "le numéro de permis du chauffeur"],
+    ] as const;
+    const missingFields = requiredFields
+      .filter(([name]) => !String(values.get(name) ?? "").trim())
+      .map(([, label]) => label);
+    if (missingFields.length > 0) {
+      setError(`Renseignez ${missingFields.join(", ")} avant d'enregistrer le passage.`);
+      return;
+    }
+
+    setLoading(true);
     values.set("paymentMethod", method);
     values.set("amountDue", due);
-    values.set("amountReceived", receivedValue);
 
     try {
       const response = await fetch("/api/passages", {
@@ -73,15 +94,10 @@ export default function PassageForm() {
         return;
       }
 
-      setSuccess(
-        change > 0
-          ? `Passage enregistré. Monnaie à rendre : ${formatMGA(change)}.`
-          : "Passage et paiement enregistrés.",
-      );
+      setSuccess("Passage et paiement enregistrés.");
       form.reset();
       setMethod("CASH");
       setDue("");
-      setReceived("");
       router.refresh();
     } catch {
       setError("Impossible de contacter le serveur.");
@@ -91,7 +107,7 @@ export default function PassageForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} onInvalidCapture={handleInvalid} className="space-y-4">
       <h3 className={sectionClass}>Produit</h3>
 
       <Field id="productName" label="Nom du produit">
@@ -119,22 +135,19 @@ export default function PassageForm() {
         <input id="destination" name="destination" type="text" required maxLength={150} placeholder="Lieu d'arrivée" className={inputClass} />
       </Field>
 
-      <h3 className={sectionClass}>Véhicule et chauffeur (facultatif)</h3>
+      <h3 className={sectionClass}>Véhicule et chauffeur</h3>
 
-      <Field id="vehicleRegistration" label="Numéro d'immatriculation">
-        <input id="vehicleRegistration" name="vehicleRegistration" maxLength={40} className={inputClass} />
+      <Field id="vehicleRegistration" label="Numéro d'immatriculation" required>
+        <input id="vehicleRegistration" name="vehicleRegistration" required maxLength={40} className={inputClass} />
       </Field>
-      <Field id="vehicleCharacteristics" label="Caractéristiques du véhicule" hint="Type, marque, couleur, capacité, etc.">
-        <input id="vehicleCharacteristics" name="vehicleCharacteristics" maxLength={200} className={inputClass} />
+      <Field id="vehicleCharacteristics" label="Caractéristiques du véhicule" hint="Type, marque, couleur, capacité, etc." required>
+        <input id="vehicleCharacteristics" name="vehicleCharacteristics" required maxLength={200} className={inputClass} />
       </Field>
-      <Field id="vehicleInfo" label="Informations complémentaires sur le véhicule">
-        <input id="vehicleInfo" name="vehicleInfo" maxLength={200} className={inputClass} />
+      <Field id="driverName" label="Nom du chauffeur" required>
+        <input id="driverName" name="driverName" required maxLength={150} className={inputClass} />
       </Field>
-      <Field id="driverName" label="Nom du chauffeur">
-        <input id="driverName" name="driverName" maxLength={150} className={inputClass} />
-      </Field>
-      <Field id="driverLicenseNumber" label="Numéro de permis du chauffeur">
-        <input id="driverLicenseNumber" name="driverLicenseNumber" maxLength={80} className={inputClass} />
+      <Field id="driverLicenseNumber" label="Numéro de permis du chauffeur" required>
+        <input id="driverLicenseNumber" name="driverLicenseNumber" required maxLength={80} className={inputClass} />
       </Field>
 
       <h3 className={sectionClass}>Informations complémentaires sur le transport</h3>
@@ -183,37 +196,10 @@ export default function PassageForm() {
         </select>
       </Field>
 
-      <Field
-        id="amountReceived"
-        label="Montant reçu (MGA)"
-        hint={isCash ? undefined : "Hors espèces, le paiement doit être exact."}
-      >
-        <input
-          id="amountReceived" type="number" inputMode="decimal" min="0.01" step="0.01" required
-          readOnly={!isCash} value={receivedValue} onChange={(event) => setReceived(event.target.value)}
-          className={`${inputClass} ${isCash ? "" : "bg-slate-100"}`}
-        />
-      </Field>
-
       {!isCash && (
         <Field id="reference" label="Référence du paiement" hint="Numéro de virement, de chèque ou de transaction.">
           <input id="reference" name="reference" required maxLength={150} className={inputClass} />
         </Field>
-      )}
-
-      {hasAmounts && isCash && (
-        <p
-          role="status"
-          className={`rounded-xl px-4 py-3 text-sm font-medium ${
-            change < 0 ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"
-          }`}
-        >
-          {change < 0
-            ? `Montant insuffisant : il manque ${formatMGA(-change)}. Le passage ne peut pas être enregistré.`
-            : change === 0
-              ? "Montant exact, aucune monnaie à rendre."
-              : `Monnaie à rendre : ${formatMGA(change)}.`}
-        </p>
       )}
 
       <h3 className={sectionClass}>Autres informations (facultatif)</h3>
@@ -221,10 +207,6 @@ export default function PassageForm() {
       <Field id="assignedAt" label="Date du passage" hint="Laissez vide pour utiliser la date d'aujourd'hui.">
         <input id="assignedAt" name="assignedAt" type="date" className={inputClass} />
       </Field>
-      <Field id="notes" label="Observations">
-        <textarea id="notes" name="notes" maxLength={2000} rows={2} className={inputClass} />
-      </Field>
-
       {error && (
         <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
           {error}
@@ -238,7 +220,7 @@ export default function PassageForm() {
 
       <button
         type="submit"
-        disabled={loading || (isCash && hasAmounts && change < 0)}
+        disabled={loading}
         className="w-full rounded-xl bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {loading ? "Enregistrement..." : "Enregistrer le passage et le paiement"}

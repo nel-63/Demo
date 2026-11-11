@@ -22,11 +22,13 @@ export const ENTITY_LABELS: Record<string, string> = {
   Passage: "Passage",
   TransportAssignment: "Passage", // anciens enregistrements du journal
   Payment: "Paiement",
+  MaritimeDeclaration: "Déclaration maritime",
 };
 
 export const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Administrateur",
   SUPERVISOR: "Régisseur",
+  USER_MAR: "Utilisateur maritime",
   CASHIER: "Caissier",
   MANAGER: "Responsable",
   ANALYST: "Analyste",
@@ -68,7 +70,10 @@ export type AuditPeriod = (typeof PERIOD_OPTIONS)[number]["value"];
 
 export const AUDIT_PAGE_SIZE = 25;
 
-export function actionLabel(action: string): string {
+export function actionLabel(action: string, entityType?: string): string {
+  if (action === "DELETE" && entityType === "MaritimeDeclaration") {
+    return "Suppression définitive";
+  }
   return ACTION_LABELS[action] ?? action;
 }
 
@@ -112,7 +117,59 @@ export function describeAudit(
   const details = asDetails(rawDetails);
   const lines: string[] = [];
 
-  if ((action === "UPDATE" || action === "DELETE") && details.before !== undefined) {
+  if (entityType === "MaritimeDeclaration" && action === "CREATE") {
+    const declaration = asDetails(details.after);
+    const company = str(declaration.companyName);
+    const boat = str(declaration.boatName);
+    if (company) lines.push(`Société : ${company}`);
+    if (boat) lines.push(`Bateau : ${boat}`);
+    const total = str(declaration.total);
+    if (total) lines.push(`Montant total : ${total} Ar`);
+  } else if (
+    entityType === "MaritimeDeclaration" &&
+    (action === "UPDATE" || action === "DELETE") &&
+    details.before !== undefined
+  ) {
+    const before = asDetails(details.before);
+    const after = asDetails(details.after);
+    if (action === "DELETE") {
+      const company = str(before.companyName);
+      const boat = str(before.boatName);
+      const total = str(before.total);
+      if (company) lines.push(`Société : ${company}`);
+      if (boat) lines.push(`Bateau : ${boat}`);
+      if (total) lines.push(`Montant total : ${total} Ar`);
+      lines.push("Déclaration et produits supprimés définitivement");
+      return lines;
+    }
+    const fields: Array<[string, string]> = [
+      ["companyName", "Société"],
+      ["boatName", "Bateau"],
+      ["boatRegistration", "Immatriculation"],
+      ["boatCapacity", "Capacité (tonnes)"],
+      ["captainName", "Commandant"],
+      ["captainPhone", "Téléphone du commandant"],
+      ["captainEmail", "Email du commandant"],
+      ["originDepartureDate", "Départ du port d'origine"],
+      ["arrivalDate", "Arrivée ici"],
+      ["departureDate", "Départ d'ici"],
+    ];
+    for (const [key, label] of fields) {
+      const previous = str(before[key]);
+      const current = str(after[key]);
+      if (previous !== current) lines.push(`${label} : ${previous ?? "—"} → ${current ?? "—"}`);
+    }
+    const beforeProducts = Array.isArray(before.products) ? before.products.length : 0;
+    const afterProducts = Array.isArray(after.products) ? after.products.length : 0;
+    if (beforeProducts !== afterProducts) {
+      lines.push(`Nombre de produits : ${beforeProducts} → ${afterProducts}`);
+    }
+    const beforeTotal = str(before.total);
+    const afterTotal = str(after.total);
+    if (beforeTotal !== afterTotal) {
+      lines.push(`Montant total : ${beforeTotal ?? "—"} → ${afterTotal ?? "—"} Ar`);
+    }
+  } else if ((action === "UPDATE" || action === "DELETE") && details.before !== undefined) {
     const before = asDetails(details.before);
     const after = asDetails(details.after);
     const beforePassage = asDetails(before.passage);
@@ -134,8 +191,6 @@ export function describeAudit(
     if (details.deletedAt) lines.push(`Suppression : ${str(details.deletedAt) ?? "date inconnue"}`);
   } else if (entityType === "Payment" && action === "CREATE") {
     if (details.amountDue !== undefined) lines.push(`Montant dû : ${formatMGA(details.amountDue)}`);
-    if (details.amountReceived !== undefined) lines.push(`Montant reçu : ${formatMGA(details.amountReceived)}`);
-    if (details.changeReturned !== undefined) lines.push(`Monnaie rendue : ${formatMGA(details.changeReturned)}`);
     const method = str(details.paymentMethod);
     if (method) lines.push(`Mode : ${ALL_PAYMENT_METHOD_LABELS[method] ?? method}`);
     const reference = str(details.reference);
@@ -158,7 +213,7 @@ export function describeAudit(
     const destination = str(details.destination) ?? "—";
     lines.push(`Trajet : ${origin} → ${destination}`);
     const registration = str(details.vehicleRegistration);
-    const vehicle = str(details.vehicleCharacteristics) ?? str(details.vehicleInfo);
+    const vehicle = str(details.vehicleCharacteristics);
     const driver = str(details.driverName);
     const license = str(details.driverLicenseNumber);
     if (registration) lines.push("Immatriculation : " + registration);

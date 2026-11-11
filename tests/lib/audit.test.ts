@@ -9,19 +9,15 @@ import {
 } from "@/lib/audit";
 
 describe("describeAudit", () => {
-  it("affiche montant dû, montant reçu, monnaie, mode et référence d'un paiement", () => {
+  it("affiche le montant dû, le mode et la référence d'un paiement", () => {
     const lines = describeAudit("Payment", "CREATE", {
       amountDue: "40000.00",
-      amountReceived: "50000.00",
-      changeReturned: "10000.00",
       paymentMethod: "BANK_TRANSFER",
       reference: "VIR-2026-001",
     });
 
-    expect(lines).toHaveLength(5);
+    expect(lines).toHaveLength(3);
     expect(lines[0]).toMatch(/^Montant dû : .*40.*000,00 MGA$/);
-    expect(lines[1]).toMatch(/^Montant reçu : .*50.*000,00 MGA$/);
-    expect(lines[2]).toMatch(/^Monnaie rendue : .*10.*000,00 MGA$/);
     expect(lines).toContain("Mode : Virement bancaire");
     expect(lines).toContain("Référence : VIR-2026-001");
   });
@@ -29,8 +25,6 @@ describe("describeAudit", () => {
   it("n'affiche pas de référence vide pour un paiement en espèces", () => {
     const lines = describeAudit("Payment", "CREATE", {
       amountDue: "1000.00",
-      amountReceived: "1000.00",
-      changeReturned: "0.00",
       paymentMethod: "CASH",
       reference: null,
     });
@@ -48,6 +42,24 @@ describe("describeAudit", () => {
         destination: "Toamasina",
       }),
     ).toEqual(["Produit : Riz blanc (8,5 t)", "Trajet : Antsirabe → Toamasina"]);
+  });
+
+  it("décrit la création et la suppression d'une déclaration maritime", () => {
+    expect(describeAudit("MaritimeDeclaration", "CREATE", {
+      after: { companyName: "Société Océan", boatName: "Makoa", total: "1250.5" },
+    })).toEqual([
+      "Société : Société Océan",
+      "Bateau : Makoa",
+      "Montant total : 1250.5 Ar",
+    ]);
+    expect(describeAudit("MaritimeDeclaration", "DELETE", {
+      before: { companyName: "Société Océan", boatName: "Makoa", total: "1250.5" },
+    })).toEqual([
+      "Société : Société Océan",
+      "Bateau : Makoa",
+      "Montant total : 1250.5 Ar",
+      "Déclaration et produits supprimés définitivement",
+    ]);
   });
 
   it("décrit un changement de statut avec les libellés français", () => {
@@ -99,6 +111,7 @@ describe("describeAudit", () => {
 describe("libellés", () => {
   it("traduit les actions et types connus et garde les inconnus tels quels", () => {
     expect(actionLabel("DEACTIVATE")).toBe("Désactivation");
+    expect(actionLabel("DELETE", "MaritimeDeclaration")).toBe("Suppression définitive");
     expect(actionLabel("AUTRE")).toBe("AUTRE");
     expect(entityLabel("Passage")).toBe("Passage");
     expect(entityLabel("TransportAssignment")).toBe("Passage"); // anciens logs

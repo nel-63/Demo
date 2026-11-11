@@ -17,7 +17,7 @@ export function assertTestDatabase() {
 export async function resetDatabase() {
   assertTestDatabase();
   await prisma.$executeRawUnsafe(
-    `TRUNCATE "AuditLog","Payment","TransportAssignment","Product","Supervisor","LoginFailure","User","Location" RESTART IDENTITY CASCADE`,
+    `TRUNCATE "AuditLog","MaritimeDeclarationProduct","MaritimeDeclaration","MaritimeUser","Payment","TransportAssignment","Product","Supervisor","LoginFailure","User","Location" RESTART IDENTITY CASCADE`,
   );
 }
 

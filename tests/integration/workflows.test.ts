@@ -24,11 +24,12 @@ const passage = (body: Record<string, unknown> = {}) =>
       tonnage: "8.5",
       origin: "Tana",
       destination: "Tamatave",
-      vehicleInfo: "Camion benne blanc",
+      vehicleRegistration: "1234 TAA",
+      vehicleCharacteristics: "Camion benne blanc",
       driverName: "Jean",
+      driverLicenseNumber: "PER-123",
       amountDue: "40000",
       paymentMethod: "CASH",
-      amountReceived: "40000",
       ...body,
     }),
   );
@@ -50,7 +51,7 @@ beforeEach(async () => {
 describe("un passage n'existe qu'avec son paiement", () => {
   it("crée produit, passage, paiement et journal d'un seul coup", async () => {
     as(w.supA1.user);
-    const response = await passage({ amountReceived: "50000" });
+    const response = await passage({ amountDue: "50000" });
     expect(response.status).toBe(201);
 
     const row = await prisma.passage.findFirstOrThrow({
@@ -59,15 +60,17 @@ describe("un passage n'existe qu'avec son paiement", () => {
     expect(row).toMatchObject({
       origin: "Tana",
       destination: "Tamatave",
-      vehicleInfo: "Camion benne blanc",
+      vehicleRegistration: "1234 TAA",
+      vehicleCharacteristics: "Camion benne blanc",
       driverName: "Jean",
+      driverLicenseNumber: "PER-123",
       supervisorId: w.supA1.profile.id,
       locationId: w.locA.id,
     });
     expect(row.assignedLocation?.name).toBe("Tana");
     expect(String(row.product.tonnage)).toBe("8.5");
     expect(row.payment).toMatchObject({ paymentMethod: "CASH", recordedById: w.supA1.user.id });
-    expect(String(row.payment?.changeReturned)).toBe("10000");
+    expect(String(row.payment?.amountDue)).toBe("50000");
 
     const logs = await prisma.auditLog.findMany({ orderBy: { createdAt: "asc" } });
     expect(logs.map((log) => `${log.action} ${log.entityType}`).sort()).toEqual([
@@ -75,15 +78,15 @@ describe("un passage n'existe qu'avec son paiement", () => {
       "CREATE Payment",
     ]);
     const paymentLog = logs.find((log) => log.entityType === "Payment");
-    expect(paymentLog?.details).toMatchObject({ amountReceived: "50000.00", changeReturned: "10000.00" });
+    expect(paymentLog?.details).toMatchObject({ amountDue: "50000.00" });
   });
 
   it("sans paiement valide, rien n'est enregistré (pas même le produit)", async () => {
     as(w.supA1.user);
 
-    expect((await passage({ amountReceived: "39999" })).status).toBe(400);
+    expect((await passage({ amountDue: "0" })).status).toBe(400);
     expect((await passage({ paymentMethod: "BANK_TRANSFER", reference: "" })).status).toBe(400);
-    expect((await passage({ paymentMethod: "CHECK", reference: "C-1", amountReceived: "40001" })).status).toBe(400);
+    expect((await passage({ paymentMethod: "CHECK", reference: "" })).status).toBe(400);
 
     expect(await counts()).toEqual({ products: 0, passages: 0, payments: 0 });
     expect(await prisma.auditLog.count()).toBe(0);
@@ -113,7 +116,7 @@ describe("un passage n'existe qu'avec son paiement", () => {
   it("des enregistrements simultanés créent chacun leur passage sans se mélanger", async () => {
     as(w.supA1.user);
     const results = await Promise.all(
-      [1, 2, 3, 4, 5].map((n) => passage({ productName: `Produit ${n}`, amountReceived: "45000" })),
+      [1, 2, 3, 4, 5].map((n) => passage({ productName: `Produit ${n}`, amountDue: "45000" })),
     );
     expect(results.map((r) => r.status)).toEqual([201, 201, 201, 201, 201]);
     expect(await counts()).toEqual({ products: 5, passages: 5, payments: 5 });
@@ -202,7 +205,7 @@ describe("comptes régisseurs", () => {
 describe("requêtes du journal d'audit", () => {
   it("les filtres de buildAuditWhere sont acceptés par la vraie base", async () => {
     as(w.supA1.user);
-    await passage({ amountReceived: "50000" });
+    await passage({ amountDue: "50000" });
 
     const filters = [
       { q: "", entityType: "", action: "", period: "" },

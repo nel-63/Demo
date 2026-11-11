@@ -7,6 +7,7 @@ const MODELS = [
   "user",
   "supervisor",
   "maritimeUser",
+  "maritimeProductType",
   "maritimeDeclaration",
   "maritimeDeclarationProduct",
   "location",

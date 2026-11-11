@@ -43,8 +43,8 @@ export default function MaritimeUserForm() {
     { name: "lastName", label: "Nom", required: true },
     { name: "email", label: "Adresse email / identifiant", type: "email", required: true },
     { name: "phoneNumber", label: "Téléphone", type: "tel", required: false },
-    { name: "latitude", label: "Latitude", required: true, min: "-90", max: "90" },
-    { name: "longitude", label: "Longitude", required: true, min: "-180", max: "180" },
+    { name: "latitude", label: "Latitude", required: false, min: "-90", max: "90" },
+    { name: "longitude", label: "Longitude", required: false, min: "-180", max: "180" },
   ];
 
   return (
@@ -66,7 +66,7 @@ export default function MaritimeUserForm() {
           />
         </div>
       ))}
-      <p className="-mt-2 text-xs text-slate-600">Saisissez les coordonnées en degrés décimaux, avec un point comme séparateur (6 décimales maximum).</p>
+      <p className="-mt-2 text-xs text-slate-600">Les coordonnées sont facultatives à la création. Elles peuvent être renseignées ensuite par l&apos;utilisateur lui-même.</p>
       <div>
         <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700">Mot de passe initial</label>
         <input

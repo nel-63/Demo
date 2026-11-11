@@ -61,8 +61,8 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
             lastName: maritimeUser.user.lastName,
             email: maritimeUser.user.email,
             phoneNumber: maritimeUser.user.phoneNumber ?? "",
-            latitude: maritimeUser.latitude.toString(),
-            longitude: maritimeUser.longitude.toString(),
+            latitude: maritimeUser.latitude ? maritimeUser.latitude.toString() : "",
+            longitude: maritimeUser.longitude ? maritimeUser.longitude.toString() : "",
           }}
         />
       </section>

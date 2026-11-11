@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { validatePassword } from "@/lib/password-policy";
-import { parseMaritimeUserCoordinates } from "@/lib/maritime-user-coordinates";
+import { hasMaritimeUserCoordinates, parseMaritimeUserCoordinates } from "@/lib/maritime-user-coordinates";
 import { MARITIME_USERS_PAGE_SIZE, resolvePage } from "@/lib/pagination";
 
 export async function GET(request: Request) {
@@ -67,8 +67,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       maritimeUsers: maritimeUsers.map((item) => ({
         ...item,
-        latitude: item.latitude.toString(),
-        longitude: item.longitude.toString(),
+        latitude: item.latitude ? item.latitude.toString() : null,
+        longitude: item.longitude ? item.longitude.toString() : null,
       })),
       pagination: { page, totalPages, total },
     });
@@ -95,10 +95,11 @@ export async function POST(request: Request) {
     const phoneNumber = text("phoneNumber");
     const coordinates = parseMaritimeUserCoordinates(data.latitude, data.longitude);
     const password = typeof data.password === "string" ? data.password : "";
+    const hasCoordinatesInput = hasMaritimeUserCoordinates(data);
 
-    if (!firstName || !lastName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !coordinates) {
+    if (!firstName || !lastName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || (hasCoordinatesInput && !coordinates)) {
       return NextResponse.json(
-        { message: "Prénom, nom, email et coordonnées valides sont obligatoires." },
+        { message: hasCoordinatesInput ? "Prénom, nom, email et coordonnées valides sont obligatoires." : "Prénom, nom et email valides sont obligatoires." },
         { status: 400 },
       );
     }
@@ -124,8 +125,7 @@ export async function POST(request: Request) {
       const createdProfile = await tx.maritimeUser.create({
         data: {
           userId: createdUser.id,
-          latitude: coordinates.latitude,
-          longitude: coordinates.longitude,
+          ...(coordinates ? { latitude: coordinates.latitude, longitude: coordinates.longitude } : {}),
         },
         select: {
           id: true,
@@ -151,8 +151,7 @@ export async function POST(request: Request) {
           entityId: createdProfile.id,
           details: {
             email,
-            latitude: coordinates.latitude,
-            longitude: coordinates.longitude,
+            ...(coordinates ? { latitude: coordinates.latitude, longitude: coordinates.longitude } : {}),
           },
         },
       });
@@ -164,8 +163,8 @@ export async function POST(request: Request) {
       ok: true,
       maritimeUser: {
         ...maritimeUser,
-        latitude: maritimeUser.latitude.toString(),
-        longitude: maritimeUser.longitude.toString(),
+        latitude: maritimeUser.latitude ? maritimeUser.latitude.toString() : null,
+        longitude: maritimeUser.longitude ? maritimeUser.longitude.toString() : null,
       },
     }, { status: 201 });
   } catch (error) {

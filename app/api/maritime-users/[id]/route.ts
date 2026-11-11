@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { parseMaritimeUserCoordinates } from "@/lib/maritime-user-coordinates";
+import { hasMaritimeUserCoordinates, parseMaritimeUserCoordinates } from "@/lib/maritime-user-coordinates";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -33,9 +33,10 @@ export async function PATCH(request: Request, context: Context) {
     const email = text("email").toLowerCase();
     const phoneNumber = text("phoneNumber");
     const coordinates = parseMaritimeUserCoordinates(data.latitude, data.longitude);
-    if (!firstName || !lastName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !coordinates) {
+    const hasCoordinatesInput = hasMaritimeUserCoordinates(data);
+    if (!firstName || !lastName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || (hasCoordinatesInput && !coordinates)) {
       return NextResponse.json(
-        { message: "Prénom, nom, email et coordonnées valides sont obligatoires." },
+        { message: hasCoordinatesInput ? "Prénom, nom, email et coordonnées valides sont obligatoires." : "Prénom, nom et email valides sont obligatoires." },
         { status: 400 },
       );
     }
@@ -65,8 +66,8 @@ export async function PATCH(request: Request, context: Context) {
         lastName: current.user.lastName,
         email: current.user.email,
         phoneNumber: current.user.phoneNumber,
-        latitude: current.latitude.toString(),
-        longitude: current.longitude.toString(),
+        latitude: current.latitude ? current.latitude.toString() : null,
+        longitude: current.longitude ? current.longitude.toString() : null,
       };
       await tx.user.update({
         where: { id: current.user.id },
@@ -74,7 +75,7 @@ export async function PATCH(request: Request, context: Context) {
       });
       const updated = await tx.maritimeUser.update({
         where: { id },
-        data: { latitude: coordinates.latitude, longitude: coordinates.longitude },
+        data: coordinates ? { latitude: coordinates.latitude, longitude: coordinates.longitude } : {},
         select: {
           id: true,
           latitude: true,
@@ -103,8 +104,7 @@ export async function PATCH(request: Request, context: Context) {
               lastName,
               email,
               phoneNumber: phoneNumber || null,
-              latitude: coordinates.latitude,
-              longitude: coordinates.longitude,
+              ...(coordinates ? { latitude: coordinates.latitude, longitude: coordinates.longitude } : {}),
             },
           },
         },
@@ -120,8 +120,8 @@ export async function PATCH(request: Request, context: Context) {
       ok: true,
       maritimeUser: {
         ...maritimeUser,
-        latitude: maritimeUser.latitude.toString(),
-        longitude: maritimeUser.longitude.toString(),
+        latitude: maritimeUser.latitude ? maritimeUser.latitude.toString() : null,
+        longitude: maritimeUser.longitude ? maritimeUser.longitude.toString() : null,
       },
     });
   } catch (error) {

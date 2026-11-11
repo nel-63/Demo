@@ -4,9 +4,10 @@ const ExactDecimal = Decimal.clone({ precision: 80 });
 
 export type MaritimeProductInput = {
   id?: string;
-  productType: string;
+  productId?: string;
+  productType?: string;
   quantity: string;
-  unitPrice: string;
+  unitPrice?: string;
 };
 
 export type MaritimeDeclarationInput = {
@@ -161,18 +162,35 @@ export function validateMaritimeDeclaration(value: unknown): MaritimeDeclaration
     if (!isRecord(item)) {
       throw new MaritimeDeclarationValidationError(`Le produit ${index + 1} est invalide.`);
     }
-    const productType = requiredText(item, "productType", `Le type du produit ${index + 1}`, 100);
-    const quantity = decimalText(item.quantity, `La quantité du produit ${index + 1}`, 14, 3, false);
-    const unitPrice = decimalText(item.unitPrice, `Le prix unitaire du produit ${index + 1}`, 14, 2, true);
     const id = typeof item.id === "string" ? item.id.trim() : undefined;
+    const productId = typeof item.productId === "string" ? item.productId.trim() : undefined;
+    const productTypeValue = typeof item.productType === "string" ? item.productType.trim() : "";
     if (item.id !== undefined && (!id || id.length > 100)) {
       throw new MaritimeDeclarationValidationError(`L'identifiant du produit ${index + 1} est invalide.`);
+    }
+    if (productId && productId.length > 100) {
+      throw new MaritimeDeclarationValidationError(`L'identifiant du produit ${index + 1} est invalide.`);
+    }
+    const quantity = decimalText(item.quantity, `La quantité du produit ${index + 1}`, 14, 3, false);
+    const unitPriceText = item.unitPrice;
+    const unitPrice = unitPriceText !== undefined
+      ? decimalText(unitPriceText, `Le prix unitaire du produit ${index + 1}`, 14, 2, true)
+      : "0";
+    const productType = productTypeValue || (productId ? productId : "");
+    if (!productType && !productId) {
+      throw new MaritimeDeclarationValidationError(`Le type du produit ${index + 1} est obligatoire.`);
     }
     if (id && productIds.has(id)) {
       throw new MaritimeDeclarationValidationError("Une ligne produit ne peut être envoyée qu'une seule fois.");
     }
     if (id) productIds.add(id);
-    return { ...(id ? { id } : {}), productType, quantity, unitPrice };
+    return {
+      ...(id ? { id } : {}),
+      ...(productId ? { productId } : {}),
+      ...(productType ? { productType } : {}),
+      quantity,
+      ...(unitPrice !== "0" ? { unitPrice } : {}),
+    };
   });
 
   return {

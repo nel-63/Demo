@@ -5,9 +5,44 @@ import {
   MaritimeDeclarationValidationError,
   snapshotMaritimeDeclaration,
   validateMaritimeDeclaration,
+  type MaritimeProductInput,
 } from "@/lib/maritime-declarations";
 
 type Context = { params: Promise<{ id: string }> };
+
+async function resolveProductLines(
+  tx: typeof prisma,
+  products: MaritimeProductInput[] = [],
+) {
+  const safeProducts = products ?? [];
+  const productIds = safeProducts
+    .map((product) => product.productId ?? product.id)
+    .filter((value): value is string => Boolean(value));
+
+  const catalog = productIds.length
+    ? (await tx.maritimeProductType.findMany({
+        where: { id: { in: productIds }, isActive: true },
+        select: { id: true, name: true, unitPrice: true },
+      })) ?? []
+    : [];
+
+  const catalogById = new Map(catalog.map((item) => [item.id, item]));
+
+  return safeProducts.map((product) => {
+    const catalogItem = product.productId ? catalogById.get(product.productId) : null;
+    const resolvedName = catalogItem?.name ?? product.productType ?? "";
+    const resolvedUnitPrice = catalogItem ? catalogItem.unitPrice.toString() : (product.unitPrice ?? "0");
+    if (product.productId && !catalogItem) {
+      throw new MaritimeDeclarationValidationError("Un produit maritime sélectionné est introuvable ou désactivé.");
+    }
+    return {
+      productTypeId: catalogItem?.id ?? null,
+      productType: resolvedName,
+      quantity: product.quantity,
+      unitPrice: resolvedUnitPrice,
+    };
+  });
+}
 
 async function getMaritimeProfile(userId: string) {
   return prisma.maritimeUser.findUnique({
@@ -61,6 +96,7 @@ async function updateDeclaration(request: Request, context: Context) {
       return NextResponse.json({ message: "Le contenu de la déclaration est invalide." }, { status: 400 });
     }
     const input = validateMaritimeDeclaration(body);
+    const products = input.products ?? [];
     const outcome = await prisma.$transaction(async (tx) => {
       const current = await tx.maritimeDeclaration.findFirst({
         where: { id, maritimeUserId: profile.id },
@@ -69,10 +105,11 @@ async function updateDeclaration(request: Request, context: Context) {
       if (!current) return { kind: "not_found" as const };
 
       const currentProductIds = new Set(current.products.map((product) => product.id));
-      if (input.products.some((product) => product.id && !currentProductIds.has(product.id))) {
+      if (products.some((product) => product.id && !currentProductIds.has(product.id))) {
         return { kind: "invalid_product" as const };
       }
 
+      const resolvedProducts = await resolveProductLines(tx, products);
       const before = snapshotMaritimeDeclaration(current);
       await tx.maritimeDeclaration.update({
         where: { id },
@@ -91,15 +128,18 @@ async function updateDeclaration(request: Request, context: Context) {
       });
 
       const retainedIds: string[] = [];
-      for (const product of input.products) {
+      for (let index = 0; index < products.length; index += 1) {
+        const sourceLine = products[index];
+        const resolved = resolvedProducts[index];
         const data = {
-          productType: product.productType,
-          quantity: product.quantity,
-          unitPrice: product.unitPrice,
+          productTypeId: resolved.productTypeId ?? undefined,
+          productType: resolved.productType,
+          quantity: resolved.quantity,
+          unitPrice: resolved.unitPrice,
         };
-        if (product.id) {
-          retainedIds.push(product.id);
-          await tx.maritimeDeclarationProduct.update({ where: { id: product.id }, data });
+        if (sourceLine.id) {
+          retainedIds.push(sourceLine.id);
+          await tx.maritimeDeclarationProduct.update({ where: { id: sourceLine.id }, data });
         } else {
           await tx.maritimeDeclarationProduct.create({ data: { declarationId: id, ...data } });
         }

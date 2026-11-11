@@ -1,12 +1,19 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   calculateMaritimeTotals,
   formatMaritimeAmount,
   type MaritimeProductInput,
 } from "@/lib/maritime-declarations";
+
+type MaritimeCatalogItem = {
+  id: string;
+  name: string;
+  unitPrice: string;
+  isActive: boolean;
+};
 
 type DeclarationValues = {
   companyName: string;
@@ -35,6 +42,7 @@ export default function DeclarationForm({
   declarationId?: string;
 }) {
   const router = useRouter();
+  const [catalog, setCatalog] = useState<MaritimeCatalogItem[]>([]);
   const [values, setValues] = useState<DeclarationValues>(
     initial ?? {
       companyName: "",
@@ -47,12 +55,28 @@ export default function DeclarationForm({
       originDepartureDate: "",
       arrivalDate: "",
       departureDate: "",
-      products: [{ productType: "", quantity: "", unitPrice: "" }],
+      products: [{ productId: "", productType: "", quantity: "" }],
     },
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const { lineTotals, total } = calculateMaritimeTotals(values.products);
+
+  useEffect(() => {
+    async function loadCatalog() {
+      const response = await fetch("/api/maritime-product-types");
+      const result = await response.json().catch(() => ({ maritimeProductTypes: [] }));
+      const items = Array.isArray(result.maritimeProductTypes) ? result.maritimeProductTypes : [];
+      setCatalog(items.filter((item: { isActive?: boolean }) => item.isActive !== false));
+    }
+    void loadCatalog();
+  }, []);
+
+  const normalizedProducts = values.products.map((product) => {
+    const catalogItem = catalog.find((item) => item.id === product.productId);
+    const price = catalogItem ? catalogItem.unitPrice : product.unitPrice ?? "0";
+    return { ...product, unitPrice: price };
+  });
+  const { lineTotals, total } = calculateMaritimeTotals(normalizedProducts as Array<{ quantity: string; unitPrice: string }>);
 
   function setField<K extends keyof Omit<DeclarationValues, "products">>(
     key: K,
@@ -75,12 +99,20 @@ export default function DeclarationForm({
     setError("");
     setSaving(true);
     try {
+      const payload = {
+        ...values,
+        products: values.products.map((product) => ({
+          ...product,
+          productType: product.productType || catalog.find((item) => item.id === product.productId)?.name || "",
+          unitPrice: product.unitPrice || catalog.find((item) => item.id === product.productId)?.unitPrice || undefined,
+        })),
+      };
       const response = await fetch(
         declarationId ? `/api/maritime/declarations/${declarationId}` : "/api/maritime/declarations",
         {
           method: declarationId ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(values),
+          body: JSON.stringify(payload),
         },
       );
       const result = await response.json().catch(() => ({}));
@@ -101,6 +133,8 @@ export default function DeclarationForm({
       setSaving(false);
     }
   }
+
+  const canAddProduct = catalog.length > 0;
 
   return (
     <form onSubmit={submit} className="space-y-5">
@@ -177,56 +211,90 @@ export default function DeclarationForm({
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className={SECTION_CLASS}>Produits</h2>
-          <button type="button" onClick={() => setValues((current) => ({
-            ...current,
-            products: [...current.products, { productType: "", quantity: "", unitPrice: "" }],
-          }))} className="rounded-lg border border-blue-700 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+          <button
+            type="button"
+            onClick={() => setValues((current) => ({
+              ...current,
+              products: [...current.products, { productId: "", productType: "", quantity: "", unitPrice: "" }],
+            }))}
+            disabled={!canAddProduct}
+            className="rounded-lg border border-blue-700 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
             + Ajouter un produit
           </button>
         </div>
-        {values.products.map((product, index) => (
-          <fieldset key={product.id ?? index} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-[1.4fr_1fr_1fr_1fr_auto]">
-            <legend className="px-1 text-sm font-semibold text-slate-700">Produit {index + 1}</legend>
-            {product.id && <input type="hidden" name="productId" value={product.id} readOnly />}
-            <label className="block">
-              <span className={LABEL_CLASS}>Type de produit</span>
-              <input className={INPUT_CLASS} required maxLength={100} value={product.productType}
-                onChange={(event) => setProduct(index, "productType", event.target.value)} />
-            </label>
-            <label className="block">
-              <span className={LABEL_CLASS}>Quantité (kg)</span>
-              <input className={INPUT_CLASS} type="number" min="0.001" step="0.001" required
-                value={product.quantity} onChange={(event) => setProduct(index, "quantity", event.target.value)} />
-            </label>
-            <label className="block">
-              <span className={LABEL_CLASS}>Prix (Ar/kg)</span>
-              <input className={INPUT_CLASS} type="number" min="0" step="0.01" required
-                value={product.unitPrice} onChange={(event) => setProduct(index, "unitPrice", event.target.value)} />
-            </label>
-            <div>
-              <span className={LABEL_CLASS}>Total de la ligne (Ar)</span>
-              <output className="block rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-right font-semibold tabular-nums text-slate-900">
-                {lineTotals[index] === null ? "—" : formatMaritimeAmount(lineTotals[index] ?? "0")}
-              </output>
-            </div>
-            <button type="button" disabled={values.products.length === 1}
-              onClick={() => setValues((current) => ({
-                ...current,
-                products: current.products.filter((_, productIndex) => productIndex !== index),
-              }))}
-              aria-label={`Retirer le produit ${index + 1}`}
-              className="self-end rounded-lg border border-red-300 px-3 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40">
-              Retirer
-            </button>
-          </fieldset>
-        ))}
+
+        {!canAddProduct && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Aucun produit maritime actif n&apos;est disponible. Demandez à l&apos;administrateur de créer un catalogue avant d&apos;ajouter une déclaration.
+          </p>
+        )}
+
+        {values.products.map((product, index) => {
+          const selectedProduct = catalog.find((item) => item.id === product.productId);
+          const officialUnitPrice = selectedProduct ? selectedProduct.unitPrice : product.unitPrice ?? "0";
+          const lineTotal = calculateMaritimeTotals([{ quantity: product.quantity || "0", unitPrice: officialUnitPrice }]).lineTotals[0];
+
+          return (
+            <fieldset key={`${index}-${product.productId ?? "empty"}`} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-[1.4fr_1fr_1fr_1fr_auto]">
+              <legend className="px-1 text-sm font-semibold text-slate-700">Produit {index + 1}</legend>
+              <label className="block">
+                <span className={LABEL_CLASS}>Type de produit</span>
+                <select
+                  className={INPUT_CLASS}
+                  value={product.productId ?? ""}
+                  onChange={(event) => {
+                    const nextProductId = event.target.value;
+                    const nextProduct = catalog.find((item) => item.id === nextProductId);
+                    setProduct(index, "productId", nextProductId);
+                    setProduct(index, "productType", nextProduct?.name ?? "");
+                    setProduct(index, "unitPrice", nextProduct?.unitPrice ?? "");
+                  }}
+                  disabled={catalog.length === 0}
+                >
+                  <option value="">Sélectionner un produit</option>
+                  {catalog.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className={LABEL_CLASS}>Quantité (kg)</span>
+                <input className={INPUT_CLASS} type="number" min="0.001" step="0.001" required
+                  value={product.quantity} onChange={(event) => setProduct(index, "quantity", event.target.value)} />
+              </label>
+              <div>
+                <span className={LABEL_CLASS}>Prix officiel (MGA/kg)</span>
+                <output className="block rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-right font-semibold text-slate-900 tabular-nums">
+                  {officialUnitPrice ? formatMaritimeAmount(officialUnitPrice) : "—"}
+                </output>
+              </div>
+              <div>
+                <span className={LABEL_CLASS}>Montant de la ligne (MGA)</span>
+                <output className="block rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-right font-semibold text-slate-900 tabular-nums">
+                  {lineTotal === null ? "—" : formatMaritimeAmount(lineTotal ?? "0")}
+                </output>
+              </div>
+              <button type="button" disabled={values.products.length === 1}
+                onClick={() => setValues((current) => ({
+                  ...current,
+                  products: current.products.filter((_, productIndex) => productIndex !== index),
+                }))}
+                aria-label={`Retirer le produit ${index + 1}`}
+                className="self-end rounded-lg border border-red-300 px-3 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40">
+                Retirer
+              </button>
+            </fieldset>
+          );
+        })}
+
         <p className="rounded-xl bg-blue-50 px-4 py-3 text-right font-semibold text-blue-900" aria-live="polite">
-          Total général : {formatMaritimeAmount(total)} Ar
+          Total général : {formatMaritimeAmount(total)} MGA
         </p>
       </section>
 
       {error && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}
-      <button type="submit" disabled={saving || values.products.length === 0}
+      <button type="submit" disabled={saving || values.products.length === 0 || !canAddProduct}
         className="w-full rounded-xl bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50">
         {saving ? "Enregistrement..." : declarationId ? "Enregistrer les modifications" : "Créer la déclaration"}
       </button>

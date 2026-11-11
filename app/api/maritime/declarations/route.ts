@@ -6,8 +6,43 @@ import {
   MaritimeDeclarationValidationError,
   snapshotMaritimeDeclaration,
   validateMaritimeDeclaration,
+  type MaritimeProductInput,
 } from "@/lib/maritime-declarations";
 import { MARITIME_DECLARATIONS_PAGE_SIZE, resolvePage } from "@/lib/pagination";
+
+async function resolveProductLines(
+  tx: typeof prisma,
+  products: MaritimeProductInput[] = [],
+) {
+  const safeProducts = products ?? [];
+  const productIds = safeProducts
+    .map((product) => product.productId ?? product.id)
+    .filter((value): value is string => Boolean(value));
+
+  const catalog = productIds.length
+    ? (await tx.maritimeProductType.findMany({
+        where: { id: { in: productIds }, isActive: true },
+        select: { id: true, name: true, unitPrice: true },
+      })) ?? []
+    : [];
+
+  const catalogById = new Map(catalog.map((item) => [item.id, item]));
+
+  return safeProducts.map((product) => {
+    const catalogItem = product.productId ? catalogById.get(product.productId) : null;
+    const resolvedName = catalogItem?.name ?? product.productType ?? "";
+    const resolvedUnitPrice = catalogItem ? catalogItem.unitPrice.toString() : (product.unitPrice ?? "0");
+    if (product.productId && !catalogItem) {
+      throw new MaritimeDeclarationValidationError("Un produit maritime sélectionné est introuvable ou désactivé.");
+    }
+    return {
+      productTypeId: catalogItem?.id ?? null,
+      productType: resolvedName,
+      quantity: product.quantity,
+      unitPrice: resolvedUnitPrice,
+    };
+  });
+}
 
 async function getMaritimeProfile(userId: string) {
   return prisma.maritimeUser.findUnique({
@@ -103,7 +138,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Le contenu de la déclaration est invalide." }, { status: 400 });
     }
     const input = validateMaritimeDeclaration(body);
+    const products = input.products ?? [];
     const created = await prisma.$transaction(async (tx) => {
+      const productLines = await resolveProductLines(tx, products);
       const declaration = await tx.maritimeDeclaration.create({
         data: {
           maritimeUserId: profile.id,
@@ -118,7 +155,8 @@ export async function POST(request: Request) {
           arrivalDate: new Date(`${input.arrivalDate}T00:00:00.000Z`),
           departureDate: new Date(`${input.departureDate}T00:00:00.000Z`),
           products: {
-            create: input.products.map(({ productType, quantity, unitPrice }) => ({
+            create: productLines.map(({ productTypeId, productType, quantity, unitPrice }) => ({
+              productTypeId: productTypeId ?? undefined,
               productType,
               quantity,
               unitPrice,

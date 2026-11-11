@@ -69,13 +69,29 @@ model Supervisor {
 model MaritimeUser {
   id        String   @id @default(cuid())
   userId    String   @unique
-  latitude  Decimal  @db.Decimal(9, 6)
-  longitude Decimal  @db.Decimal(9, 6)
+  latitude  Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   user         User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
   declarations MaritimeDeclaration[]
+}
+
+model MaritimeProductType {
+  id             String   @id @default(cuid())
+  name           String
+  normalizedName String   @unique
+  unitPrice      Decimal  @db.Decimal(14, 2)
+  currency       String   @default("MGA")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  declarationProducts MaritimeDeclarationProduct[]
+
+  @@index([isActive])
+  @@index([name])
 }
 
 model MaritimeDeclaration {
@@ -105,15 +121,18 @@ model MaritimeDeclaration {
 model MaritimeDeclarationProduct {
   id             String   @id @default(cuid())
   declarationId  String
+  productTypeId  String?
   productType    String
   quantity       Decimal  @db.Decimal(14, 3)
   unitPrice      Decimal  @db.Decimal(14, 2)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  declaration MaritimeDeclaration @relation(fields: [declarationId], references: [id], onDelete: Cascade)
+  declaration        MaritimeDeclaration       @relation(fields: [declarationId], references: [id], onDelete: Cascade)
+  maritimeProductType MaritimeProductType? @relation(fields: [productTypeId], references: [id], onDelete: SetNull)
 
   @@index([declarationId])
+  @@index([productTypeId])
 }
 
 model Product {

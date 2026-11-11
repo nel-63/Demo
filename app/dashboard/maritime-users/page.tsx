@@ -127,7 +127,7 @@ async function MaritimeUsersContent({ searchParams }: { searchParams: Promise<Se
                         {item.user.phoneNumber && <span className="block pt-1 text-xs font-normal text-slate-600">{item.user.phoneNumber}</span>}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4">{item.user.email}</td>
-                      <td className="whitespace-nowrap px-3 py-4">{item.latitude.toString()}, {item.longitude.toString()}</td>
+                      <td className="whitespace-nowrap px-3 py-4">{item.latitude && item.longitude ? `${item.latitude.toString()}, ${item.longitude.toString()}` : "—"}</td>
                       <td className="px-3 py-4">{item._count.declarations}</td>
                       <td className="px-3 py-4">
                         <span className={item.user.isActive

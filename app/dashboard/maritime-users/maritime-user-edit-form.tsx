@@ -8,8 +8,8 @@ type Values = {
   lastName: string;
   email: string;
   phoneNumber: string;
-  latitude: string;
-  longitude: string;
+  latitude?: string;
+  longitude?: string;
 };
 
 export default function MaritimeUserEditForm({
@@ -56,8 +56,8 @@ export default function MaritimeUserEditForm({
     { name: "lastName", label: "Nom", required: true },
     { name: "email", label: "Adresse email / identifiant", type: "email", required: true },
     { name: "phoneNumber", label: "Téléphone", type: "tel", required: false },
-    { name: "latitude", label: "Latitude", required: true, min: "-90", max: "90" },
-    { name: "longitude", label: "Longitude", required: true, min: "-180", max: "180" },
+    { name: "latitude", label: "Latitude", required: false, min: "-90", max: "90" },
+    { name: "longitude", label: "Longitude", required: false, min: "-180", max: "180" },
   ] as const;
 
   return (
@@ -74,7 +74,7 @@ export default function MaritimeUserEditForm({
             min={"min" in field ? field.min : undefined}
             max={"max" in field ? field.max : undefined}
             maxLength={field.name === "email" ? 254 : 100}
-            value={values[field.name]}
+            value={values[field.name] ?? ""}
             onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))}
             className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
           />

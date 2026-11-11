@@ -25,6 +25,11 @@ export function parseMaritimeUserCoordinates(
   return { latitude, longitude };
 }
 
+export function hasMaritimeUserCoordinates(value: Record<string, unknown>): boolean {
+  return Object.prototype.hasOwnProperty.call(value, "latitude") ||
+    Object.prototype.hasOwnProperty.call(value, "longitude");
+}
+
 function coordinateText(value: unknown): string | null {
   const text = typeof value === "number" && Number.isFinite(value)
     ? String(value)

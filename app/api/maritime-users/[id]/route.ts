@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { hasMaritimeUserCoordinates, parseMaritimeUserCoordinates } from "@/lib/maritime-user-coordinates";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -32,13 +31,8 @@ export async function PATCH(request: Request, context: Context) {
     const lastName = text("lastName");
     const email = text("email").toLowerCase();
     const phoneNumber = text("phoneNumber");
-    const coordinates = parseMaritimeUserCoordinates(data.latitude, data.longitude);
-    const hasCoordinatesInput = hasMaritimeUserCoordinates(data);
-    if (!firstName || !lastName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || (hasCoordinatesInput && !coordinates)) {
-      return NextResponse.json(
-        { message: hasCoordinatesInput ? "Prénom, nom, email et coordonnées valides sont obligatoires." : "Prénom, nom et email valides sont obligatoires." },
-        { status: 400 },
-      );
+    if (!firstName || !lastName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ message: "Prénom, nom et email valides sont obligatoires." }, { status: 400 });
     }
 
     const maritimeUser = await prisma.$transaction(async (tx) => {
@@ -66,8 +60,6 @@ export async function PATCH(request: Request, context: Context) {
         lastName: current.user.lastName,
         email: current.user.email,
         phoneNumber: current.user.phoneNumber,
-        latitude: current.latitude ? current.latitude.toString() : null,
-        longitude: current.longitude ? current.longitude.toString() : null,
       };
       await tx.user.update({
         where: { id: current.user.id },
@@ -75,7 +67,7 @@ export async function PATCH(request: Request, context: Context) {
       });
       const updated = await tx.maritimeUser.update({
         where: { id },
-        data: coordinates ? { latitude: coordinates.latitude, longitude: coordinates.longitude } : {},
+        data: {},
         select: {
           id: true,
           latitude: true,
@@ -104,7 +96,6 @@ export async function PATCH(request: Request, context: Context) {
               lastName,
               email,
               phoneNumber: phoneNumber || null,
-              ...(coordinates ? { latitude: coordinates.latitude, longitude: coordinates.longitude } : {}),
             },
           },
         },
@@ -116,14 +107,7 @@ export async function PATCH(request: Request, context: Context) {
       return NextResponse.json({ message: "Utilisateur maritime introuvable." }, { status: 404 });
     }
 
-    return NextResponse.json({
-      ok: true,
-      maritimeUser: {
-        ...maritimeUser,
-        latitude: maritimeUser.latitude ? maritimeUser.latitude.toString() : null,
-        longitude: maritimeUser.longitude ? maritimeUser.longitude.toString() : null,
-      },
-    });
+    return NextResponse.json({ ok: true, maritimeUser });
   } catch (error) {
     const code = typeof error === "object" && error !== null && "code" in error
       ? (error as { code?: string }).code
@@ -170,8 +154,8 @@ export async function DELETE(_request: Request, context: Context) {
             email: current.user.email,
             firstName: current.user.firstName,
             lastName: current.user.lastName,
-            latitude: current.latitude.toString(),
-            longitude: current.longitude.toString(),
+            latitude: current.latitude !== null ? current.latitude.toString() : null,
+            longitude: current.longitude !== null ? current.longitude.toString() : null,
           },
         },
       });

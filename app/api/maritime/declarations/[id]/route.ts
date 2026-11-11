@@ -9,9 +9,10 @@ import {
 } from "@/lib/maritime-declarations";
 
 type Context = { params: Promise<{ id: string }> };
+type TransactionClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 async function resolveProductLines(
-  tx: typeof prisma,
+  tx: TransactionClient,
   products: MaritimeProductInput[] = [],
 ) {
   const safeProducts = products ?? [];

@@ -8,8 +8,6 @@ type Values = {
   lastName: string;
   email: string;
   phoneNumber: string;
-  latitude?: string;
-  longitude?: string;
 };
 
 export default function MaritimeUserEditForm({
@@ -56,8 +54,6 @@ export default function MaritimeUserEditForm({
     { name: "lastName", label: "Nom", required: true },
     { name: "email", label: "Adresse email / identifiant", type: "email", required: true },
     { name: "phoneNumber", label: "Téléphone", type: "tel", required: false },
-    { name: "latitude", label: "Latitude", required: false, min: "-90", max: "90" },
-    { name: "longitude", label: "Longitude", required: false, min: "-180", max: "180" },
   ] as const;
 
   return (
@@ -80,7 +76,6 @@ export default function MaritimeUserEditForm({
           />
         </div>
       ))}
-      <p className="-mt-2 text-xs text-slate-600">Coordonnées en degrés décimaux, avec un point comme séparateur (6 décimales maximum).</p>
       {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {message && <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{message}</p>}
       <button type="submit" disabled={loading} className="rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60">

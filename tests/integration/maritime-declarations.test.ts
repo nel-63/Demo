@@ -125,8 +125,8 @@ describe("déclarations maritimes en PostgreSQL", () => {
       const user = await prisma.user.findUnique({ where: { email: account.email } });
       expect(user?.role).toBe("USER_MAR");
       const profile = await prisma.maritimeUser.findUnique({ where: { userId: user!.id } });
-      expect(profile?.latitude.toString()).toBe("-20.2833");
-      expect(profile?.longitude.toString()).toBe("44.2833");
+      expect(profile?.latitude?.toString()).toBe("-20.2833");
+      expect(profile?.longitude?.toString()).toBe("44.2833");
       expect(await prisma.auditLog.count({
         where: { entityType: "MaritimeUser", entityId: profile!.id, action: "CREATE" },
       })).toBe(1);

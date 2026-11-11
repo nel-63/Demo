@@ -23,7 +23,6 @@ async function MaritimeUsersContent({ searchParams }: { searchParams: Promise<Se
 
   const params = await searchParams;
   const q = readParam(params, "q");
-  const numericSearch = /^-?\d+(?:\.\d{1,6})?$/.test(q) ? Number(q) : null;
   const where = q
     ? {
         OR: [
@@ -36,12 +35,6 @@ async function MaritimeUsersContent({ searchParams }: { searchParams: Promise<Se
             : q.toLocaleLowerCase("fr-FR") === "inactif"
               ? [{ user: { isActive: false } }]
               : []),
-          ...(numericSearch !== null && numericSearch >= -90 && numericSearch <= 90
-            ? [{ latitude: { equals: q } }]
-            : []),
-          ...(numericSearch !== null && numericSearch >= -180 && numericSearch <= 180
-            ? [{ longitude: { equals: q } }]
-            : []),
         ],
       }
     : undefined;
@@ -54,8 +47,6 @@ async function MaritimeUsersContent({ searchParams }: { searchParams: Promise<Se
     take: MARITIME_USERS_PAGE_SIZE,
     select: {
       id: true,
-      latitude: true,
-      longitude: true,
       _count: { select: { declarations: true } },
       user: {
         select: {
@@ -96,7 +87,7 @@ async function MaritimeUsersContent({ searchParams }: { searchParams: Promise<Se
               type="search"
               defaultValue={q}
               maxLength={100}
-              placeholder="Nom, email, téléphone ou coordonnées…"
+              placeholder="Nom, email ou téléphone…"
               className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
             <button className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white">Rechercher</button>
@@ -111,7 +102,6 @@ async function MaritimeUsersContent({ searchParams }: { searchParams: Promise<Se
                   <tr>
                     <th className="whitespace-nowrap px-3 py-3">Utilisateur</th>
                     <th className="whitespace-nowrap px-3 py-3">Identifiant / email</th>
-                    <th className="whitespace-nowrap px-3 py-3">Coordonnées</th>
                     <th className="whitespace-nowrap px-3 py-3">Déclarations</th>
                     <th className="whitespace-nowrap px-3 py-3">Statut</th>
                     <th className="whitespace-nowrap px-3 py-3">Gestion</th>
@@ -127,7 +117,6 @@ async function MaritimeUsersContent({ searchParams }: { searchParams: Promise<Se
                         {item.user.phoneNumber && <span className="block pt-1 text-xs font-normal text-slate-600">{item.user.phoneNumber}</span>}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4">{item.user.email}</td>
-                      <td className="whitespace-nowrap px-3 py-4">{item.latitude && item.longitude ? `${item.latitude.toString()}, ${item.longitude.toString()}` : "—"}</td>
                       <td className="px-3 py-4">{item._count.declarations}</td>
                       <td className="px-3 py-4">
                         <span className={item.user.isActive

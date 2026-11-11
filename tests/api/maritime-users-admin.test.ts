@@ -77,32 +77,28 @@ describe("création d'un utilisateur maritime", () => {
     expect(await bcrypt.compare(PASSWORD, userData.passwordHash)).toBe(true);
     expect(db.maritimeUser.create.mock.calls[0][0].data).toEqual({
       userId: "user-mar-1",
-      latitude: "-20.2833",
-      longitude: "44.2833",
     });
     expect(db.location.create).not.toHaveBeenCalled();
     expect(auditEntries(db)[0]).toMatchObject({
       userId: ADMIN.id,
       action: "CREATE",
       entityType: "MaritimeUser",
-      details: { email: account.email, latitude: account.latitude, longitude: account.longitude },
+      details: { email: account.email },
     });
     expect(JSON.stringify(body)).not.toContain(PASSWORD);
     expect(JSON.stringify(body)).not.toContain(userData.passwordHash);
     expect(JSON.stringify(auditEntries(db))).not.toContain(PASSWORD);
   });
 
-  it("refuse les coordonnées manquantes, hors bornes, à virgule ou trop précises", async () => {
-    for (const invalid of [
-      { ...account, latitude: "" },
-      { ...account, latitude: "-90.000001" },
-      { ...account, longitude: "180.000001" },
-      { ...account, latitude: "-20,2833" },
-      { ...account, longitude: "44.2833333" },
-    ]) {
-      expect((await read(await createMaritimeUser(jsonRequest("/api/maritime-users", "POST", invalid)))).status).toBe(400);
-    }
-    expect(db.$transaction).not.toHaveBeenCalled();
+  it("ignore les coordonnées envoyées par l'administration et les remplace par un profil sans coordonnées", async () => {
+    const invalid = { ...account, latitude: "-90.000001", longitude: "180.000001" };
+    db.user.create.mockResolvedValue({ id: "user-mar-1" });
+    db.maritimeUser.create.mockResolvedValue(createdProfile());
+
+    const { status } = await read(await createMaritimeUser(jsonRequest("/api/maritime-users", "POST", invalid)));
+
+    expect(status).toBe(201);
+    expect(db.maritimeUser.create.mock.calls[0][0].data).toEqual({ userId: "user-mar-1" });
   });
 
   it("renvoie le message de doublon des régisseurs pour un email déjà utilisé", async () => {

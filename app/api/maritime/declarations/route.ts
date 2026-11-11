@@ -11,7 +11,7 @@ import {
 import { MARITIME_DECLARATIONS_PAGE_SIZE, resolvePage } from "@/lib/pagination";
 
 async function resolveProductLines(
-  tx: typeof prisma,
+  tx: Prisma.TransactionClient,
   products: MaritimeProductInput[] = [],
 ) {
   const safeProducts = products ?? [];

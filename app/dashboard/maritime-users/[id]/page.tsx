@@ -24,8 +24,6 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
     where: { id },
     select: {
       id: true,
-      latitude: true,
-      longitude: true,
       _count: { select: { declarations: true } },
       user: {
         select: {
@@ -61,8 +59,6 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
             lastName: maritimeUser.user.lastName,
             email: maritimeUser.user.email,
             phoneNumber: maritimeUser.user.phoneNumber ?? "",
-            latitude: maritimeUser.latitude ? maritimeUser.latitude.toString() : "",
-            longitude: maritimeUser.longitude ? maritimeUser.longitude.toString() : "",
           }}
         />
       </section>

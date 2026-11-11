@@ -3,7 +3,6 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { validatePassword } from "@/lib/password-policy";
-import { hasMaritimeUserCoordinates, parseMaritimeUserCoordinates } from "@/lib/maritime-user-coordinates";
 import { MARITIME_USERS_PAGE_SIZE, resolvePage } from "@/lib/pagination";
 
 export async function GET(request: Request) {
@@ -17,7 +16,6 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const q = (url.searchParams.get("q") ?? "").trim().slice(0, 100);
     const pageValue = url.searchParams.get("page") ?? undefined;
-    const coordinateSearch = /^-?\d+(?:\.\d{1,6})?$/.test(q) ? q : null;
     const where = q
       ? {
           OR: [
@@ -30,12 +28,6 @@ export async function GET(request: Request) {
               : q.toLocaleLowerCase("fr-FR") === "inactif"
                 ? [{ user: { isActive: false } }]
                 : []),
-            ...(coordinateSearch
-              ? [
-                  { latitude: { equals: coordinateSearch } },
-                  { longitude: { equals: coordinateSearch } },
-                ]
-              : []),
           ],
         }
       : undefined;
@@ -49,8 +41,6 @@ export async function GET(request: Request) {
       take: MARITIME_USERS_PAGE_SIZE,
       select: {
         id: true,
-        latitude: true,
-        longitude: true,
         _count: { select: { declarations: true } },
         user: {
           select: {
@@ -65,11 +55,7 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({
-      maritimeUsers: maritimeUsers.map((item) => ({
-        ...item,
-        latitude: item.latitude ? item.latitude.toString() : null,
-        longitude: item.longitude ? item.longitude.toString() : null,
-      })),
+      maritimeUsers,
       pagination: { page, totalPages, total },
     });
   } catch (error) {
@@ -93,15 +79,10 @@ export async function POST(request: Request) {
     const lastName = text("lastName");
     const email = text("email").toLowerCase();
     const phoneNumber = text("phoneNumber");
-    const coordinates = parseMaritimeUserCoordinates(data.latitude, data.longitude);
     const password = typeof data.password === "string" ? data.password : "";
-    const hasCoordinatesInput = hasMaritimeUserCoordinates(data);
 
-    if (!firstName || !lastName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || (hasCoordinatesInput && !coordinates)) {
-      return NextResponse.json(
-        { message: hasCoordinatesInput ? "Prénom, nom, email et coordonnées valides sont obligatoires." : "Prénom, nom et email valides sont obligatoires." },
-        { status: 400 },
-      );
+    if (!firstName || !lastName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ message: "Prénom, nom et email valides sont obligatoires." }, { status: 400 });
     }
 
     const passwordError = validatePassword(password);
@@ -125,7 +106,6 @@ export async function POST(request: Request) {
       const createdProfile = await tx.maritimeUser.create({
         data: {
           userId: createdUser.id,
-          ...(coordinates ? { latitude: coordinates.latitude, longitude: coordinates.longitude } : {}),
         },
         select: {
           id: true,
@@ -151,7 +131,6 @@ export async function POST(request: Request) {
           entityId: createdProfile.id,
           details: {
             email,
-            ...(coordinates ? { latitude: coordinates.latitude, longitude: coordinates.longitude } : {}),
           },
         },
       });
@@ -159,14 +138,7 @@ export async function POST(request: Request) {
       return createdProfile;
     });
 
-    return NextResponse.json({
-      ok: true,
-      maritimeUser: {
-        ...maritimeUser,
-        latitude: maritimeUser.latitude ? maritimeUser.latitude.toString() : null,
-        longitude: maritimeUser.longitude ? maritimeUser.longitude.toString() : null,
-      },
-    }, { status: 201 });
+    return NextResponse.json({ ok: true, maritimeUser }, { status: 201 });
   } catch (error) {
     const code = typeof error === "object" && error !== null && "code" in error
       ? (error as { code?: string }).code

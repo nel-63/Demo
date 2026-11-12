@@ -67,8 +67,9 @@ model Supervisor {
 }
 
 model MaritimeUser {
-  id        String   @id @default(cuid())
-  userId    String   @unique
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  companyName String
   latitude  Decimal? @db.Decimal(9, 6)
   longitude Decimal? @db.Decimal(9, 6)
   createdAt DateTime @default(now())
@@ -106,7 +107,7 @@ model MaritimeDeclaration {
   captainEmail        String?
   originDepartureDate DateTime @db.Date
   arrivalDate         DateTime @db.Date
-  departureDate       DateTime @db.Date
+  departureDate       DateTime? @db.Date
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 

@@ -42,12 +42,15 @@ describe("validateMaritimeDeclaration", () => {
     [{ ...valid, captainEmail: "pas-un-email" }, "email"],
     [{ ...valid, originDepartureDate: "2026-10-04" }, "ordre"],
     [{ ...valid, boatCapacity: "0" }, "supérieur à zéro"],
-    [{ ...valid, products: [] }, "au moins un produit"],
     [{ ...valid, products: [{ productType: "Thon", quantity: "0", unitPrice: "10" }] }, "supérieur à zéro"],
     [{ ...valid, products: [{ productType: "Thon", quantity: "1", unitPrice: "-1" }] }, "nombre positif"],
   ])("rejette les données invalides avec un message clair", (input, message) => {
     expect(() => validateMaritimeDeclaration(input)).toThrow(MaritimeDeclarationValidationError);
     expect(() => validateMaritimeDeclaration(input)).toThrow(message);
+  });
+
+  it("accepte un passage sans produit et sans date de sortie", () => {
+    expect(validateMaritimeDeclaration({ ...valid, products: [], departureDate: "" })).toMatchObject({ products: [], departureDate: null });
   });
 });
 

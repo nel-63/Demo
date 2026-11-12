@@ -24,6 +24,7 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
     where: { id },
     select: {
       id: true,
+      companyName: true,
       _count: { select: { declarations: true } },
       user: {
         select: {
@@ -45,7 +46,7 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
       </Link>
       <header className="my-6">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
-          {maritimeUser.user.firstName} {maritimeUser.user.lastName}
+          {maritimeUser.companyName}
         </h1>
         <p className="mt-2 text-slate-600">{maritimeUser.user.email} · {maritimeUser._count.declarations} déclaration(s)</p>
       </header>
@@ -55,10 +56,8 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
         <MaritimeUserEditForm
           maritimeUserId={maritimeUser.id}
           initialValues={{
-            firstName: maritimeUser.user.firstName,
-            lastName: maritimeUser.user.lastName,
+            companyName: maritimeUser.companyName,
             email: maritimeUser.user.email,
-            phoneNumber: maritimeUser.user.phoneNumber ?? "",
           }}
         />
       </section>
@@ -67,7 +66,7 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
         <h2 className="mb-5 text-xl font-semibold">Compte</h2>
         <MaritimeUserAccountActions
           maritimeUserId={maritimeUser.id}
-          maritimeUserName={`${maritimeUser.user.firstName} ${maritimeUser.user.lastName}`}
+          maritimeUserName={maritimeUser.companyName}
           isActive={maritimeUser.user.isActive}
           declarationCount={maritimeUser._count.declarations}
         />

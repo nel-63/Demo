@@ -20,7 +20,7 @@ export type MaritimeDeclarationInput = {
   captainEmail: string | null;
   originDepartureDate: string;
   arrivalDate: string;
-  departureDate: string;
+  departureDate: string | null;
   products: MaritimeProductInput[];
 };
 
@@ -36,7 +36,7 @@ export type MaritimeDeclarationRecord = {
   captainEmail: string | null;
   originDepartureDate: Date;
   arrivalDate: Date;
-  departureDate: Date;
+  departureDate: Date | null;
   createdAt: Date;
   updatedAt: Date;
   products: Array<{
@@ -110,8 +110,11 @@ function decimalText(
   return number.toFixed(scale);
 }
 
-function isoDate(data: Record<string, unknown>, key: string, label: string): string {
+function isoDate(data: Record<string, unknown>, key: string, label: string): string;
+function isoDate(data: Record<string, unknown>, key: string, label: string, optional: true): string | null;
+function isoDate(data: Record<string, unknown>, key: string, label: string, optional = false): string | null {
   const value = typeof data[key] === "string" ? data[key] : "";
+  if (optional && !value) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     throw new MaritimeDeclarationValidationError(`${label} est obligatoire et doit être une date valide.`);
   }
@@ -146,19 +149,19 @@ export function validateMaritimeDeclaration(value: unknown): MaritimeDeclaration
 
   const originDepartureDate = isoDate(value, "originDepartureDate", "La date de départ du port d'origine");
   const arrivalDate = isoDate(value, "arrivalDate", "La date d'arrivée ici");
-  const departureDate = isoDate(value, "departureDate", "La date de départ d'ici");
-  if (originDepartureDate > arrivalDate || arrivalDate > departureDate) {
+  const departureDate = isoDate(value, "departureDate", "La date de départ d'ici", true);
+  if (originDepartureDate > arrivalDate || (departureDate && arrivalDate > departureDate)) {
     throw new MaritimeDeclarationValidationError(
       "Les dates doivent respecter l'ordre : départ du port d'origine, arrivée ici, puis départ d'ici.",
     );
   }
 
-  if (!Array.isArray(value.products) || value.products.length === 0) {
-    throw new MaritimeDeclarationValidationError("Ajoutez au moins un produit à la déclaration.");
+  if (value.products !== undefined && !Array.isArray(value.products)) {
+    throw new MaritimeDeclarationValidationError("La liste des produits est invalide.");
   }
 
   const productIds = new Set<string>();
-  const products = value.products.map((item, index): MaritimeProductInput => {
+  const products = (value.products ?? []).map((item, index): MaritimeProductInput => {
     if (!isRecord(item)) {
       throw new MaritimeDeclarationValidationError(`Le produit ${index + 1} est invalide.`);
     }
@@ -248,7 +251,7 @@ export function snapshotMaritimeDeclaration(record: MaritimeDeclarationRecord) {
     captainEmail: record.captainEmail,
     originDepartureDate: record.originDepartureDate.toISOString().slice(0, 10),
     arrivalDate: record.arrivalDate.toISOString().slice(0, 10),
-    departureDate: record.departureDate.toISOString().slice(0, 10),
+    departureDate: record.departureDate?.toISOString().slice(0, 10) ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     products: record.products.map((product, index) => ({

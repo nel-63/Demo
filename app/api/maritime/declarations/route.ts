@@ -47,7 +47,7 @@ async function resolveProductLines(
 async function getMaritimeProfile(userId: string) {
   return prisma.maritimeUser.findUnique({
     where: { userId },
-    select: { id: true },
+    select: { id: true, companyName: true },
   });
 }
 
@@ -137,14 +137,14 @@ export async function POST(request: Request) {
     } catch {
       return NextResponse.json({ message: "Le contenu de la déclaration est invalide." }, { status: 400 });
     }
-    const input = validateMaritimeDeclaration(body);
+    const input = validateMaritimeDeclaration({ ...(body as Record<string, unknown>), companyName: profile.companyName });
     const products = input.products ?? [];
     const created = await prisma.$transaction(async (tx) => {
       const productLines = await resolveProductLines(tx, products);
       const declaration = await tx.maritimeDeclaration.create({
         data: {
           maritimeUserId: profile.id,
-          companyName: input.companyName,
+          companyName: profile.companyName,
           boatName: input.boatName,
           boatRegistration: input.boatRegistration,
           boatCapacity: input.boatCapacity,
@@ -153,7 +153,7 @@ export async function POST(request: Request) {
           captainEmail: input.captainEmail,
           originDepartureDate: new Date(`${input.originDepartureDate}T00:00:00.000Z`),
           arrivalDate: new Date(`${input.arrivalDate}T00:00:00.000Z`),
-          departureDate: new Date(`${input.departureDate}T00:00:00.000Z`),
+          departureDate: input.departureDate ? new Date(`${input.departureDate}T00:00:00.000Z`) : null,
           products: {
             create: productLines.map(({ productTypeId, productType, quantity, unitPrice }) => ({
               productTypeId: productTypeId ?? undefined,

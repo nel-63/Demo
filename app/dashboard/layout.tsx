@@ -41,8 +41,8 @@ async function Shell({ children }: { children: ReactNode }) {
       : null;
   }
 
-  const fullName = `${user.firstName} ${user.lastName}`;
-  const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
+  const fullName = user.role === "USER_MAR" ? user.firstName : `${user.firstName} ${user.lastName}`;
+  const initials = user.role === "USER_MAR" ? user.firstName.slice(0, 2).toUpperCase() : `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
   const roleLabel = isAdmin
     ? "Administrateur"
     : user.role === "USER_MAR"

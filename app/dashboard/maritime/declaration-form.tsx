@@ -55,7 +55,7 @@ export default function DeclarationForm({
       originDepartureDate: "",
       arrivalDate: "",
       departureDate: "",
-      products: [{ productId: "", productType: "", quantity: "" }],
+      products: [],
     },
   );
   const [error, setError] = useState("");
@@ -142,8 +142,7 @@ export default function DeclarationForm({
         <h2 className={SECTION_CLASS}>Société et bateau</h2>
         <label className="block">
           <span className={LABEL_CLASS}>Nom de la société de pêche</span>
-          <input className={INPUT_CLASS} required maxLength={200} value={values.companyName}
-            onChange={(event) => setField("companyName", event.target.value)} />
+          <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-800">{values.companyName || "Société associée au compte"}</p>
         </label>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
@@ -201,8 +200,8 @@ export default function DeclarationForm({
               onChange={(event) => setField("arrivalDate", event.target.value)} />
           </label>
           <label className="block">
-            <span className={LABEL_CLASS}>Départ d&apos;ici</span>
-            <input className={INPUT_CLASS} type="date" required value={values.departureDate}
+            <span className={LABEL_CLASS}>Date de sortie (à renseigner au départ)</span>
+            <input className={INPUT_CLASS} type="date" value={values.departureDate}
               onChange={(event) => setField("departureDate", event.target.value)} />
           </label>
         </div>
@@ -226,7 +225,7 @@ export default function DeclarationForm({
 
         {!canAddProduct && (
           <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Aucun produit maritime actif n&apos;est disponible. Demandez à l&apos;administrateur de créer un catalogue avant d&apos;ajouter une déclaration.
+            Aucun produit maritime actif n&apos;est disponible pour le moment. Vous pourrez ajouter des produits ultérieurement.
           </p>
         )}
 
@@ -275,7 +274,7 @@ export default function DeclarationForm({
                   {lineTotal === null ? "—" : formatMaritimeAmount(lineTotal ?? "0")}
                 </output>
               </div>
-              <button type="button" disabled={values.products.length === 1}
+              <button type="button" disabled={false}
                 onClick={() => setValues((current) => ({
                   ...current,
                   products: current.products.filter((_, productIndex) => productIndex !== index),
@@ -294,7 +293,7 @@ export default function DeclarationForm({
       </section>
 
       {error && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}
-      <button type="submit" disabled={saving || values.products.length === 0 || !canAddProduct}
+      <button type="submit" disabled={saving}
         className="w-full rounded-xl bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50">
         {saving ? "Enregistrement..." : declarationId ? "Enregistrer les modifications" : "Créer la déclaration"}
       </button>

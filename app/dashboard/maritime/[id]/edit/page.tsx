@@ -51,7 +51,7 @@ async function EditMaritimeDeclaration({ params }: Props) {
             captainEmail: declaration.captainEmail ?? "",
             originDepartureDate: declaration.originDepartureDate.toISOString().slice(0, 10),
             arrivalDate: declaration.arrivalDate.toISOString().slice(0, 10),
-            departureDate: declaration.departureDate.toISOString().slice(0, 10),
+            departureDate: declaration.departureDate?.toISOString().slice(0, 10) ?? "",
             products: declaration.products.map((product) => ({
               id: product.id,
               productType: product.productType,

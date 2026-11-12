@@ -44,7 +44,7 @@ beforeEach(async () => {
   });
   actorId = user.id;
   await prisma.maritimeUser.create({
-    data: { userId: user.id, latitude: "-20.2833", longitude: "44.2833" },
+    data: { userId: user.id, companyName: "Société Océan", latitude: "-20.2833", longitude: "44.2833" },
   });
   vi.mocked(getCurrentUser).mockResolvedValue({
     id: user.id,
@@ -106,13 +106,9 @@ describe("déclarations maritimes en PostgreSQL", () => {
     }
 
     const account = {
-      firstName: "Compte",
-      lastName: "Maritime",
+      companyName: "Société Océan",
       email: "nouveau-maritime@test.mg",
-      phoneNumber: "",
       password: "Mot-de-passe-maritime-42",
-      latitude: "-20.283300",
-      longitude: "44.283300",
     };
 
     it("crée réellement User, MaritimeUser et AuditLog en une transaction", async () => {
@@ -125,8 +121,7 @@ describe("déclarations maritimes en PostgreSQL", () => {
       const user = await prisma.user.findUnique({ where: { email: account.email } });
       expect(user?.role).toBe("USER_MAR");
       const profile = await prisma.maritimeUser.findUnique({ where: { userId: user!.id } });
-      expect(profile?.latitude?.toString()).toBe("-20.2833");
-      expect(profile?.longitude?.toString()).toBe("44.2833");
+      expect(profile?.companyName).toBe("Société Océan");
       expect(await prisma.auditLog.count({
         where: { entityType: "MaritimeUser", entityId: profile!.id, action: "CREATE" },
       })).toBe(1);
@@ -176,7 +171,7 @@ describe("déclarations maritimes en PostgreSQL", () => {
           captainPhone: "0340000000",
           originDepartureDate: new Date("2026-10-01T00:00:00.000Z"),
           arrivalDate: new Date("2026-10-02T00:00:00.000Z"),
-          departureDate: new Date("2026-10-03T00:00:00.000Z"),
+          departureDate: null,
           products: { create: [{ productType: "Thon", quantity: "1", unitPrice: "0" }] },
         },
       });

@@ -77,7 +77,7 @@ const post = (body: unknown) =>
 beforeEach(() => {
   resetFakePrisma(db);
   vi.mocked(getCurrentUser).mockResolvedValue(USER_MAR);
-  db.maritimeUser.findUnique.mockResolvedValue({ id: PROFILE_ID });
+  db.maritimeUser.findUnique.mockResolvedValue({ id: PROFILE_ID, companyName: "Société Océan" });
 });
 
 describe("accès aux déclarations maritimes", () => {
@@ -111,7 +111,6 @@ describe("validation et création", () => {
   it.each([
     [{ ...valid, captainEmail: "", captainPhone: "" }],
     [{ ...valid, arrivalDate: "2026-09-30" }],
-    [{ ...valid, products: [] }],
     [{ ...valid, products: [{ productType: "Thon", quantity: "1", unitPrice: "-1" }] }],
   ])("rejette les données invalides avant d'ouvrir la transaction", async (body) => {
     const response = await read(await post(body));

@@ -56,10 +56,8 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
         <MaritimeUserEditForm
           maritimeUserId={maritimeUser.id}
           initialValues={{
-            firstName: maritimeUser.user.firstName,
-            lastName: maritimeUser.user.lastName,
+            companyName: maritimeUser.companyName,
             email: maritimeUser.user.email,
-            phoneNumber: maritimeUser.user.phoneNumber ?? "",
           }}
         />
       </section>
@@ -68,7 +66,7 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
         <h2 className="mb-5 text-xl font-semibold">Compte</h2>
         <MaritimeUserAccountActions
           maritimeUserId={maritimeUser.id}
-          maritimeUserName={`${maritimeUser.user.firstName} ${maritimeUser.user.lastName}`}
+          maritimeUserName={maritimeUser.companyName}
           isActive={maritimeUser.user.isActive}
           declarationCount={maritimeUser._count.declarations}
         />

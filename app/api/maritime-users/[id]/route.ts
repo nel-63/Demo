@@ -38,6 +38,7 @@ export async function PATCH(request: Request, context: Context) {
         where: { id },
         select: {
           id: true,
+          companyName: true,
           latitude: true,
           longitude: true,
           user: {

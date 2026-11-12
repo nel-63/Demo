@@ -15,7 +15,7 @@ async function NewMaritimeDeclaration() {
   if (user.role !== "USER_MAR") redirect("/dashboard");
   const profile = await prisma.maritimeUser.findUnique({
     where: { userId: user.id },
-    select: { id: true },
+    select: { id: true, companyName: true },
   });
   if (!profile) redirect("/dashboard/maritime");
 
@@ -28,7 +28,7 @@ async function NewMaritimeDeclaration() {
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Nouvelle déclaration maritime</h1>
       </header>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
-        <DeclarationForm />
+        <DeclarationForm initial={{ companyName: profile.companyName, boatName: "", boatRegistration: "", boatCapacity: "", captainName: "", captainPhone: "", captainEmail: "", originDepartureDate: "", arrivalDate: "", departureDate: "", products: [] }} />
       </section>
     </div>
   );

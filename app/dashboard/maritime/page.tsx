@@ -113,10 +113,10 @@ async function MaritimeDeclarations({ searchParams }: Props) {
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Mes passages</h1>
           <p className="mt-2 text-slate-600">Consultez vos passages et suivez les produits enregistrés à chaque arrivée.</p>
         </div>
-        <Link href="/dashboard/maritime/new"
+        {/* <Link href="/dashboard/maritime/new"
           className="rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white shadow-sm hover:bg-blue-800">
           Nouveau passage
-        </Link>
+        </Link>*/}
       </header>
 
       <nav aria-label="Navigation des passages" className="mb-6 flex gap-2 border-b border-slate-200">

@@ -64,8 +64,8 @@ describe("création d'un utilisateur maritime", () => {
     expect(db.$transaction).toHaveBeenCalledTimes(1);
     expect(db.user.create.mock.calls[0][0]).toMatchObject({
       data: {
-        firstName: "Rina",
-        lastName: "Maritime",
+        firstName: account.companyName,
+        lastName: "Compte maritime",
         email: "rina.maritime@test.mg",
         role: "USER_MAR",
         designation: "Utilisateur maritime",
@@ -97,7 +97,7 @@ describe("création d'un utilisateur maritime", () => {
     const { status } = await read(await createMaritimeUser(jsonRequest("/api/maritime-users", "POST", invalid)));
 
     expect(status).toBe(201);
-    expect(db.maritimeUser.create.mock.calls[0][0].data).toEqual({ userId: "user-mar-1" });
+    expect(db.maritimeUser.create.mock.calls[0][0].data).toEqual({ userId: "user-mar-1", companyName: account.companyName });
   });
 
   it("renvoie le message de doublon des régisseurs pour un email déjà utilisé", async () => {
@@ -128,6 +128,7 @@ describe("modification du compte", () => {
   it("met à jour les informations et audite uniquement des données non sensibles", async () => {
     db.maritimeUser.findUnique.mockResolvedValue({
       id: "mar-profile-1",
+      companyName: "Ancienne société",
       latitude: "-20.000000",
       longitude: "44.000000",
       user: {

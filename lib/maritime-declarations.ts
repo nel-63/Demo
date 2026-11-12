@@ -110,6 +110,8 @@ function decimalText(
   return number.toFixed(scale);
 }
 
+function isoDate(data: Record<string, unknown>, key: string, label: string): string;
+function isoDate(data: Record<string, unknown>, key: string, label: string, optional: true): string | null;
 function isoDate(data: Record<string, unknown>, key: string, label: string, optional = false): string | null {
   const value = typeof data[key] === "string" ? data[key] : "";
   if (optional && !value) return null;

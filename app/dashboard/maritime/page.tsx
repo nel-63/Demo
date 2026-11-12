@@ -180,7 +180,7 @@ async function MaritimeDeclarations({ searchParams }: Props) {
                       <td className="px-3 py-4">
                         <span className="block">Départ : {dateFormatter.format(declaration.originDepartureDate)}</span>
                         <span className="block">Arrivée : {dateFormatter.format(declaration.arrivalDate)}</span>
-                        <span className="block">Sortie : {dateFormatter.format(declaration.departureDate)}</span>
+                        <span className="block">Sortie : {declaration.departureDate ? dateFormatter.format(declaration.departureDate) : "En cours"}</span>
                       </td>
                       <td className="px-3 py-4 text-right tabular-nums">{declaration.products.length}</td>
                       <td className="px-3 py-4 text-right font-semibold tabular-nums">

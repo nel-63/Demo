@@ -41,6 +41,7 @@ export async function GET(request: Request) {
       take: MARITIME_USERS_PAGE_SIZE,
       select: {
         id: true,
+        companyName: true,
         _count: { select: { declarations: true } },
         user: {
           select: {

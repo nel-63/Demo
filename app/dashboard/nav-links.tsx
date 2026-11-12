@@ -8,6 +8,7 @@ import {
   Route,
   ShieldCheck,
   Ship,
+  ChartNoAxesColumn,
   UserCog,
   type LucideIcon,
 } from "lucide-react";
@@ -19,6 +20,7 @@ const ADMIN_ITEMS: Item[] = [
   { href: "/dashboard/locations", label: "Lieux", icon: MapPin },
   { href: "/dashboard/supervisors", label: "Régisseurs", icon: UserCog },
   { href: "/dashboard/maritime-users", label: "Utilisateurs maritimes", icon: Ship },
+  { href: "/dashboard/maritime-statistics", label: "Statistiques maritimes", icon: ChartNoAxesColumn },
   { href: "/dashboard/maritime-product-types", label: "Produits maritimes", icon: Ship },
   { href: "/dashboard/passages", label: "Passages", icon: Route },
   { href: "/dashboard/audit", label: "Journal d'audit", icon: ShieldCheck },
@@ -30,7 +32,8 @@ const SUPERVISOR_ITEMS: Item[] = [
 ];
 
 const MARITIME_ITEMS: Item[] = [
-  { href: "/dashboard/maritime", label: "Déclarations maritimes", icon: Ship },
+  { href: "/dashboard/maritime", label: "Mes informations", icon: Ship },
+  { href: "/dashboard/maritime/new", label: "Nouveau passage", icon: Route },
 ];
 
 export default function NavLinks({

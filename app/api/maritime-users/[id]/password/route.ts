@@ -26,7 +26,13 @@ export async function POST(
     const result = await prisma.$transaction(async (tx) => {
       const profile = await tx.maritimeUser.findUnique({
         where: { id },
-        select: { id: true, userId: true, user: { select: { email: true } } },
+        select: {
+          id: true,
+          userId: true,
+          loginId: true,
+          contactPhone: true,
+          user: { select: { email: true } },
+        },
       });
       if (!profile) return null;
 
@@ -34,14 +40,21 @@ export async function POST(
         where: { id: profile.userId },
         data: { passwordHash, sessionVersion: { increment: 1 } },
       });
-      await tx.loginFailure.deleteMany({ where: { email: profile.user.email } });
+      const failedIdentifiers = [
+        profile.user.email,
+        profile.loginId,
+        profile.contactPhone,
+      ].filter((value, index, values): value is string =>
+        Boolean(value) && values.indexOf(value) === index,
+      );
+      await tx.loginFailure.deleteMany({ where: { email: { in: failedIdentifiers } } });
       await tx.auditLog.create({
         data: {
           userId: admin.id,
           action: "RESET_PASSWORD",
           entityType: "MaritimeUser",
           entityId: profile.id,
-          details: { email: profile.user.email },
+          details: { loginId: profile.loginId, email: profile.user.email },
         },
       });
       return profile;

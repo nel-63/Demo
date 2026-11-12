@@ -55,9 +55,11 @@ export async function POST(
       });
 
       // Lève un éventuel blocage dû à des tentatives de connexion échouées.
-      await tx.loginFailure.deleteMany({
-        where: { email: supervisor.user.email },
-      });
+      if (supervisor.user.email) {
+        await tx.loginFailure.deleteMany({
+          where: { email: supervisor.user.email },
+        });
+      }
 
       // Le mot de passe n'est jamais écrit dans le journal.
       await tx.auditLog.create({

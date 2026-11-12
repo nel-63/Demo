@@ -29,6 +29,7 @@ async function MaritimeUsersContent({ searchParams }: { searchParams: Promise<Se
           { user: { firstName: { contains: q, mode: "insensitive" as const } } },
           { user: { lastName: { contains: q, mode: "insensitive" as const } } },
           { user: { email: { contains: q, mode: "insensitive" as const } } },
+          { loginId: { contains: q, mode: "insensitive" as const } },
           { user: { phoneNumber: { contains: q, mode: "insensitive" as const } } },
           ...(q.toLocaleLowerCase("fr-FR") === "actif"
             ? [{ user: { isActive: true } }]
@@ -48,6 +49,7 @@ async function MaritimeUsersContent({ searchParams }: { searchParams: Promise<Se
     select: {
       id: true,
       companyName: true,
+      loginId: true,
       _count: { select: { declarations: true } },
       user: {
         select: {
@@ -117,7 +119,7 @@ async function MaritimeUsersContent({ searchParams }: { searchParams: Promise<Se
                         </Link>
                         {item.user.phoneNumber && <span className="block pt-1 text-xs font-normal text-slate-600">{item.user.phoneNumber}</span>}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-4">{item.user.email}</td>
+                      <td className="whitespace-nowrap px-3 py-4">{item.user.email ?? item.loginId}</td>
                       <td className="px-3 py-4">{item._count.declarations}</td>
                       <td className="px-3 py-4">
                         <span className={item.user.isActive

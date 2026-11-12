@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth";
+import {
+  deactivateMaritimeAccount,
+  isMaritimeAccountExpired,
+} from "@/lib/maritime-account";
 
 // Limitation des tentatives : echecs comptes sur une fenetre glissante.
 const WINDOW_MS = 15 * 60 * 1000;
@@ -27,16 +31,21 @@ export async function POST(request: Request) {
         ? (body as Record<string, unknown>)
         : {};
 
-    const email =
-      typeof data.email === "string"
-        ? data.email.trim().toLowerCase()
-        : "";
+    const identifierValue =
+      typeof data.identifier === "string"
+        ? data.identifier
+        : typeof data.email === "string"
+          ? data.email
+          : "";
+    const identifier = identifierValue.trim().toLocaleLowerCase("fr-FR");
+    const companyName =
+      typeof data.companyName === "string" ? data.companyName.trim() : "";
     const password =
       typeof data.password === "string" ? data.password : "";
 
-    if (!email || !password || email.length > 254 || password.length > 200) {
+    if (!identifier || !password || identifier.length > 254 || password.length > 200) {
       return NextResponse.json(
-        { message: "Veuillez saisir un email et un mot de passe valides." },
+        { message: "Veuillez saisir un identifiant et un mot de passe valides." },
         { status: 400 },
       );
     }
@@ -45,9 +54,7 @@ export async function POST(request: Request) {
     const windowStart = new Date(Date.now() - WINDOW_MS);
 
     const [emailFailures, ipFailures] = await Promise.all([
-      prisma.loginFailure.count({
-        where: { email, createdAt: { gte: windowStart } },
-      }),
+      prisma.loginFailure.count({ where: { email: identifier, createdAt: { gte: windowStart } } }),
       prisma.loginFailure.count({
         where: { ipAddress, createdAt: { gte: windowStart } },
       }),
@@ -66,8 +73,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email },
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: identifier },
+          { maritimeProfile: { is: { loginId: identifier, onboardingComplete: false } } },
+          { maritimeProfile: { is: { contactPhone: identifier } } },
+        ],
+      },
       select: {
         id: true,
         firstName: true,
@@ -77,6 +90,11 @@ export async function POST(request: Request) {
         role: true,
         isActive: true,
         sessionVersion: true,
+        createdAt: true,
+        lastLoginAt: true,
+        maritimeProfile: {
+          select: { id: true, companyName: true, onboardingComplete: true },
+        },
       },
     });
 
@@ -85,20 +103,48 @@ export async function POST(request: Request) {
       user ? user.passwordHash : DUMMY_HASH,
     );
 
-    if (!user || !user.isActive || !passwordIsValid) {
-      await prisma.loginFailure.create({ data: { email, ipAddress } });
+    const needsOnboarding =
+      user?.role === "USER_MAR" &&
+      Boolean(user.maritimeProfile) &&
+      !user.maritimeProfile?.onboardingComplete;
+    const companyMatches =
+      !needsOnboarding ||
+      (companyName.length > 0 &&
+        companyName.toLocaleLowerCase("fr-FR") ===
+          user?.maritimeProfile?.companyName.toLocaleLowerCase("fr-FR"));
+    const isExpired =
+      user?.role === "USER_MAR" &&
+      isMaritimeAccountExpired(user.lastLoginAt, user.createdAt);
+
+    if (!user || !user.isActive || !passwordIsValid || !companyMatches || isExpired) {
+      if (user && user.isActive && isExpired && user.maritimeProfile) {
+        await prisma.$transaction((tx) =>
+          deactivateMaritimeAccount(tx, user.id, user.maritimeProfile!.id, "INACTIVITY"),
+        );
+      }
+      await prisma.loginFailure.create({ data: { email: identifier, ipAddress } });
       // Nettoyage opportuniste des anciens echecs de cet email.
       await prisma.loginFailure.deleteMany({
-        where: { email, createdAt: { lt: windowStart } },
+        where: { email: identifier, createdAt: { lt: windowStart } },
       });
 
       return NextResponse.json(
-        { message: "Email ou mot de passe incorrect." },
+        { message: "Identifiant, mot de passe ou société incorrect." },
         { status: 401 },
       );
     }
 
-    await prisma.loginFailure.deleteMany({ where: { email } });
+    await prisma.loginFailure.deleteMany({ where: { email: identifier } });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+    const activeDeclaration = user.role === "USER_MAR" && user.maritimeProfile?.onboardingComplete
+      ? await prisma.maritimeDeclaration.findFirst({
+          where: { maritimeUserId: user.maritimeProfile.id, departureDate: null },
+          select: { id: true },
+        })
+      : null;
     await createSession({ id: user.id, sessionVersion: user.sessionVersion });
 
     return NextResponse.json({
@@ -110,6 +156,8 @@ export async function POST(request: Request) {
         email: user.email,
         role: user.role,
       },
+      needsOnboarding,
+      activeDeclarationId: activeDeclaration?.id ?? null,
     });
   } catch (error) {
     console.error("Login error:", error);

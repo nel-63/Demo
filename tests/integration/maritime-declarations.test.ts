@@ -19,7 +19,7 @@ const payload = {
   captainEmail: "",
   originDepartureDate: "2026-10-01",
   arrivalDate: "2026-10-03",
-  departureDate: "2026-10-05",
+  departureDate: "",
   products: [
     { productType: "Thon", quantity: "10.250", unitPrice: "1250.50" },
     { productType: "Crabe", quantity: "2.000", unitPrice: "0.25" },
@@ -44,7 +44,13 @@ beforeEach(async () => {
   });
   actorId = user.id;
   await prisma.maritimeUser.create({
-    data: { userId: user.id, companyName: "Société Océan", latitude: "-20.2833", longitude: "44.2833" },
+    data: {
+      userId: user.id,
+      loginId: "maritime-test",
+      companyName: "Société Océan",
+      latitude: "-20.2833",
+      longitude: "44.2833",
+    },
   });
   vi.mocked(getCurrentUser).mockResolvedValue({
     id: user.id,
@@ -118,12 +124,13 @@ describe("déclarations maritimes en PostgreSQL", () => {
       );
 
       expect(response.status).toBe(201);
-      const user = await prisma.user.findUnique({ where: { email: account.email } });
+      const profile = await prisma.maritimeUser.findUnique({ where: { loginId: account.email } });
+      const user = await prisma.user.findUnique({ where: { id: profile!.userId } });
       expect(user?.role).toBe("USER_MAR");
-      const profile = await prisma.maritimeUser.findUnique({ where: { userId: user!.id } });
-      expect(profile?.companyName).toBe("Société Océan");
+      const createdProfile = await prisma.maritimeUser.findUnique({ where: { userId: user!.id } });
+      expect(createdProfile?.companyName).toBe("Société Océan");
       expect(await prisma.auditLog.count({
-        where: { entityType: "MaritimeUser", entityId: profile!.id, action: "CREATE" },
+        where: { entityType: "MaritimeUser", entityId: createdProfile!.id, action: "CREATE" },
       })).toBe(1);
     });
 
@@ -146,7 +153,7 @@ describe("déclarations maritimes en PostgreSQL", () => {
         expect(response.status).toBe(500);
         expect(await prisma.user.count()).toBe(initialUsers);
         expect(await prisma.maritimeUser.count()).toBe(initialProfiles);
-        expect(await prisma.user.findUnique({ where: { email: "rollback-maritime@test.mg" } })).toBeNull();
+        expect(await prisma.maritimeUser.findUnique({ where: { loginId: "rollback-maritime@test.mg" } })).toBeNull();
         expect(await prisma.auditLog.count({ where: { entityType: "MaritimeUser", action: "CREATE" } })).toBe(0);
       } finally {
         logError.mockRestore();

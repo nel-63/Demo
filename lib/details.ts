@@ -179,7 +179,7 @@ export async function getDetails(
           id: r.id,
           cells: {
             name: text(fullName(r.user), { href: `/dashboard/supervisors/${r.id}` }),
-            email: text(r.user.email),
+            email: text(r.user.email ?? "—"),
             nationalId: text(r.nationalId),
             ...withLocation(admin, r.assignedLocation?.name),
             passages: num(r._count.passages, String(r._count.passages)),

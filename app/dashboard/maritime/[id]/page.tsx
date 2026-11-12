@@ -25,7 +25,7 @@ async function DeclarationDetails({ params }: Props) {
 
   const { id } = await params;
   const declaration = await prisma.maritimeDeclaration.findFirst({
-    where: { id, maritimeUserId: profile.id },
+    where: { id, maritimeUserId: profile.id, departureDate: null },
     include: { products: { orderBy: { createdAt: "asc" } } },
   });
   if (!declaration) notFound();

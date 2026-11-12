@@ -17,6 +17,8 @@ type MaritimeCatalogItem = {
 
 type DeclarationValues = {
   companyName: string;
+  contactEmail: string;
+  contactPhone: string;
   boatName: string;
   boatRegistration: string;
   boatCapacity: string;
@@ -48,6 +50,8 @@ export default function DeclarationForm({
   const [values, setValues] = useState<DeclarationValues>(
     initial ?? {
       companyName: "",
+      contactEmail: "",
+      contactPhone: "",
       boatName: "",
       boatRegistration: "",
       boatCapacity: "",
@@ -148,6 +152,18 @@ export default function DeclarationForm({
           <span className={LABEL_CLASS}>Nom de la société de pêche</span>
           <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-800">{values.companyName || "Société associée au compte"}</p>
         </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className={LABEL_CLASS}>Email de contact du compte</span>
+            <input className={INPUT_CLASS} type="email" required maxLength={254} value={values.contactEmail}
+              onChange={(event) => setField("contactEmail", event.target.value)} />
+          </label>
+          <label className="block">
+            <span className={LABEL_CLASS}>Téléphone de contact du compte</span>
+            <input className={INPUT_CLASS} type="tel" required maxLength={40} value={values.contactPhone}
+              onChange={(event) => setField("contactPhone", event.target.value)} />
+          </label>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className={LABEL_CLASS}>Nom du bateau</span>

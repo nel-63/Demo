@@ -28,13 +28,14 @@ model User {
   id           String   @id @default(cuid())
   firstName    String
   lastName     String
-  email        String   @unique
+  email        String?  @unique
   phoneNumber  String?
   passwordHash String
   role         UserRole @default(CASHIER)
   designation  String?
   isActive     Boolean  @default(true)
   sessionVersion Int    @default(0)
+  lastLoginAt  DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -67,13 +68,16 @@ model Supervisor {
 }
 
 model MaritimeUser {
-  id          String   @id @default(cuid())
-  userId      String   @unique
-  companyName String
-  latitude  Decimal? @db.Decimal(9, 6)
-  longitude Decimal? @db.Decimal(9, 6)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  loginId            String   @unique
+  contactPhone       String?  @unique
+  companyName        String
+  onboardingComplete Boolean  @default(true)
+  latitude           Decimal? @db.Decimal(9, 6)
+  longitude          Decimal? @db.Decimal(9, 6)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   user         User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
   declarations MaritimeDeclaration[]

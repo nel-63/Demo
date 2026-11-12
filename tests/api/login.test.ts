@@ -32,12 +32,15 @@ function user(overrides: Record<string, unknown> = {}) {
     role: "SUPERVISOR",
     isActive: true,
     sessionVersion: 3,
+    createdAt: new Date(),
+    lastLoginAt: new Date(),
+    maritimeProfile: null,
     ...overrides,
   };
 }
 
-function attempt(email: string, password: string) {
-  return login(jsonRequest("/api/auth/login", "POST", { email, password }));
+function attempt(identifier: string, password: string, companyName?: string) {
+  return login(jsonRequest("/api/auth/login", "POST", { identifier, password, companyName }));
 }
 
 beforeEach(() => {
@@ -49,42 +52,76 @@ beforeEach(() => {
 
 describe("connexion réussie", () => {
   it("ouvre une session avec la version de session actuelle et efface les échecs", async () => {
-    db.user.findUnique.mockResolvedValue(user());
+    db.user.findFirst.mockResolvedValue(user());
     const { status, body } = await read(await attempt("Rina@Test.mg ", PASSWORD));
 
     expect(status).toBe(200);
     expect(createSession).toHaveBeenCalledWith({ id: "u1", sessionVersion: 3 });
-    expect(db.user.findUnique.mock.calls[0][0].where).toEqual({ email: "rina@test.mg" });
+    expect(db.user.findFirst.mock.calls[0][0].where.OR[0]).toEqual({ email: "rina@test.mg" });
     expect(db.loginFailure.deleteMany).toHaveBeenCalled();
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { lastLoginAt: expect.any(Date) },
+    });
     expect(JSON.stringify(body)).not.toContain("passwordHash");
   });
 
   it("authentifie un utilisateur maritime avec le même mécanisme de session", async () => {
-    db.user.findUnique.mockResolvedValue(user({ role: "USER_MAR" }));
+    db.user.findFirst.mockResolvedValue(user({
+      role: "USER_MAR",
+      maritimeProfile: { id: "mar-1", companyName: "Société Océan", onboardingComplete: true },
+    }));
     const { status, body } = await read(await attempt("rina@test.mg", PASSWORD));
 
     expect(status).toBe(200);
     expect((body.user as { role: string }).role).toBe("USER_MAR");
     expect(createSession).toHaveBeenCalledWith({ id: "u1", sessionVersion: 3 });
   });
+
+  it("demande le nom de société et signale le premier profil à compléter", async () => {
+    db.user.findFirst.mockResolvedValue(user({
+      role: "USER_MAR",
+      email: null,
+      maritimeProfile: { id: "mar-1", companyName: "Société Océan", onboardingComplete: false },
+    }));
+
+    const { status, body } = await read(await attempt("mariner-01", PASSWORD, "Société Océan"));
+
+    expect(status).toBe(200);
+    expect(db.user.findFirst.mock.calls[0][0].where.OR).toContainEqual({
+      maritimeProfile: { is: { loginId: "mariner-01", onboardingComplete: false } },
+    });
+    expect(body.needsOnboarding).toBe(true);
+  });
+
+  it("refuse la première connexion si le nom de société est absent ou incorrect", async () => {
+    db.user.findFirst.mockResolvedValue(user({
+      role: "USER_MAR",
+      email: null,
+      maritimeProfile: { id: "mar-1", companyName: "Société Océan", onboardingComplete: false },
+    }));
+
+    expect((await read(await attempt("mariner-01", PASSWORD))).status).toBe(401);
+    expect(createSession).not.toHaveBeenCalled();
+  });
 });
 
 describe("erreurs de connexion", () => {
   it("refuse un mauvais mot de passe et enregistre l'échec", async () => {
-    db.user.findUnique.mockResolvedValue(user());
+    db.user.findFirst.mockResolvedValue(user());
     const { status, body } = await read(await attempt("rina@test.mg", "mauvais-mot-de-passe"));
 
     expect(status).toBe(401);
-    expect(body.message).toBe("Email ou mot de passe incorrect.");
+    expect(body.message).toBe("Identifiant, mot de passe ou société incorrect.");
     expect(createSession).not.toHaveBeenCalled();
     expect(db.loginFailure.create).toHaveBeenCalledTimes(1);
   });
 
   it("répond de la même façon pour un email inconnu (pas de fuite d'information)", async () => {
-    db.user.findUnique.mockResolvedValue(null);
+    db.user.findFirst.mockResolvedValue(null);
     const unknown = await read(await attempt("inconnu@test.mg", PASSWORD));
 
-    db.user.findUnique.mockResolvedValue(user());
+    db.user.findFirst.mockResolvedValue(user());
     const wrong = await read(await attempt("rina@test.mg", "mauvais-mot-de-passe"));
 
     expect(unknown.status).toBe(401);
@@ -92,7 +129,7 @@ describe("erreurs de connexion", () => {
   });
 
   it("refuse un compte désactivé même avec le bon mot de passe", async () => {
-    db.user.findUnique.mockResolvedValue(user({ isActive: false }));
+    db.user.findFirst.mockResolvedValue(user({ isActive: false }));
     const { status } = await read(await attempt("rina@test.mg", PASSWORD));
 
     expect(status).toBe(401);
@@ -100,7 +137,10 @@ describe("erreurs de connexion", () => {
   });
 
   it("refuse un mauvais mot de passe pour un utilisateur maritime et enregistre l'échec", async () => {
-    db.user.findUnique.mockResolvedValue(user({ role: "USER_MAR" }));
+    db.user.findFirst.mockResolvedValue(user({
+      role: "USER_MAR",
+      maritimeProfile: { id: "mar-1", companyName: "Société Océan", onboardingComplete: true },
+    }));
     const { status } = await read(await attempt("rina@test.mg", "mot-de-passe-incorrect"));
 
     expect(status).toBe(401);
@@ -109,30 +149,56 @@ describe("erreurs de connexion", () => {
   });
 
   it("refuse un compte maritime désactivé", async () => {
-    db.user.findUnique.mockResolvedValue(user({ role: "USER_MAR", isActive: false }));
+    const lastLoginAt = new Date();
+    lastLoginAt.setUTCMonth(lastLoginAt.getUTCMonth() - 4);
+    db.user.findFirst.mockResolvedValue(user({
+      role: "USER_MAR",
+      isActive: false,
+      lastLoginAt,
+      maritimeProfile: { id: "mar-1", companyName: "Société Océan", onboardingComplete: true },
+    }));
     const { status } = await read(await attempt("rina@test.mg", PASSWORD));
 
     expect(status).toBe(401);
     expect(createSession).not.toHaveBeenCalled();
+    expect(db.user.update).not.toHaveBeenCalled();
   });
 
   it("refuse des champs vides ou trop longs", async () => {
     expect((await read(await attempt("", PASSWORD))).status).toBe(400);
     expect((await read(await attempt("rina@test.mg", ""))).status).toBe(400);
     expect((await read(await attempt("rina@test.mg", "x".repeat(201)))).status).toBe(400);
-    expect(db.user.findUnique).not.toHaveBeenCalled();
+    expect(db.user.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("désactive automatiquement un compte maritime après trois mois sans connexion", async () => {
+    const lastLoginAt = new Date();
+    lastLoginAt.setUTCMonth(lastLoginAt.getUTCMonth() - 4);
+    db.user.findFirst.mockResolvedValue(user({
+      role: "USER_MAR",
+      lastLoginAt,
+      maritimeProfile: { id: "mar-1", companyName: "Société Océan", onboardingComplete: true },
+    }));
+    const { status } = await read(await attempt("rina@test.mg", PASSWORD));
+
+    expect(status).toBe(401);
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { isActive: false, sessionVersion: { increment: 1 } },
+    });
+    expect(createSession).not.toHaveBeenCalled();
   });
 });
 
 describe("limitation des tentatives", () => {
   it("bloque un email après 5 échecs, même avec le bon mot de passe", async () => {
     db.loginFailure.count.mockResolvedValueOnce(5).mockResolvedValueOnce(0);
-    db.user.findUnique.mockResolvedValue(user());
+    db.user.findFirst.mockResolvedValue(user());
     const response = await attempt("rina@test.mg", PASSWORD);
 
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBe("900");
-    expect(db.user.findUnique).not.toHaveBeenCalled();
+    expect(db.user.findFirst).not.toHaveBeenCalled();
     expect(createSession).not.toHaveBeenCalled();
   });
 
@@ -141,7 +207,7 @@ describe("limitation des tentatives", () => {
     const response = await attempt("autre@test.mg", PASSWORD);
 
     expect(response.status).toBe(429);
-    expect(db.user.findUnique).not.toHaveBeenCalled();
+    expect(db.user.findFirst).not.toHaveBeenCalled();
   });
 });
 

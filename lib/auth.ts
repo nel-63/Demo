@@ -2,6 +2,10 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import type { UserRole } from "@/app/generated/prisma/client";
+import {
+  deactivateMaritimeAccount,
+  isMaritimeAccountExpired,
+} from "@/lib/maritime-account";
 
 const COOKIE_NAME = "caisse_session";
 const SESSION_DURATION = 8 * 60 * 60;
@@ -10,7 +14,7 @@ export type CurrentUser = {
   id: string;
   firstName: string;
   lastName: string;
-  email: string;
+  email: string | null;
   role: UserRole;
   designation: string | null;
   isActive: boolean;
@@ -88,14 +92,36 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
         designation: true,
         isActive: true,
         sessionVersion: true,
+        createdAt: true,
+        lastLoginAt: true,
+        maritimeProfile: { select: { id: true } },
       },
     });
 
     if (!user || !user.isActive) return null;
     if (user.sessionVersion !== payload.sv) return null;
+    if (
+      user.role === "USER_MAR" &&
+      user.maritimeProfile &&
+      isMaritimeAccountExpired(user.lastLoginAt, user.createdAt)
+    ) {
+      await prisma.$transaction((tx) =>
+        deactivateMaritimeAccount(tx, user.id, user.maritimeProfile!.id, "INACTIVITY"),
+      );
+      return null;
+    }
 
-    const { sessionVersion: _sessionVersion, ...currentUser } = user;
+    const {
+      sessionVersion: _sessionVersion,
+      createdAt: _createdAt,
+      lastLoginAt: _lastLoginAt,
+      maritimeProfile: _maritimeProfile,
+      ...currentUser
+    } = user;
     void _sessionVersion;
+    void _createdAt;
+    void _lastLoginAt;
+    void _maritimeProfile;
     return currentUser;
   } catch {
     return null;

@@ -9,6 +9,11 @@ import {
   type MaritimeProductInput,
 } from "@/lib/maritime-declarations";
 import {
+  deactivateMaritimeAccount,
+  MaritimeContactValidationError,
+  validateMaritimeContact,
+} from "@/lib/maritime-account";
+import {
   hasMaritimeUserCoordinates,
   parseOptionalMaritimeUserCoordinates,
 } from "@/lib/maritime-user-coordinates";
@@ -51,7 +56,13 @@ async function resolveProductLines(
 async function getMaritimeProfile(userId: string) {
   return prisma.maritimeUser.findUnique({
     where: { userId },
-    select: { id: true, companyName: true, latitude: true, longitude: true },
+    select: {
+      id: true,
+      companyName: true,
+      latitude: true,
+      longitude: true,
+      onboardingComplete: true,
+    },
   });
 }
 
@@ -80,6 +91,7 @@ export async function GET(request: Request) {
     const direction: Prisma.SortOrder = url.searchParams.get("direction") === "asc" ? "asc" : "desc";
     const where = {
       maritimeUserId: profile.id,
+      departureDate: null,
       ...(words.length
         ? {
             AND: words.map((word) => ({
@@ -134,6 +146,9 @@ export async function POST(request: Request) {
     if (!profile) {
       return NextResponse.json({ message: "Aucun profil maritime n'est associé à ce compte." }, { status: 403 });
     }
+    if (!profile.onboardingComplete) {
+      return NextResponse.json({ message: "Complétez d'abord votre profil maritime." }, { status: 403 });
+    }
 
     let body: unknown;
     try {
@@ -142,6 +157,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Le contenu de la déclaration est invalide." }, { status: 400 });
     }
     const data = body && typeof body === "object" ? body as Record<string, unknown> : {};
+    const hasContactInput =
+      Object.prototype.hasOwnProperty.call(data, "contactEmail") ||
+      Object.prototype.hasOwnProperty.call(data, "contactPhone");
+    const contact = hasContactInput
+      ? validateMaritimeContact(data.contactEmail, data.contactPhone)
+      : null;
     const hasCoordinatesInput = hasMaritimeUserCoordinates(data);
     const coordinates = parseOptionalMaritimeUserCoordinates(data.latitude, data.longitude);
     if (hasCoordinatesInput && coordinates === undefined) {
@@ -150,7 +171,23 @@ export async function POST(request: Request) {
     const input = validateMaritimeDeclaration({ ...data, companyName: profile.companyName });
     const products = input.products ?? [];
     const created = await prisma.$transaction(async (tx) => {
+      const activeSession = await tx.maritimeDeclaration.findFirst({
+        where: { maritimeUserId: profile.id, departureDate: null },
+        select: { id: true },
+      });
+      if (activeSession) return { kind: "active_exists" as const, id: activeSession.id };
+
       const productLines = await resolveProductLines(tx, products);
+      if (contact) {
+        await tx.user.update({
+          where: { id: user.id },
+          data: { email: contact.email, phoneNumber: contact.phone },
+        });
+        await tx.maritimeUser.update({
+          where: { id: profile.id },
+          data: { contactPhone: contact.phone },
+        });
+      }
       if (hasCoordinatesInput) {
         const updatedProfile = await tx.maritimeUser.update({
           where: { id: profile.id },
@@ -213,13 +250,28 @@ export async function POST(request: Request) {
           details: { after: snapshot },
         },
       });
-      return snapshot;
+      if (input.departureDate) {
+        await deactivateMaritimeAccount(tx, user.id, profile.id, "EXIT_DATE");
+      }
+      return { kind: "created" as const, declaration: snapshot, accountDeactivated: Boolean(input.departureDate) };
     });
 
-    return NextResponse.json({ ok: true, declaration: created }, { status: 201 });
+    if (created.kind === "active_exists") {
+      return NextResponse.json(
+        { message: "Une session maritime est déjà active.", declarationId: created.id },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ ok: true, ...created }, { status: 201 });
   } catch (error) {
     if (error instanceof MaritimeDeclarationValidationError) {
       return NextResponse.json({ message: error.message }, { status: 400 });
+    }
+    if (error instanceof MaritimeContactValidationError) {
+      return NextResponse.json({ message: error.message }, { status: 400 });
+    }
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
+      return NextResponse.json({ message: "Cet email ou ce téléphone est déjà associé à un compte." }, { status: 409 });
     }
     console.error("Maritime declaration creation failed:", error);
     return NextResponse.json({ message: "Impossible d'enregistrer la déclaration maritime." }, { status: 500 });

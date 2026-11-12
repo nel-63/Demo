@@ -22,6 +22,7 @@ export async function GET(request: Request) {
             { user: { firstName: { contains: q, mode: "insensitive" as const } } },
             { user: { lastName: { contains: q, mode: "insensitive" as const } } },
             { user: { email: { contains: q, mode: "insensitive" as const } } },
+            { loginId: { contains: q, mode: "insensitive" as const } },
             { user: { phoneNumber: { contains: q, mode: "insensitive" as const } } },
             ...(q.toLocaleLowerCase("fr-FR") === "actif"
               ? [{ user: { isActive: true } }]
@@ -42,6 +43,7 @@ export async function GET(request: Request) {
       select: {
         id: true,
         companyName: true,
+        loginId: true,
         _count: { select: { declarations: true } },
         user: {
           select: {
@@ -79,11 +81,11 @@ export async function POST(request: Request) {
     const companyName = text("companyName");
     const firstName = companyName;
     const lastName = "Compte maritime";
-    const email = text("email").toLowerCase();
+    const loginId = text("loginId").toLocaleLowerCase("fr-FR") || text("email").toLocaleLowerCase("fr-FR");
     const password = typeof data.password === "string" ? data.password : "";
 
-    if (!companyName || companyName.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ message: "Le nom de la société et un identifiant email valide sont obligatoires." }, { status: 400 });
+    if (!companyName || companyName.length > 200 || !loginId || loginId.length > 80 || /\s/.test(loginId)) {
+      return NextResponse.json({ message: "Le nom de la société et un identifiant sans espace sont obligatoires." }, { status: 400 });
     }
 
     const passwordError = validatePassword(password);
@@ -95,7 +97,7 @@ export async function POST(request: Request) {
         data: {
           firstName,
           lastName,
-          email,
+          email: null,
           passwordHash,
           role: "USER_MAR",
           designation: "Utilisateur maritime",
@@ -107,9 +109,12 @@ export async function POST(request: Request) {
         data: {
           userId: createdUser.id,
           companyName,
+          loginId,
+          onboardingComplete: false,
         },
         select: {
           id: true,
+          loginId: true,
           latitude: true,
           longitude: true,
           user: {
@@ -129,9 +134,7 @@ export async function POST(request: Request) {
           action: "CREATE",
           entityType: "MaritimeUser",
           entityId: createdProfile.id,
-          details: {
-            email,
-          },
+          details: { loginId },
         },
       });
 
@@ -145,7 +148,7 @@ export async function POST(request: Request) {
       : undefined;
 
     if (code === "P2002") {
-      return NextResponse.json({ message: "Cet email ou cette CIN existe déjà." }, { status: 409 });
+      return NextResponse.json({ message: "Cet identifiant existe déjà." }, { status: 409 });
     }
 
     console.error("Maritime user creation failed:", error);

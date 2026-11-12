@@ -18,13 +18,21 @@ async function EditMaritimeDeclaration({ params }: Props) {
 
   const profile = await prisma.maritimeUser.findUnique({
     where: { userId: user.id },
-    select: { id: true, latitude: true, longitude: true },
+    select: {
+      id: true,
+      latitude: true,
+      longitude: true,
+      contactPhone: true,
+      onboardingComplete: true,
+      user: { select: { email: true } },
+    },
   });
   if (!profile) notFound();
+  if (!profile.onboardingComplete) redirect("/dashboard/maritime/onboarding");
 
   const { id } = await params;
   const declaration = await prisma.maritimeDeclaration.findFirst({
-    where: { id, maritimeUserId: profile.id },
+    where: { id, maritimeUserId: profile.id, departureDate: null },
     include: { products: { orderBy: { createdAt: "asc" } } },
   });
   if (!declaration) notFound();
@@ -43,6 +51,8 @@ async function EditMaritimeDeclaration({ params }: Props) {
           declarationId={id}
           initial={{
             companyName: declaration.companyName,
+            contactEmail: profile.user.email ?? "",
+            contactPhone: profile.contactPhone ?? "",
             boatName: declaration.boatName,
             boatRegistration: declaration.boatRegistration,
             boatCapacity: declaration.boatCapacity.toString(),

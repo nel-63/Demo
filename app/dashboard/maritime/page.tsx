@@ -29,7 +29,7 @@ async function MaritimeDeclarations({ searchParams }: Props) {
 
   const profile = await prisma.maritimeUser.findUnique({
     where: { userId: user.id },
-    select: { id: true },
+    select: { id: true, onboardingComplete: true },
   });
   if (!profile) {
     return (
@@ -39,6 +39,7 @@ async function MaritimeDeclarations({ searchParams }: Props) {
       </section>
     );
   }
+  if (!profile.onboardingComplete) redirect("/dashboard/maritime/onboarding");
 
   const params = await searchParams;
   const rawQ = params.q;
@@ -55,6 +56,7 @@ async function MaritimeDeclarations({ searchParams }: Props) {
   const words = q.split(/\s+/).filter(Boolean).slice(0, 5);
   const where = {
     maritimeUserId: profile.id,
+    departureDate: null,
     ...(words.length
       ? {
           AND: words.map((word) => ({

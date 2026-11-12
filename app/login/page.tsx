@@ -8,7 +8,8 @@ import { dashboardPathForRole } from "@/lib/role-routes";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -21,10 +22,20 @@ export default function LoginPage() {
     try {
       const response = await fetch("/api/auth/login", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, companyName, password }),
       });
       const data = await response.json();
       if (!response.ok) { setError(data.message ?? "Connexion impossible."); return; }
+      if (data.needsOnboarding) {
+        router.replace("/dashboard/maritime/onboarding");
+        router.refresh();
+        return;
+      }
+      if (data.user?.role === "USER_MAR" && typeof data.activeDeclarationId === "string") {
+        router.replace(`/dashboard/maritime/${data.activeDeclarationId}/edit`);
+        router.refresh();
+        return;
+      }
       router.replace(dashboardPathForRole(data.user?.role ?? ""));
       router.refresh();
     } catch {
@@ -38,15 +49,21 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10 sm:px-8">
       <section className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-lg sm:p-10">
         <div className="mb-7 flex items-center gap-3">
-                      <Image src="/Baobab Landscape Emblem.png" alt="Logo Région Menabe" width={408} height={408} className="h-26 w-26"/>
+                      <Image src="/Baobab Landscape Emblem.png" alt="Logo Région Menabe" width={408} height={408} className="h-26 w-26" loading="eager"/>
           <span className="text-center text-lg font-semibold text-slate-900">REGION MENABE <br /> Gestion des opérations</span>
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Connexion</h1>
         <form method="post" onSubmit={handleSubmit} className="mt-8 space-y-5">
           <div>
-            <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-800">Adresse email</label>
-            <input id="email" name="email" type="email" autoComplete="username" required value={email}
-              onChange={(event) => setEmail(event.target.value)}
+            <label htmlFor="identifier" className="mb-1 block text-sm font-medium text-slate-800">Identifiant, email ou téléphone</label>
+            <input id="identifier" name="identifier" type="text" autoComplete="username" required value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
+              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"/>
+          </div>
+          <div>
+            <label htmlFor="companyName" className="mb-1 block text-sm font-medium text-slate-800">Société (première connexion)</label>
+            <input id="companyName" name="companyName" type="text" autoComplete="organization" value={companyName}
+              onChange={(event) => setCompanyName(event.target.value)}
               className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"/>
           </div>
           <div>

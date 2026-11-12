@@ -60,18 +60,18 @@ export default function MaritimeUserForm() {
       </div>
 
       <div>
-        <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
-          Identifiant de connexion (email)
+        <label htmlFor="loginId" className="mb-1 block text-sm font-medium text-slate-700">
+          Identifiant initial de connexion
         </label>
         <input
-          id="email"
-          name="email"
-          type="email"
+          id="loginId"
+          name="loginId"
           required
-          maxLength={254}
+          maxLength={80}
           autoComplete="username"
           className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
         />
+        <p className="mt-1 text-xs text-slate-600">L&apos;email et le téléphone personnels seront renseignés à la première connexion.</p>
       </div>
 
       <div>

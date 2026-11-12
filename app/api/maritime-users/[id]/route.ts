@@ -28,9 +28,9 @@ export async function PATCH(request: Request, context: Context) {
 
     const text = (key: string) => typeof data[key] === "string" ? (data[key] as string).trim() : "";
     const companyName = text("companyName");
-    const email = text("email").toLowerCase();
-    if (!companyName || companyName.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ message: "Le nom de la société et un identifiant email valide sont obligatoires." }, { status: 400 });
+    const loginId = text("loginId").toLocaleLowerCase("fr-FR") || text("email").toLocaleLowerCase("fr-FR");
+    if (!companyName || companyName.length > 200 || !loginId || loginId.length > 80 || /\s/.test(loginId)) {
+      return NextResponse.json({ message: "Le nom de la société et un identifiant sans espace sont obligatoires." }, { status: 400 });
     }
 
     const maritimeUser = await prisma.$transaction(async (tx) => {
@@ -39,6 +39,7 @@ export async function PATCH(request: Request, context: Context) {
         select: {
           id: true,
           companyName: true,
+          loginId: true,
           latitude: true,
           longitude: true,
           user: {
@@ -55,17 +56,18 @@ export async function PATCH(request: Request, context: Context) {
 
       const before = {
         companyName: current.companyName,
-        email: current.user.email,
+        loginId: current.loginId,
       };
       await tx.user.update({
         where: { id: current.user.id },
-        data: { firstName: companyName, lastName: "Compte maritime", email },
+        data: { firstName: companyName, lastName: "Compte maritime" },
       });
       const updated = await tx.maritimeUser.update({
         where: { id },
-        data: { companyName },
+        data: { companyName, loginId },
         select: {
           id: true,
+          loginId: true,
           latitude: true,
           longitude: true,
           user: {
@@ -87,10 +89,7 @@ export async function PATCH(request: Request, context: Context) {
           entityId: id,
           details: {
             before,
-            after: {
-              companyName,
-              email,
-            },
+            after: { companyName, loginId },
           },
         },
       });
@@ -107,7 +106,7 @@ export async function PATCH(request: Request, context: Context) {
       ? (error as { code?: string }).code
       : undefined;
     if (code === "P2002") {
-      return NextResponse.json({ message: "Cet email ou cette CIN existe déjà." }, { status: 409 });
+      return NextResponse.json({ message: "Cet identifiant existe déjà." }, { status: 409 });
     }
     console.error("Maritime user update failed:", error);
     return NextResponse.json({ message: "Impossible de modifier l'utilisateur maritime." }, { status: 500 });
@@ -192,7 +191,12 @@ async function changeAccountStatus(maritimeUserId: string, isActive: boolean, ad
 
     await tx.user.update({
       where: { id: profile.userId },
-      data: { isActive, ...(isActive ? {} : { sessionVersion: { increment: 1 } }) },
+      data: {
+        isActive,
+        ...(isActive
+          ? { lastLoginAt: new Date() }
+          : { sessionVersion: { increment: 1 } }),
+      },
     });
     await tx.auditLog.create({
       data: {

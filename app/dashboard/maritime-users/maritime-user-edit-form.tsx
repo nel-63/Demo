@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
-type Values = { companyName: string; email: string };
+type Values = { companyName: string; loginId: string };
 
 export default function MaritimeUserEditForm({
   maritimeUserId,
@@ -69,19 +69,18 @@ export default function MaritimeUserEditForm({
       </div>
 
       <div>
-        <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
-          Identifiant de connexion (email)
+        <label htmlFor="loginId" className="mb-1 block text-sm font-medium text-slate-700">
+          Identifiant initial de connexion
         </label>
         <input
-          id="email"
-          type="email"
+          id="loginId"
           required
-          maxLength={254}
-          value={values.email}
+          maxLength={80}
+          value={values.loginId}
           onChange={(event) =>
             setValues((current) => ({
               ...current,
-              email: event.target.value,
+              loginId: event.target.value,
             }))
           }
           className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"

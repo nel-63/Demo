@@ -34,7 +34,7 @@ const valid = {
   captainEmail: "capitaine@example.mg",
   originDepartureDate: "2026-10-01",
   arrivalDate: "2026-10-03",
-  departureDate: "2026-10-05",
+  departureDate: "",
   products: [
     { productType: "Thon", quantity: "10.250", unitPrice: "1250.50" },
     { productType: "Crabe", quantity: "2.000", unitPrice: "0.25" },
@@ -54,7 +54,7 @@ function storedDeclaration(overrides: Record<string, unknown> = {}) {
     captainEmail: "capitaine@example.mg",
     originDepartureDate: new Date("2026-10-01T00:00:00.000Z"),
     arrivalDate: new Date("2026-10-03T00:00:00.000Z"),
-    departureDate: new Date("2026-10-05T00:00:00.000Z"),
+    departureDate: null,
     createdAt: new Date("2026-10-01T00:00:00.000Z"),
     updatedAt: new Date("2026-10-01T00:00:00.000Z"),
     products: [
@@ -82,6 +82,7 @@ db.maritimeUser.findUnique.mockResolvedValue({
   companyName: "Société Océan",
   latitude: null,
   longitude: null,
+  onboardingComplete: true,
 });
 });
 
@@ -230,6 +231,7 @@ describe("isolation et CRUD", () => {
     expect(db.maritimeDeclaration.findFirst.mock.calls[0][0].where).toEqual({
       id: "other-id",
       maritimeUserId: PROFILE_ID,
+      departureDate: null,
     });
   });
 
@@ -247,6 +249,8 @@ describe("isolation et CRUD", () => {
     const input = {
       ...valid,
       companyName: "Société mise à jour",
+      contactEmail: "nouveau@example.mg",
+      contactPhone: "+261 34 00 000 00",
       products: [
         { id: "product-1", productType: "Thon frais", quantity: "10.250", unitPrice: "1250.50" },
         { productType: "Crabe", quantity: "2", unitPrice: "0.25" },
@@ -270,6 +274,39 @@ describe("isolation et CRUD", () => {
       where: { declarationId: "declaration-1", id: { notIn: ["product-1"] } },
     });
     expect(db.auditLog.create.mock.calls[0][0].data).toMatchObject({ action: "UPDATE" });
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: USER_MAR.id },
+      data: { email: "nouveau@example.mg", phoneNumber: "+261 34 00 000 00" },
+    });
+    expect(db.maritimeUser.update).toHaveBeenCalledWith({
+      where: { id: PROFILE_ID },
+      data: { contactPhone: "+261 34 00 000 00" },
+    });
+  });
+
+  it("clôt la session et désactive le compte lors de l'enregistrement de la date de sortie", async () => {
+    db.maritimeDeclaration.findFirst.mockResolvedValue(storedDeclaration());
+    db.maritimeDeclaration.findUniqueOrThrow.mockResolvedValue(storedDeclaration({
+      departureDate: new Date("2026-10-05T00:00:00.000Z"),
+      products: [],
+    }));
+
+    const { status, body } = await read(await patchDeclaration(
+      jsonRequest("/api/maritime/declarations/declaration-1", "PATCH", {
+        ...valid,
+        departureDate: "2026-10-05",
+        products: [],
+      }),
+      params("declaration-1"),
+    ));
+
+    expect(status).toBe(200);
+    expect(body.accountDeactivated).toBe(true);
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: USER_MAR.id },
+      data: { isActive: false, sessionVersion: { increment: 1 } },
+    });
+    expect(auditEntries(db).some((entry) => entry.details?.reason === "EXIT_DATE")).toBe(true);
   });
 
   it("supprime définitivement avec cascade attendue et conserve l'instantané dans l'audit", async () => {

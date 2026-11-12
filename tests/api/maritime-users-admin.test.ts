@@ -33,6 +33,7 @@ function createdProfile() {
   return {
     id: "mar-profile-1",
     companyName: account.companyName,
+    loginId: account.email,
     latitude: "-20.283300",
     longitude: "44.283300",
     user: {
@@ -66,7 +67,7 @@ describe("création d'un utilisateur maritime", () => {
       data: {
         firstName: account.companyName,
         lastName: "Compte maritime",
-        email: "rina.maritime@test.mg",
+        email: null,
         role: "USER_MAR",
         designation: "Utilisateur maritime",
       },
@@ -76,13 +77,15 @@ describe("création d'un utilisateur maritime", () => {
     expect(db.maritimeUser.create.mock.calls[0][0].data).toEqual({
       userId: "user-mar-1",
       companyName: account.companyName,
+      loginId: account.email,
+      onboardingComplete: false,
     });
     expect(db.location.create).not.toHaveBeenCalled();
     expect(auditEntries(db)[0]).toMatchObject({
       userId: ADMIN.id,
       action: "CREATE",
       entityType: "MaritimeUser",
-      details: { email: account.email },
+      details: { loginId: account.email },
     });
     expect(JSON.stringify(body)).not.toContain(PASSWORD);
     expect(JSON.stringify(body)).not.toContain(userData.passwordHash);
@@ -97,7 +100,12 @@ describe("création d'un utilisateur maritime", () => {
     const { status } = await read(await createMaritimeUser(jsonRequest("/api/maritime-users", "POST", invalid)));
 
     expect(status).toBe(201);
-    expect(db.maritimeUser.create.mock.calls[0][0].data).toEqual({ userId: "user-mar-1", companyName: account.companyName });
+    expect(db.maritimeUser.create.mock.calls[0][0].data).toEqual({
+      userId: "user-mar-1",
+      companyName: account.companyName,
+      loginId: account.email,
+      onboardingComplete: false,
+    });
   });
 
   it("renvoie le message de doublon des régisseurs pour un email déjà utilisé", async () => {
@@ -105,7 +113,7 @@ describe("création d'un utilisateur maritime", () => {
     const { status, body } = await read(await createMaritimeUser(jsonRequest("/api/maritime-users", "POST", account)));
 
     expect(status).toBe(409);
-    expect(body.message).toBe("Cet email ou cette CIN existe déjà.");
+    expect(body.message).toBe("Cet identifiant existe déjà.");
   });
 
   it.each([
@@ -129,6 +137,7 @@ describe("modification du compte", () => {
     db.maritimeUser.findUnique.mockResolvedValue({
       id: "mar-profile-1",
       companyName: "Ancienne société",
+      loginId: "ancien-id",
       latitude: "-20.000000",
       longitude: "44.000000",
       user: {
@@ -148,7 +157,10 @@ describe("modification du compte", () => {
     expect(status).toBe(200);
     expect(db.user.update.mock.calls[0][0]).toMatchObject({
       where: { id: "user-mar-1" },
-      data: { firstName: account.companyName, lastName: "Compte maritime", email: account.email },
+      data: { firstName: account.companyName, lastName: "Compte maritime" },
+    });
+    expect(db.maritimeUser.update.mock.calls[0][0]).toMatchObject({
+      data: { companyName: account.companyName, loginId: account.email },
     });
     expect(auditEntries(db)[0]).toMatchObject({ action: "UPDATE", entityType: "MaritimeUser" });
   });
@@ -172,10 +184,14 @@ describe("modification du compte", () => {
     db.maritimeUser.findUnique.mockResolvedValue({
       id: "mar-profile-1",
       userId: "user-mar-1",
-      user: { email: account.email, isActive: false },
+      loginId: account.email,
+      user: {       email: account.email, isActive: false },
     });
     expect((await read(await patch({ isActive: true }))).status).toBe(200);
-    expect(db.user.update.mock.calls[0][0].data).toEqual({ isActive: true });
+    expect(db.user.update.mock.calls[0][0].data).toMatchObject({
+      isActive: true,
+      lastLoginAt: expect.any(Date),
+    });
     expect(auditEntries(db)[0]).toMatchObject({ action: "ACTIVATE", entityType: "MaritimeUser" });
   });
 });
@@ -231,6 +247,7 @@ describe("suppression et réinitialisation du mot de passe", () => {
     db.maritimeUser.findUnique.mockResolvedValue({
       id: "mar-profile-1",
       userId: "user-mar-1",
+      loginId: account.email,
       user: { email: account.email },
     });
     const newPassword = "Un-nouveau-mot-de-passe-42";
@@ -247,7 +264,9 @@ describe("suppression et réinitialisation du mot de passe", () => {
     expect(status).toBe(200);
     expect(await bcrypt.compare(newPassword, updateData.passwordHash)).toBe(true);
     expect(updateData.sessionVersion).toEqual({ increment: 1 });
-    expect(db.loginFailure.deleteMany).toHaveBeenCalledWith({ where: { email: account.email } });
+    expect(db.loginFailure.deleteMany).toHaveBeenCalledWith({
+      where: { email: { in: [account.email] } },
+    });
     expect(JSON.stringify(body)).not.toContain(newPassword);
     expect(JSON.stringify(auditEntries(db))).not.toContain(newPassword);
     expect(auditEntries(db)[0]).toMatchObject({ action: "RESET_PASSWORD", entityType: "MaritimeUser" });

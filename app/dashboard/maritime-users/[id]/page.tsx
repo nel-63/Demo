@@ -25,6 +25,7 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
     select: {
       id: true,
       companyName: true,
+      loginId: true,
       _count: { select: { declarations: true } },
       user: {
         select: {
@@ -48,7 +49,7 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
           {maritimeUser.companyName}
         </h1>
-        <p className="mt-2 text-slate-600">{maritimeUser.user.email} · {maritimeUser._count.declarations} déclaration(s)</p>
+        <p className="mt-2 text-slate-600">{maritimeUser.user.email ?? maritimeUser.loginId} · {maritimeUser._count.declarations} déclaration(s)</p>
       </header>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -57,7 +58,7 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
           maritimeUserId={maritimeUser.id}
           initialValues={{
             companyName: maritimeUser.companyName,
-            email: maritimeUser.user.email,
+            loginId: maritimeUser.loginId,
           }}
         />
       </section>

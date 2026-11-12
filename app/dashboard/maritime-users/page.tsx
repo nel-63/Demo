@@ -47,6 +47,7 @@ async function MaritimeUsersContent({ searchParams }: { searchParams: Promise<Se
     take: MARITIME_USERS_PAGE_SIZE,
     select: {
       id: true,
+      companyName: true,
       _count: { select: { declarations: true } },
       user: {
         select: {
@@ -87,7 +88,7 @@ async function MaritimeUsersContent({ searchParams }: { searchParams: Promise<Se
               type="search"
               defaultValue={q}
               maxLength={100}
-              placeholder="Nom, email ou téléphone…"
+              placeholder="Société ou identifiant…"
               className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
             <button className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white">Rechercher</button>
@@ -100,7 +101,7 @@ async function MaritimeUsersContent({ searchParams }: { searchParams: Promise<Se
               <table className="w-full min-w-max text-left text-sm">
                 <thead className="border-b border-slate-200 text-slate-600">
                   <tr>
-                    <th className="whitespace-nowrap px-3 py-3">Utilisateur</th>
+                    <th className="whitespace-nowrap px-3 py-3">Société</th>
                     <th className="whitespace-nowrap px-3 py-3">Identifiant / email</th>
                     <th className="whitespace-nowrap px-3 py-3">Déclarations</th>
                     <th className="whitespace-nowrap px-3 py-3">Statut</th>
@@ -112,7 +113,7 @@ async function MaritimeUsersContent({ searchParams }: { searchParams: Promise<Se
                     <tr key={item.id} className="align-top">
                       <td className="px-3 py-4 font-medium">
                         <Link href={`/dashboard/maritime-users/${item.id}`} className="text-blue-700 hover:underline">
-                          {item.user.firstName} {item.user.lastName}
+                          {item.companyName}
                         </Link>
                         {item.user.phoneNumber && <span className="block pt-1 text-xs font-normal text-slate-600">{item.user.phoneNumber}</span>}
                       </td>

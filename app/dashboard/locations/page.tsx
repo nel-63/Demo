@@ -128,7 +128,7 @@ async function LocationsContent({ searchParams }: { searchParams: Promise<Search
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-semibold">Corbeille ({deletedLocations.length})</h2>
-            <p className="mt-1 text-sm text-slate-600">Ces lieux sont masqués du reste de l'application. Leurs données sont conservées.</p>
+            <p className="mt-1 text-sm text-slate-600">Ces lieux sont masqués du reste de l&lsquo;application. Leurs données sont conservées.</p>
           </div>
         </div>
 

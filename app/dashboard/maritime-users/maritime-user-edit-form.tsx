@@ -49,12 +49,19 @@ export default function MaritimeUserEditForm({
     }
   }
 
-  const fields = [
+  const fields: Array<{
+    name: keyof Values;
+    label: string;
+    type?: React.InputHTMLAttributes<HTMLInputElement>["type"];
+    required: boolean;
+    min?: number;
+    max?: number;
+  }> = [
     { name: "firstName", label: "Prénom", required: true },
     { name: "lastName", label: "Nom", required: true },
     { name: "email", label: "Adresse email / identifiant", type: "email", required: true },
     { name: "phoneNumber", label: "Téléphone", type: "tel", required: false },
-  ] as const;
+  ];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -64,11 +71,10 @@ export default function MaritimeUserEditForm({
           <input
             id={field.name}
             name={field.name}
-            type={"type" in field ? field.type : "text"}
-            inputMode={"min" in field ? "decimal" : undefined}
+            type={field.type ?? "text"}
             required={field.required}
-            min={"min" in field ? field.min : undefined}
-            max={"max" in field ? field.max : undefined}
+            min={field.min}
+            max={field.max}
             maxLength={field.name === "email" ? 254 : 100}
             value={values[field.name] ?? ""}
             onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))}

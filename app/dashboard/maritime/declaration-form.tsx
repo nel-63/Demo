@@ -76,7 +76,7 @@ export default function DeclarationForm({
     const price = catalogItem ? catalogItem.unitPrice : product.unitPrice ?? "0";
     return { ...product, unitPrice: price };
   });
-  const { lineTotals, total } = calculateMaritimeTotals(normalizedProducts as Array<{ quantity: string; unitPrice: string }>);
+  const { total } = calculateMaritimeTotals(normalizedProducts as Array<{ quantity: string; unitPrice: string }>);
 
   function setField<K extends keyof Omit<DeclarationValues, "products">>(
     key: K,

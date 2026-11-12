@@ -38,7 +38,16 @@ export default function MaritimeUserForm() {
     }
   }
 
-  const fields = [
+  type FieldDefinition = {
+    name: string;
+    label: string;
+    type?: string;
+    required: boolean;
+    min?: number | string;
+    max?: number | string;
+  };
+
+  const fields: FieldDefinition[] = [
     { name: "firstName", label: "Prénom", required: true },
     { name: "lastName", label: "Nom", required: true },
     { name: "email", label: "Adresse email / identifiant", type: "email", required: true },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type MaritimeProductType = {
   id: string;
@@ -20,16 +20,28 @@ export default function MaritimeProductTypesPage() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function loadProducts() {
-    const response = await fetch(`/api/maritime-product-types?q=${encodeURIComponent(search)}`);
+  const loadProducts = useCallback(async (query: string) => {
+    const response = await fetch(`/api/maritime-product-types?q=${encodeURIComponent(query)}`);
     const result = await response.json().catch(() => ({ maritimeProductTypes: [] }));
-    setItems(Array.isArray(result.maritimeProductTypes) ? result.maritimeProductTypes : []);
-  }
+    return Array.isArray(result.maritimeProductTypes) ? result.maritimeProductTypes : [];
+  }, []);
 
   useEffect(() => {
-    void loadProducts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+    let isMounted = true;
+
+    const refreshProducts = async () => {
+      const nextItems = await loadProducts(search);
+      if (isMounted) {
+        setItems(nextItems);
+      }
+    };
+
+    void refreshProducts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [search, loadProducts]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -49,7 +61,7 @@ export default function MaritimeProductTypesPage() {
       setName("");
       setUnitPrice("0");
       setIsActive(true);
-      await loadProducts();
+      await loadProducts(search);
     } catch {
       setError("Impossible de contacter le serveur.");
     } finally {

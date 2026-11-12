@@ -110,15 +110,19 @@ async function MaritimeDeclarations({ searchParams }: Props) {
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Espace maritime</p>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Déclarations maritimes</h1>
-          <p className="mt-2 text-slate-600">Gérez vos déclarations de bateaux et de produits.</p>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Mes passages</h1>
+          <p className="mt-2 text-slate-600">Consultez vos passages et suivez les produits enregistrés à chaque arrivée.</p>
         </div>
         <Link href="/dashboard/maritime/new"
           className="rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white shadow-sm hover:bg-blue-800">
-          Nouvelle déclaration
+          Nouveau passage
         </Link>
       </header>
 
+      <nav aria-label="Navigation des passages" className="mb-6 flex gap-2 border-b border-slate-200">
+        <Link href="/dashboard/maritime" aria-current="page" className="border-b-2 border-blue-700 px-4 py-3 text-sm font-semibold text-blue-700">Mes passages</Link>
+        <Link href="/dashboard/maritime/new" className="px-4 py-3 text-sm font-medium text-slate-600 hover:text-blue-700">Nouveau passage</Link>
+      </nav>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <form method="GET" action="/dashboard/maritime" className="mb-5 grid gap-3 sm:grid-cols-[1fr_auto_auto_auto]">
           <input name="q" type="search" defaultValue={q} maxLength={100}

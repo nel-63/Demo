@@ -75,14 +75,14 @@ export async function POST(request: Request) {
     const body: unknown = await request.json().catch(() => null);
     const data = body && typeof body === "object" ? body as Record<string, unknown> : {};
     const text = (key: string) => typeof data[key] === "string" ? (data[key] as string).trim() : "";
-    const firstName = text("firstName");
-    const lastName = text("lastName");
+    const companyName = text("companyName");
+    const firstName = companyName;
+    const lastName = "Compte maritime";
     const email = text("email").toLowerCase();
-    const phoneNumber = text("phoneNumber");
     const password = typeof data.password === "string" ? data.password : "";
 
-    if (!firstName || !lastName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ message: "Prénom, nom et email valides sont obligatoires." }, { status: 400 });
+    if (!companyName || companyName.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ message: "Le nom de la société et un identifiant email valide sont obligatoires." }, { status: 400 });
     }
 
     const passwordError = validatePassword(password);
@@ -95,7 +95,6 @@ export async function POST(request: Request) {
           firstName,
           lastName,
           email,
-          phoneNumber: phoneNumber || null,
           passwordHash,
           role: "USER_MAR",
           designation: "Utilisateur maritime",
@@ -106,6 +105,7 @@ export async function POST(request: Request) {
       const createdProfile = await tx.maritimeUser.create({
         data: {
           userId: createdUser.id,
+          companyName,
         },
         select: {
           id: true,
@@ -116,7 +116,6 @@ export async function POST(request: Request) {
               firstName: true,
               lastName: true,
               email: true,
-              phoneNumber: true,
               isActive: true,
             },
           },

@@ -84,7 +84,7 @@ async function DeclarationDetails({ params }: Props) {
         <dl className="grid gap-4 text-sm sm:grid-cols-3">
           <div><dt className="text-slate-600">Départ du port d&apos;origine</dt><dd className="font-medium text-slate-900">{dateFormatter.format(declaration.originDepartureDate)}</dd></div>
           <div><dt className="text-slate-600">Arrivée ici</dt><dd className="font-medium text-slate-900">{dateFormatter.format(declaration.arrivalDate)}</dd></div>
-          <div><dt className="text-slate-600">Départ d&apos;ici</dt><dd className="font-medium text-slate-900">{dateFormatter.format(declaration.departureDate)}</dd></div>
+          <div><dt className="text-slate-600">Départ d&apos;ici</dt><dd className="font-medium text-slate-900">{declaration.departureDate ? dateFormatter.format(declaration.departureDate) : "En cours — date non renseignée"}</dd></div>
         </dl>
       </section>
 
@@ -104,6 +104,7 @@ async function DeclarationDetails({ params }: Props) {
                   <td className="px-3 py-3 text-right font-medium tabular-nums">{formatMaritimeAmount(totals.lineTotals[index] ?? "0")}</td>
                 </tr>
               ))}
+              {declaration.products.length === 0 && <tr><td colSpan={4} className="px-3 py-6 text-center text-slate-600">Aucun produit enregistré pour le moment.</td></tr>}
             </tbody>
             <tfoot className="border-t-2 border-slate-200">
               <tr><th colSpan={3} className="px-3 py-4 text-right text-base">Total général</th><td className="px-3 py-4 text-right text-base font-bold tabular-nums">{formatMaritimeAmount(totals.total)} Ar</td></tr>

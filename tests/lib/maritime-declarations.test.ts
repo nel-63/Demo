@@ -48,9 +48,8 @@ describe("validateMaritimeDeclaration", () => {
     expect(() => validateMaritimeDeclaration(input)).toThrow(MaritimeDeclarationValidationError);
     expect(() => validateMaritimeDeclaration(input)).toThrow(message);
   });
-});
 
-it("accepte un passage sans produit et sans date de sortie", () => {
+  it("accepte un passage sans produit et sans date de sortie", () => {
     expect(validateMaritimeDeclaration({ ...valid, products: [], departureDate: "" })).toMatchObject({ products: [], departureDate: null });
   });
 });

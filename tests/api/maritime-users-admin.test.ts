@@ -22,10 +22,8 @@ const USER_MAR = { ...SUPERVISOR, id: "mar-user-1", role: "USER_MAR" as const };
 const PASSWORD = "Mot-de-passe-maritime-42";
 
 const account = {
-  firstName: "Rina",
-  lastName: "Maritime",
+  companyName: "Société Océan",
   email: "rina.maritime@test.mg",
-  phoneNumber: "0340000000",
   latitude: "-20.2833",
   longitude: "44.2833",
   password: PASSWORD,
@@ -34,13 +32,13 @@ const account = {
 function createdProfile() {
   return {
     id: "mar-profile-1",
+    companyName: account.companyName,
     latitude: "-20.283300",
     longitude: "44.283300",
     user: {
-      firstName: account.firstName,
-      lastName: account.lastName,
+      firstName: account.companyName,
+      lastName: "Compte maritime",
       email: account.email,
-      phoneNumber: account.phoneNumber,
       isActive: true,
     },
   };
@@ -77,6 +75,7 @@ describe("création d'un utilisateur maritime", () => {
     expect(await bcrypt.compare(PASSWORD, userData.passwordHash)).toBe(true);
     expect(db.maritimeUser.create.mock.calls[0][0].data).toEqual({
       userId: "user-mar-1",
+      companyName: account.companyName,
     });
     expect(db.location.create).not.toHaveBeenCalled();
     expect(auditEntries(db)[0]).toMatchObject({
@@ -141,18 +140,14 @@ describe("modification du compte", () => {
     });
     db.maritimeUser.update.mockResolvedValue(createdProfile());
     const { status } = await read(await patch({
-      firstName: account.firstName,
-      lastName: account.lastName,
+      companyName: account.companyName,
       email: account.email,
-      phoneNumber: account.phoneNumber,
-      latitude: account.latitude,
-      longitude: account.longitude,
     }));
 
     expect(status).toBe(200);
     expect(db.user.update.mock.calls[0][0]).toMatchObject({
       where: { id: "user-mar-1" },
-      data: { firstName: account.firstName, lastName: account.lastName, email: account.email, phoneNumber: account.phoneNumber },
+      data: { firstName: account.companyName, lastName: "Compte maritime", email: account.email },
     });
     expect(auditEntries(db)[0]).toMatchObject({ action: "UPDATE", entityType: "MaritimeUser" });
   });

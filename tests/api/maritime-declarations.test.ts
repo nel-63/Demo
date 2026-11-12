@@ -118,6 +118,17 @@ describe("validation et création", () => {
     expect(db.$transaction).not.toHaveBeenCalled();
   });
 
+  it("crée un passage sans produit et laisse la date de sortie vide", async () => {
+    db.maritimeDeclaration.create.mockResolvedValue(storedDeclaration({ departureDate: null, products: [] }));
+    const { status } = await read(await post({ ...valid, departureDate: "", products: [] }));
+    expect(status).toBe(201);
+    expect(db.maritimeDeclaration.create.mock.calls[0][0].data).toMatchObject({
+      companyName: "Société Océan",
+      departureDate: null,
+      products: { create: [] },
+    });
+  });
+
   it("crée la déclaration et ses produits avec un audit atomique et calcule le total côté serveur", async () => {
     const created = storedDeclaration({ products: valid.products.map((product, index) => ({
       id: `product-${index + 1}`,

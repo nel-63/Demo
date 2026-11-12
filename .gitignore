@@ -61,3 +61,5 @@ tsconfig.tsbuildinfo
 # Copies des compétences d'agents (déjà dans .agents)
 /.claude/
 /.windsurf/
+
+*.patch

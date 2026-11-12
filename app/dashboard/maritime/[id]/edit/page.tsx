@@ -18,7 +18,7 @@ async function EditMaritimeDeclaration({ params }: Props) {
 
   const profile = await prisma.maritimeUser.findUnique({
     where: { userId: user.id },
-    select: { id: true },
+    select: { id: true, latitude: true, longitude: true },
   });
   if (!profile) notFound();
 
@@ -52,6 +52,8 @@ async function EditMaritimeDeclaration({ params }: Props) {
             originDepartureDate: declaration.originDepartureDate.toISOString().slice(0, 10),
             arrivalDate: declaration.arrivalDate.toISOString().slice(0, 10),
             departureDate: declaration.departureDate?.toISOString().slice(0, 10) ?? "",
+            latitude: profile.latitude?.toString() ?? "",
+            longitude: profile.longitude?.toString() ?? "",
             products: declaration.products.map((product) => ({
               id: product.id,
               productType: product.productType,

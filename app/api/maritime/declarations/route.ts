@@ -8,6 +8,10 @@ import {
   validateMaritimeDeclaration,
   type MaritimeProductInput,
 } from "@/lib/maritime-declarations";
+import {
+  hasMaritimeUserCoordinates,
+  parseOptionalMaritimeUserCoordinates,
+} from "@/lib/maritime-user-coordinates";
 import { MARITIME_DECLARATIONS_PAGE_SIZE, resolvePage } from "@/lib/pagination";
 
 async function resolveProductLines(
@@ -47,7 +51,7 @@ async function resolveProductLines(
 async function getMaritimeProfile(userId: string) {
   return prisma.maritimeUser.findUnique({
     where: { userId },
-    select: { id: true, companyName: true },
+    select: { id: true, companyName: true, latitude: true, longitude: true },
   });
 }
 
@@ -137,10 +141,44 @@ export async function POST(request: Request) {
     } catch {
       return NextResponse.json({ message: "Le contenu de la déclaration est invalide." }, { status: 400 });
     }
-    const input = validateMaritimeDeclaration({ ...(body as Record<string, unknown>), companyName: profile.companyName });
+    const data = body && typeof body === "object" ? body as Record<string, unknown> : {};
+    const hasCoordinatesInput = hasMaritimeUserCoordinates(data);
+    const coordinates = parseOptionalMaritimeUserCoordinates(data.latitude, data.longitude);
+    if (hasCoordinatesInput && coordinates === undefined) {
+      return NextResponse.json({ message: "Les coordonnées doivent être valides." }, { status: 400 });
+    }
+    const input = validateMaritimeDeclaration({ ...data, companyName: profile.companyName });
     const products = input.products ?? [];
     const created = await prisma.$transaction(async (tx) => {
       const productLines = await resolveProductLines(tx, products);
+      if (hasCoordinatesInput) {
+        const updatedProfile = await tx.maritimeUser.update({
+          where: { id: profile.id },
+          data: {
+            latitude: coordinates?.latitude ?? null,
+            longitude: coordinates?.longitude ?? null,
+          },
+          select: { id: true, latitude: true, longitude: true },
+        });
+        await tx.auditLog.create({
+          data: {
+            userId: user.id,
+            action: "UPDATE",
+            entityType: "MaritimeUserProfile",
+            entityId: updatedProfile.id,
+            details: {
+              before: {
+                latitude: profile.latitude?.toString() ?? null,
+                longitude: profile.longitude?.toString() ?? null,
+              },
+              after: {
+                latitude: updatedProfile.latitude?.toString() ?? null,
+                longitude: updatedProfile.longitude?.toString() ?? null,
+              },
+            },
+          },
+        });
+      }
       const declaration = await tx.maritimeDeclaration.create({
         data: {
           maritimeUserId: profile.id,

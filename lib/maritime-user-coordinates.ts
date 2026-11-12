@@ -25,6 +25,18 @@ export function parseMaritimeUserCoordinates(
   return { latitude, longitude };
 }
 
+export function parseOptionalMaritimeUserCoordinates(
+  latitudeValue: unknown,
+  longitudeValue: unknown,
+): { latitude: string; longitude: string } | null | undefined {
+  const latitude = coordinateText(latitudeValue);
+  const longitude = coordinateText(longitudeValue);
+
+  if (latitude === "" && longitude === "") return null;
+  if (!latitude || !longitude) return undefined;
+  return parseMaritimeUserCoordinates(latitude, longitude) ?? undefined;
+}
+
 export function hasMaritimeUserCoordinates(value: Record<string, unknown>): boolean {
   return Object.prototype.hasOwnProperty.call(value, "latitude") ||
     Object.prototype.hasOwnProperty.call(value, "longitude");
@@ -37,5 +49,5 @@ function coordinateText(value: unknown): string | null {
       ? value.trim()
       : "";
 
-  return COORDINATE_PATTERN.test(text) ? text : null;
+  return text === "" ? "" : COORDINATE_PATTERN.test(text) ? text : null;
 }

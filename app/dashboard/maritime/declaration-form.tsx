@@ -26,6 +26,8 @@ type DeclarationValues = {
   originDepartureDate: string;
   arrivalDate: string;
   departureDate: string;
+  latitude: string;
+  longitude: string;
   products: MaritimeProductInput[];
 };
 
@@ -55,6 +57,8 @@ export default function DeclarationForm({
       originDepartureDate: "",
       arrivalDate: "",
       departureDate: "",
+      latitude: "",
+      longitude: "",
       products: [],
     },
   );
@@ -205,6 +209,23 @@ export default function DeclarationForm({
               onChange={(event) => setField("departureDate", event.target.value)} />
           </label>
         </div>
+      </section>
+
+      <section className="space-y-4">
+        <h2 className={SECTION_CLASS}>Coordonnées de navigation</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className={LABEL_CLASS}>Latitude</span>
+            <input className={INPUT_CLASS} type="number" min="-90" max="90" step="0.000001"
+              value={values.latitude} onChange={(event) => setField("latitude", event.target.value)} />
+          </label>
+          <label className="block">
+            <span className={LABEL_CLASS}>Longitude</span>
+            <input className={INPUT_CLASS} type="number" min="-180" max="180" step="0.000001"
+              value={values.longitude} onChange={(event) => setField("longitude", event.target.value)} />
+          </label>
+        </div>
+        <p className="text-sm text-slate-600">Les coordonnées sont optionnelles ; renseignez latitude et longitude ensemble.</p>
       </section>
 
       <section className="space-y-4">

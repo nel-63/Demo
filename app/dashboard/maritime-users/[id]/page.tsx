@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import MaritimeUserAccountActions from "../maritime-user-account-actions";
+import AccountActions from "../../account-actions";
 import MaritimeUserEditForm from "../maritime-user-edit-form";
 
 export default function MaritimeUserPage({ params }: { params: Promise<{ id: string }> }) {
@@ -64,11 +64,15 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
 
       <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-5 text-xl font-semibold">Compte</h2>
-        <MaritimeUserAccountActions
-          maritimeUserId={maritimeUser.id}
-          maritimeUserName={maritimeUser.companyName}
+        <AccountActions
+          endpoint={`/api/maritime-users/${maritimeUser.id}`}
+          name={maritimeUser.companyName}
           isActive={maritimeUser.user.isActive}
-          declarationCount={maritimeUser._count.declarations}
+          deletion={{
+            redirectTo: "/dashboard/maritime-users",
+            blocked: maritimeUser._count.declarations > 0,
+            blockedMessage: "Ce compte a des déclarations : il ne peut pas être supprimé. Désactivez-le à la place.",
+          }}
         />
       </section>
     </div>

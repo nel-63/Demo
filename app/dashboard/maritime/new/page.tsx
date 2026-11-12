@@ -15,7 +15,7 @@ async function NewMaritimeDeclaration() {
   if (user.role !== "USER_MAR") redirect("/dashboard");
   const profile = await prisma.maritimeUser.findUnique({
     where: { userId: user.id },
-    select: { id: true, companyName: true },
+    select: { id: true, companyName: true, latitude: true, longitude: true },
   });
   if (!profile) redirect("/dashboard/maritime");
 
@@ -32,7 +32,21 @@ async function NewMaritimeDeclaration() {
         <Link href="/dashboard/maritime/new" aria-current="page" className="border-b-2 border-blue-700 px-4 py-3 text-sm font-semibold text-blue-700">Nouveau passage</Link>
       </nav>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
-        <DeclarationForm initial={{ companyName: profile.companyName, boatName: "", boatRegistration: "", boatCapacity: "", captainName: "", captainPhone: "", captainEmail: "", originDepartureDate: "", arrivalDate: "", departureDate: "", products: [] }} />
+        <DeclarationForm initial={{
+          companyName: profile.companyName,
+          boatName: "",
+          boatRegistration: "",
+          boatCapacity: "",
+          captainName: "",
+          captainPhone: "",
+          captainEmail: "",
+          originDepartureDate: "",
+          arrivalDate: "",
+          departureDate: "",
+          latitude: profile.latitude?.toString() ?? "",
+          longitude: profile.longitude?.toString() ?? "",
+          products: [],
+        }} />
       </section>
     </div>
   );

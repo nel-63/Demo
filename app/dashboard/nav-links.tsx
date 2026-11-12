@@ -31,7 +31,6 @@ const SUPERVISOR_ITEMS: Item[] = [
 
 const MARITIME_ITEMS: Item[] = [
   { href: "/dashboard/maritime", label: "Déclarations maritimes", icon: Ship },
-  { href: "/dashboard/profile", label: "Mon profil", icon: UserCog },
 ];
 
 export default function NavLinks({

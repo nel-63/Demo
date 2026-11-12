@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { resetFakePrisma, type FakePrisma } from "../helpers/fake-prisma";
+import { auditEntries, resetFakePrisma, type FakePrisma } from "../helpers/fake-prisma";
 import { ADMIN, SUPERVISOR, jsonRequest, params, read } from "../helpers/http";
 import { GET as listDeclarations, POST as createDeclaration } from "@/app/api/maritime/declarations/route";
 import {
@@ -77,7 +77,12 @@ const post = (body: unknown) =>
 beforeEach(() => {
   resetFakePrisma(db);
   vi.mocked(getCurrentUser).mockResolvedValue(USER_MAR);
-  db.maritimeUser.findUnique.mockResolvedValue({ id: PROFILE_ID, companyName: "Société Océan" });
+db.maritimeUser.findUnique.mockResolvedValue({
+  id: PROFILE_ID,
+  companyName: "Société Océan",
+  latitude: null,
+  longitude: null,
+});
 });
 
 describe("accès aux déclarations maritimes", () => {
@@ -112,6 +117,8 @@ describe("validation et création", () => {
     [{ ...valid, captainEmail: "", captainPhone: "" }],
     [{ ...valid, arrivalDate: "2026-09-30" }],
     [{ ...valid, products: [{ productType: "Thon", quantity: "1", unitPrice: "-1" }] }],
+    [{ ...valid, latitude: "-90.000001", longitude: "44" }],
+    [{ ...valid, latitude: "-20", longitude: "" }],
   ])("rejette les données invalides avant d'ouvrir la transaction", async (body) => {
     const response = await read(await post(body));
     expect(response.status).toBe(400);
@@ -156,6 +163,55 @@ describe("validation et création", () => {
       action: "CREATE",
       entityType: "MaritimeDeclaration",
       details: { after: { total: "12818.125" } },
+    });
+  });
+
+  it("enregistre les coordonnées dans le profil dans la même transaction que la déclaration", async () => {
+    db.maritimeUser.update.mockResolvedValue({
+      id: PROFILE_ID,
+      latitude: "-20.2833",
+      longitude: "44.2833",
+    });
+    db.maritimeDeclaration.create.mockResolvedValue(storedDeclaration({ products: [] }));
+
+    const { status } = await read(await post({
+      ...valid,
+      latitude: "-20.2833",
+      longitude: "44.2833",
+      products: [],
+    }));
+
+    expect(status).toBe(201);
+    expect(db.maritimeUser.update).toHaveBeenCalledWith({
+      where: { id: PROFILE_ID },
+      data: { latitude: "-20.2833", longitude: "44.2833" },
+      select: { id: true, latitude: true, longitude: true },
+    });
+    expect(auditEntries(db).map((entry) => entry.entityType)).toEqual([
+      "MaritimeUserProfile",
+      "MaritimeDeclaration",
+    ]);
+  });
+
+  it("permet d'effacer les coordonnées en laissant les deux champs vides", async () => {
+    db.maritimeUser.update.mockResolvedValue({
+      id: PROFILE_ID,
+      latitude: null,
+      longitude: null,
+    });
+    db.maritimeDeclaration.create.mockResolvedValue(storedDeclaration({ products: [] }));
+
+    const { status } = await read(await post({
+      ...valid,
+      latitude: "",
+      longitude: "",
+      products: [],
+    }));
+
+    expect(status).toBe(201);
+    expect(db.maritimeUser.update.mock.calls[0][0].data).toEqual({
+      latitude: null,
+      longitude: null,
     });
   });
 });

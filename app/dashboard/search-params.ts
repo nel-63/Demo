@@ -16,8 +16,3 @@ export function readChoice<T extends string>(
   const value = readParam(params, key, 40);
   return (allowed as readonly string[]).includes(value) ? (value as T) : "";
 }
-
-// Découpe la recherche en mots : chaque mot doit être trouvé quelque part.
-export function searchWords(q: string): string[] {
-  return q.split(/\s+/).filter(Boolean).slice(0, 5);
-}

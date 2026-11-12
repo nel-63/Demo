@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hasMaritimeUserCoordinates, parseMaritimeUserCoordinates } from "@/lib/maritime-user-coordinates";
+import {
+  hasMaritimeUserCoordinates,
+  parseOptionalMaritimeUserCoordinates,
+} from "@/lib/maritime-user-coordinates";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -42,9 +45,9 @@ export async function PATCH(request: Request) {
     const body: unknown = await request.json().catch(() => null);
     const data = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
     const hasCoordinatesInput = hasMaritimeUserCoordinates(data);
-    const coordinates = parseMaritimeUserCoordinates(data.latitude, data.longitude);
+    const coordinates = parseOptionalMaritimeUserCoordinates(data.latitude, data.longitude);
 
-    if (hasCoordinatesInput && !coordinates) {
+    if (hasCoordinatesInput && coordinates === undefined) {
       return NextResponse.json({ message: "Les coordonnées doivent être valides." }, { status: 400 });
     }
 
@@ -59,7 +62,9 @@ export async function PATCH(request: Request) {
     const updated = await prisma.$transaction(async (tx) => {
       const item = await tx.maritimeUser.update({
         where: { id: profile.id },
-        data: coordinates ? { latitude: coordinates.latitude, longitude: coordinates.longitude } : {},
+        data: hasCoordinatesInput
+          ? { latitude: coordinates?.latitude ?? null, longitude: coordinates?.longitude ?? null }
+          : {},
         select: { id: true, latitude: true, longitude: true },
       });
       await tx.auditLog.create({

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import SupervisorForm from "./supervisor-form";
 import LocationAssignmentForm from "./location-assignment-form";
-import SupervisorAccountActions from "./supervisor-account-actions";
+import AccountActions from "../account-actions";
 import { readParam, type SearchParams } from "../search-params";
 
 export default function SupervisorsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -139,10 +139,11 @@ async function SupervisorsContent({ searchParams }: { searchParams: Promise<Sear
                           />
                         </td>
                         <td className="px-3 py-4">
-                          <SupervisorAccountActions
-                            supervisorId={item.id}
-                            supervisorName={`${item.user.firstName} ${item.user.lastName}`}
+                          <AccountActions
+                            endpoint={`/api/supervisors/${item.id}`}
+                            name={`${item.user.firstName} ${item.user.lastName}`}
                             isActive={item.user.isActive}
+                            compact
                           />
                         </td>
                       </tr>

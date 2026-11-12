@@ -57,30 +57,3 @@ export function StatCard({
     </>
   );
 }
-
-// Un chiffre de la répartition par statut (Planifié, En cours...).
-export function StatusTile({ label, count, kind }: { label: string; count: number; kind: string }) {
-  const { open, setOpen, triggerRef, close } = useDrawer();
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-haspopup="dialog"
-        className="group cursor-pointer rounded-xl bg-slate-100 px-4 py-3 text-left transition duration-200 hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-sm"
-      >
-        <span className="block text-sm text-slate-700">{label}</span>
-        <span className="mt-1 flex items-center gap-2 text-xl font-bold text-slate-900">
-          {count}
-          <ArrowRight
-            className="size-4 text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-blue-700"
-            aria-hidden="true"
-          />
-        </span>
-      </button>
-      {open && <DetailsDrawer kind={kind} label={label} onClose={close} />}
-    </>
-  );
-}

@@ -27,12 +27,10 @@ export async function PATCH(request: Request, context: Context) {
     }
 
     const text = (key: string) => typeof data[key] === "string" ? (data[key] as string).trim() : "";
-    const firstName = text("firstName");
-    const lastName = text("lastName");
+    const companyName = text("companyName");
     const email = text("email").toLowerCase();
-    const phoneNumber = text("phoneNumber");
-    if (!firstName || !lastName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ message: "Prénom, nom et email valides sont obligatoires." }, { status: 400 });
+    if (!companyName || companyName.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ message: "Le nom de la société et un identifiant email valide sont obligatoires." }, { status: 400 });
     }
 
     const maritimeUser = await prisma.$transaction(async (tx) => {
@@ -48,7 +46,6 @@ export async function PATCH(request: Request, context: Context) {
               firstName: true,
               lastName: true,
               email: true,
-              phoneNumber: true,
             },
           },
         },
@@ -56,18 +53,16 @@ export async function PATCH(request: Request, context: Context) {
       if (!current) return null;
 
       const before = {
-        firstName: current.user.firstName,
-        lastName: current.user.lastName,
+        companyName: current.companyName,
         email: current.user.email,
-        phoneNumber: current.user.phoneNumber,
       };
       await tx.user.update({
         where: { id: current.user.id },
-        data: { firstName, lastName, email, phoneNumber: phoneNumber || null },
+        data: { firstName: companyName, lastName: "Compte maritime", email },
       });
       const updated = await tx.maritimeUser.update({
         where: { id },
-        data: {},
+        data: { companyName },
         select: {
           id: true,
           latitude: true,
@@ -92,10 +87,8 @@ export async function PATCH(request: Request, context: Context) {
           details: {
             before,
             after: {
-              firstName,
-              lastName,
+              companyName,
               email,
-              phoneNumber: phoneNumber || null,
             },
           },
         },

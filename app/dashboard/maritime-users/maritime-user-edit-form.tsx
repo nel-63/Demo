@@ -3,12 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
-type Values = {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phoneNumber: string;
-};
+type Values = { companyName: string; email: string };
 
 export default function MaritimeUserEditForm({
   maritimeUserId,
@@ -28,7 +23,6 @@ export default function MaritimeUserEditForm({
     setError("");
     setMessage("");
     setLoading(true);
-
     try {
       const response = await fetch(`/api/maritime-users/${maritimeUserId}`, {
         method: "PATCH",
@@ -40,7 +34,7 @@ export default function MaritimeUserEditForm({
         setError(result.message ?? "Modification impossible.");
         return;
       }
-      setMessage("Les informations ont été modifiées.");
+      setMessage("Les informations de la société ont été modifiées.");
       router.refresh();
     } catch {
       setError("Impossible de contacter le serveur.");
@@ -49,36 +43,24 @@ export default function MaritimeUserEditForm({
     }
   }
 
-  const fields = [
-    { name: "firstName", label: "Prénom", required: true },
-    { name: "lastName", label: "Nom", required: true },
-    { name: "email", label: "Adresse email / identifiant", type: "email", required: true },
-    { name: "phoneNumber", label: "Téléphone", type: "tel", required: false },
-  ] as const;
-
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {fields.map((field) => (
-        <div key={field.name}>
-          <label htmlFor={field.name} className="mb-1 block text-sm font-medium text-slate-700">{field.label}</label>
-          <input
-            id={field.name}
-            name={field.name}
-            type={"type" in field ? field.type : "text"}
-            inputMode={"min" in field ? "decimal" : undefined}
-            required={field.required}
-            min={"min" in field ? field.min : undefined}
-            max={"max" in field ? field.max : undefined}
-            maxLength={field.name === "email" ? 254 : 100}
-            value={values[field.name] ?? ""}
-            onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))}
-            className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-          />
-        </div>
-      ))}
+      <div>
+        <label htmlFor="companyName" className="mb-1 block text-sm font-medium text-slate-700">Nom de la société maritime</label>
+        <input id="companyName" required maxLength={200} value={values.companyName}
+          onChange={(event) => setValues((current) => ({ ...current, companyName: event.target.value }))}
+          className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" />
+      </div>
+      <div>
+        <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">Identifiant de connexion (email)</label>
+        <input id="email" type="email" required maxLength={254} value={values.email}
+          onChange={(event) => setValues((current) => ({ ...current, email: event.target.value }))}
+          className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" />
+      </div>
       {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {message && <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{message}</p>}
-      <button type="submit" disabled={loading} className="rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60">
+      <button type="submit" disabled={loading}
+        className="rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60">
         {loading ? "Enregistrement..." : "Enregistrer les modifications"}
       </button>
     </form>

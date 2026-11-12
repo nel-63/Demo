@@ -48,7 +48,7 @@ async function resolveProductLines(
 async function getMaritimeProfile(userId: string) {
   return prisma.maritimeUser.findUnique({
     where: { userId },
-    select: { id: true },
+    select: { id: true, companyName: true },
   });
 }
 
@@ -96,7 +96,7 @@ async function updateDeclaration(request: Request, context: Context) {
     } catch {
       return NextResponse.json({ message: "Le contenu de la déclaration est invalide." }, { status: 400 });
     }
-    const input = validateMaritimeDeclaration(body);
+    const input = validateMaritimeDeclaration({ ...(body as Record<string, unknown>), companyName: profile.companyName });
     const products = input.products ?? [];
     const outcome = await prisma.$transaction(async (tx) => {
       const current = await tx.maritimeDeclaration.findFirst({
@@ -115,7 +115,7 @@ async function updateDeclaration(request: Request, context: Context) {
       await tx.maritimeDeclaration.update({
         where: { id },
         data: {
-          companyName: input.companyName,
+          companyName: profile.companyName,
           boatName: input.boatName,
           boatRegistration: input.boatRegistration,
           boatCapacity: input.boatCapacity,
@@ -124,7 +124,7 @@ async function updateDeclaration(request: Request, context: Context) {
           captainEmail: input.captainEmail,
           originDepartureDate: new Date(`${input.originDepartureDate}T00:00:00.000Z`),
           arrivalDate: new Date(`${input.arrivalDate}T00:00:00.000Z`),
-          departureDate: new Date(`${input.departureDate}T00:00:00.000Z`),
+          departureDate: input.departureDate ? new Date(`${input.departureDate}T00:00:00.000Z`) : null,
         },
       });
 

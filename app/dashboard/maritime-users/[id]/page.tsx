@@ -24,6 +24,7 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
     where: { id },
     select: {
       id: true,
+      companyName: true,
       _count: { select: { declarations: true } },
       user: {
         select: {
@@ -45,7 +46,7 @@ async function MaritimeUserContent({ params }: { params: Promise<{ id: string }>
       </Link>
       <header className="my-6">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
-          {maritimeUser.user.firstName} {maritimeUser.user.lastName}
+          {maritimeUser.companyName}
         </h1>
         <p className="mt-2 text-slate-600">{maritimeUser.user.email} · {maritimeUser._count.declarations} déclaration(s)</p>
       </header>

@@ -106,7 +106,8 @@ export default function DeclarationForm({ initial, declarationId }: { initial?: 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError("");
     if (step===1) { nextStep(); return; }
-    if (!validateInformation() || !formRef.current?.reportValidity()) { setStep(1); return; }
+    if (!validateInformation()) { setStep(1); return; }
+    if (!formRef.current?.reportValidity()) return;
     if (values.departureDate && !window.confirm("Enregistrer le départ ? Après cet enregistrement, votre compte sera fermé : vous ne pourrez plus vous connecter ni modifier cette déclaration.")) return;
     setSaving(true);
     try {

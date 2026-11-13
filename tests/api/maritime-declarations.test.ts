@@ -219,11 +219,11 @@ describe("validation et création", () => {
 
 describe("isolation et CRUD", () => {
   it("filtre les listes et les détails par profil, et masque les déclarations d'un autre utilisateur", async () => {
-    db.maritimeDeclaration.count.mockResolvedValue(0);
-    db.maritimeDeclaration.findMany.mockResolvedValue([]);
-    await listDeclarations(new Request("http://localhost/api/maritime/declarations?q=Ocean"));
-    expect(db.maritimeDeclaration.findMany.mock.calls[0][0].where).toMatchObject({
+    db.maritimeDeclaration.findFirst.mockResolvedValue(null);
+    await listDeclarations(new Request("http://localhost/api/maritime/declarations"));
+    expect(db.maritimeDeclaration.findFirst.mock.calls[0][0].where).toEqual({
       maritimeUserId: PROFILE_ID,
+      departureDate: null,
     });
 
     db.maritimeDeclaration.findFirst.mockResolvedValue(null);

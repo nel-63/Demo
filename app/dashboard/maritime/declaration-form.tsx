@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { calculateMaritimeTotals, formatMaritimeAmount, type MaritimeProductInput } from "@/lib/maritime-declarations";
+import {
+  calculateMaritimeTotals, formatMaritimeAmount, validateMaritimeDeclaration,
+  MaritimeDeclarationValidationError, type MaritimeProductInput,
+} from "@/lib/maritime-declarations";
+import { validateMaritimeContact, MaritimeContactValidationError } from "@/lib/maritime-account";
 
 type CatalogItem = { id: string; name: string; unitPrice: string };
 type ProductLine = MaritimeProductInput & { clientId: string };
@@ -67,26 +71,42 @@ export default function DeclarationForm({ initial, declarationId }: { initial?: 
   }
   function validateInformation(): boolean {
     const next: Errors = {};
-    if (!values.companyName.trim()) next.companyName = "Le nom de la société est obligatoire.";
-    if (!values.contactEmail.trim()) next.contactEmail = "L'email de contact du compte est obligatoire.";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.contactEmail)) next.contactEmail = "L'email de contact du compte n'est pas valide.";
-    if (!values.contactPhone.trim()) next.contactPhone = "Le téléphone de contact du compte est obligatoire.";
-    if (!values.boatName.trim()) next.boatName = "Le nom du bateau est obligatoire.";
-    if (!values.boatRegistration.trim()) next.boatRegistration = "L'immatriculation est obligatoire.";
-    if (!values.boatCapacity || !/^\d+(?:\.\d{1,3})?$/.test(values.boatCapacity) || Number(values.boatCapacity)<=0) next.boatCapacity = "La capacité du bateau doit être supérieure à zéro.";
-    if (!values.captainName.trim()) next.captainName = "Le nom du commandant est obligatoire.";
-    if (!values.captainPhone.trim() && !values.captainEmail.trim()) next.captainPhone = "Renseignez au moins un moyen de contact du commandant : téléphone ou email.";
-    if (values.captainEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.captainEmail)) next.captainEmail = "L'email du commandant n'est pas valide.";
-    const validDate = (v:string) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(new Date(v+"T00:00:00.000Z").getTime()) && new Date(v+"T00:00:00.000Z").toISOString().slice(0,10)===v;
-    if (!validDate(values.originDepartureDate)) next.originDepartureDate = "La date de départ du port d'origine est obligatoire et doit être valide.";
-    if (!validDate(values.arrivalDate)) next.arrivalDate = "La date d'arrivée ici est obligatoire et doit être valide.";
-    if (values.departureDate && !validDate(values.departureDate)) next.departureDate = "La date de départ d'ici doit être une date valide.";
-    if (validDate(values.originDepartureDate) && validDate(values.arrivalDate) && values.originDepartureDate > values.arrivalDate) next.arrivalDate = "Les dates doivent respecter l'ordre : départ du port d'origine, arrivée ici, puis départ d'ici.";
-    if (values.departureDate && validDate(values.arrivalDate) && validDate(values.departureDate) && values.arrivalDate > values.departureDate) next.departureDate = "Les dates doivent respecter l'ordre : départ du port d'origine, arrivée ici, puis départ d'ici.";
-    const lat=values.latitude.trim(), lon=values.longitude.trim();
-    if (Boolean(lat)!==Boolean(lon)) { next.latitude="Renseignez la latitude et la longitude ensemble."; next.longitude="Renseignez la latitude et la longitude ensemble."; }
-    if (lat && (!Number.isFinite(Number(lat)) || Number(lat)<-90 || Number(lat)>90)) next.latitude="La latitude doit être comprise entre -90 et 90.";
-    if (lon && (!Number.isFinite(Number(lon)) || Number(lon)<-180 || Number(lon)>180)) next.longitude="La longitude doit être comprise entre -180 et 180.";
+    try {
+      validateMaritimeContact(values.contactEmail, values.contactPhone);
+    } catch (error) {
+      const message = error instanceof MaritimeContactValidationError
+        ? error.message
+        : "Les coordonnées de contact du compte sont invalides.";
+      next.contactEmail = message;
+      next.contactPhone = message;
+    }
+    try {
+      validateMaritimeDeclaration({ ...values, products: [] });
+    } catch (error) {
+      const message = error instanceof MaritimeDeclarationValidationError
+        ? error.message
+        : "Les informations du passage sont invalides.";
+      if (message.includes("société")) next.companyName = message;
+      else if (message.includes("nom du bateau")) next.boatName = message;
+      else if (message.includes("immatriculation")) next.boatRegistration = message;
+      else if (message.includes("capacité")) next.boatCapacity = message;
+      else if (message.includes("commandant")) next.captainName = message;
+      else if (message.includes("moyen de contact")) next.captainPhone = message;
+      else if (message.includes("email du commandant")) next.captainEmail = message;
+      else if (message.includes("port d'origine")) next.originDepartureDate = message;
+      else if (message.includes("date d'arrivée")) next.arrivalDate = message;
+      else if (message.includes("date de départ d'ici")) next.departureDate = message;
+      else if (message.includes("dates doivent")) next.departureDate = message;
+      else next.boatName = message;
+    }
+    const lat = values.latitude.trim();
+    const lon = values.longitude.trim();
+    if (Boolean(lat) !== Boolean(lon)) {
+      next.latitude = "Les coordonnées doivent être renseignées ensemble.";
+      next.longitude = "Les coordonnées doivent être renseignées ensemble.";
+    }
+    if (lat && (!Number.isFinite(Number(lat)) || Number(lat) < -90 || Number(lat) > 90)) next.latitude = "La latitude doit être comprise entre -90 et 90.";
+    if (lon && (!Number.isFinite(Number(lon)) || Number(lon) < -180 || Number(lon) > 180)) next.longitude = "La longitude doit être comprise entre -180 et 180.";
     setErrors(next);
     if (Object.keys(next).length) {
       const first = Object.keys(next)[0];

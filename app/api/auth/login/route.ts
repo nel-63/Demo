@@ -38,8 +38,6 @@ export async function POST(request: Request) {
           ? data.email
           : "";
     const identifier = identifierValue.trim().toLocaleLowerCase("fr-FR");
-    const companyName =
-      typeof data.companyName === "string" ? data.companyName.trim() : "";
     const password =
       typeof data.password === "string" ? data.password : "";
 
@@ -107,19 +105,22 @@ export async function POST(request: Request) {
       user?.role === "USER_MAR" &&
       Boolean(user.maritimeProfile) &&
       !user.maritimeProfile?.onboardingComplete;
-    const companyMatches =
-      !needsOnboarding ||
-      (companyName.length > 0 &&
-        companyName.toLocaleLowerCase("fr-FR") ===
-          user?.maritimeProfile?.companyName.toLocaleLowerCase("fr-FR"));
     const isExpired =
       user?.role === "USER_MAR" &&
       isMaritimeAccountExpired(user.lastLoginAt, user.createdAt);
 
-    if (!user || !user.isActive || !passwordIsValid || !companyMatches || isExpired) {
+    if (!user || !user.isActive || !passwordIsValid || isExpired) {
       if (user && user.isActive && isExpired && user.maritimeProfile) {
         await prisma.$transaction((tx) =>
           deactivateMaritimeAccount(tx, user.id, user.maritimeProfile!.id, "INACTIVITY"),
+        );
+      }
+      // Mot de passe correct mais accès maritime terminé (départ enregistré ou 3 mois sans connexion) :
+      // on l'explique clairement. Le mot de passe étant juste, rien de sensible n'est révélé.
+      if (user?.role === "USER_MAR" && passwordIsValid) {
+        return NextResponse.json(
+          { message: "Ce compte n'est plus actif. Contactez votre société ou l'administrateur." },
+          { status: 403 },
         );
       }
       await prisma.loginFailure.create({ data: { email: identifier, ipAddress } });
@@ -129,7 +130,7 @@ export async function POST(request: Request) {
       });
 
       return NextResponse.json(
-        { message: "Identifiant, mot de passe ou société incorrect." },
+        { message: "Identifiant ou mot de passe incorrect." },
         { status: 401 },
       );
     }

@@ -39,8 +39,8 @@ function user(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function attempt(identifier: string, password: string, companyName?: string) {
-  return login(jsonRequest("/api/auth/login", "POST", { identifier, password, companyName }));
+function attempt(identifier: string, password: string) {
+  return login(jsonRequest("/api/auth/login", "POST", { identifier, password }));
 }
 
 beforeEach(() => {
@@ -78,14 +78,14 @@ describe("connexion réussie", () => {
     expect(createSession).toHaveBeenCalledWith({ id: "u1", sessionVersion: 3 });
   });
 
-  it("demande le nom de société et signale le premier profil à compléter", async () => {
+  it("signale le premier profil à compléter, sans demander le nom de société", async () => {
     db.user.findFirst.mockResolvedValue(user({
       role: "USER_MAR",
       email: null,
       maritimeProfile: { id: "mar-1", companyName: "Société Océan", onboardingComplete: false },
     }));
 
-    const { status, body } = await read(await attempt("mariner-01", PASSWORD, "Société Océan"));
+    const { status, body } = await read(await attempt("mariner-01", PASSWORD));
 
     expect(status).toBe(200);
     expect(db.user.findFirst.mock.calls[0][0].where.OR).toContainEqual({
@@ -94,14 +94,25 @@ describe("connexion réussie", () => {
     expect(body.needsOnboarding).toBe(true);
   });
 
-  it("refuse la première connexion si le nom de société est absent ou incorrect", async () => {
+  it("n'exige jamais le nom de société : identifiant et mot de passe suffisent", async () => {
     db.user.findFirst.mockResolvedValue(user({
       role: "USER_MAR",
       email: null,
       maritimeProfile: { id: "mar-1", companyName: "Société Océan", onboardingComplete: false },
     }));
 
-    expect((await read(await attempt("mariner-01", PASSWORD))).status).toBe(401);
+    expect((await read(await attempt("mariner-01", PASSWORD))).status).toBe(200);
+    expect(createSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuse un mauvais mot de passe à la première connexion", async () => {
+    db.user.findFirst.mockResolvedValue(user({
+      role: "USER_MAR",
+      email: null,
+      maritimeProfile: { id: "mar-1", companyName: "Société Océan", onboardingComplete: false },
+    }));
+
+    expect((await read(await attempt("mariner-01", "mot-de-passe-incorrect"))).status).toBe(401);
     expect(createSession).not.toHaveBeenCalled();
   });
 });
@@ -112,7 +123,7 @@ describe("erreurs de connexion", () => {
     const { status, body } = await read(await attempt("rina@test.mg", "mauvais-mot-de-passe"));
 
     expect(status).toBe(401);
-    expect(body.message).toBe("Identifiant, mot de passe ou société incorrect.");
+    expect(body.message).toBe("Identifiant ou mot de passe incorrect.");
     expect(createSession).not.toHaveBeenCalled();
     expect(db.loginFailure.create).toHaveBeenCalledTimes(1);
   });
@@ -157,11 +168,13 @@ describe("erreurs de connexion", () => {
       lastLoginAt,
       maritimeProfile: { id: "mar-1", companyName: "Société Océan", onboardingComplete: true },
     }));
-    const { status } = await read(await attempt("rina@test.mg", PASSWORD));
+    const { status, body } = await read(await attempt("rina@test.mg", PASSWORD));
 
-    expect(status).toBe(401);
+    expect(status).toBe(403);
+    expect(body.message).toBe("Ce compte n'est plus actif. Contactez votre société ou l'administrateur.");
     expect(createSession).not.toHaveBeenCalled();
     expect(db.user.update).not.toHaveBeenCalled();
+    expect(db.loginFailure.create).not.toHaveBeenCalled();
   });
 
   it("refuse des champs vides ou trop longs", async () => {
@@ -179,9 +192,10 @@ describe("erreurs de connexion", () => {
       lastLoginAt,
       maritimeProfile: { id: "mar-1", companyName: "Société Océan", onboardingComplete: true },
     }));
-    const { status } = await read(await attempt("rina@test.mg", PASSWORD));
+    const { status, body } = await read(await attempt("rina@test.mg", PASSWORD));
 
-    expect(status).toBe(401);
+    expect(status).toBe(403);
+    expect(body.message).toContain("n'est plus actif");
     expect(db.user.update).toHaveBeenCalledWith({
       where: { id: "u1" },
       data: { isActive: false, sessionVersion: { increment: 1 } },

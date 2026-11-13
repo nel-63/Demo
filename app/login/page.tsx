@@ -9,7 +9,6 @@ import { dashboardPathForRole } from "@/lib/role-routes";
 export default function LoginPage() {
   const router = useRouter();
   const [identifier, setIdentifier] = useState("");
-  const [companyName, setCompanyName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -22,7 +21,7 @@ export default function LoginPage() {
     try {
       const response = await fetch("/api/auth/login", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier, companyName, password }),
+        body: JSON.stringify({ identifier, password }),
       });
       const data = await response.json();
       if (!response.ok) { setError(data.message ?? "Connexion impossible."); return; }
@@ -58,12 +57,6 @@ export default function LoginPage() {
             <label htmlFor="identifier" className="mb-1 block text-sm font-medium text-slate-800">Identifiant, email ou téléphone</label>
             <input id="identifier" name="identifier" type="text" autoComplete="username" required value={identifier}
               onChange={(event) => setIdentifier(event.target.value)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"/>
-          </div>
-          <div>
-            <label htmlFor="companyName" className="mb-1 block text-sm font-medium text-slate-800">Société (première connexion)</label>
-            <input id="companyName" name="companyName" type="text" autoComplete="organization" value={companyName}
-              onChange={(event) => setCompanyName(event.target.value)}
               className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"/>
           </div>
           <div>

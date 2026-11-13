@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   calculateMaritimeTotals,
@@ -68,6 +69,7 @@ export default function DeclarationForm({
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [closed, setClosed] = useState(false);
 
   useEffect(() => {
     async function loadCatalog() {
@@ -105,6 +107,14 @@ export default function DeclarationForm({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    if (
+      values.departureDate &&
+      !window.confirm(
+        "Enregistrer le départ ? Après cet enregistrement, votre compte sera fermé : vous ne pourrez plus vous connecter ni modifier cette déclaration.",
+      )
+    ) {
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -128,6 +138,11 @@ export default function DeclarationForm({
         setError(result.message ?? "Enregistrement impossible.");
         return;
       }
+      if (result.accountDeactivated) {
+        // La session est coupée par le serveur : on l'explique au lieu de renvoyer sur une page vide.
+        setClosed(true);
+        return;
+      }
       const id = declarationId ?? result.declaration?.id;
       if (typeof id !== "string") {
         setError("La déclaration a été enregistrée, mais sa référence est introuvable.");
@@ -140,6 +155,24 @@ export default function DeclarationForm({
     } finally {
       setSaving(false);
     }
+  }
+
+  if (closed) {
+    return (
+      <section role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+        <h2 className="text-xl font-semibold text-emerald-900">Départ enregistré</h2>
+        <p className="mt-2 text-slate-800">
+          Votre déclaration est enregistrée et votre compte est maintenant fermé. Vous ne pouvez plus
+          vous connecter avec cet accès.
+        </p>
+        <Link
+          href="/login"
+          className="mt-4 inline-flex rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800"
+        >
+          Retour à la connexion
+        </Link>
+      </section>
+    );
   }
 
   const canAddProduct = catalog.length > 0;

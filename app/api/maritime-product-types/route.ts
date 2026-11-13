@@ -21,11 +21,26 @@ function parseUnitPrice(value: unknown): string | null {
 export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
-  if (user.role !== "ADMIN") {
-    return NextResponse.json({ message: "Accès réservé à l'administrateur." }, { status: 403 });
+  if (user.role !== "ADMIN" && user.role !== "USER_MAR") {
+    return NextResponse.json({ message: "Accès réservé aux utilisateurs autorisés." }, { status: 403 });
   }
 
   try {
+    if (user.role === "USER_MAR") {
+      const activeItems = await prisma.maritimeProductType.findMany({
+        where: { isActive: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, unitPrice: true },
+      });
+      return NextResponse.json({
+        maritimeProductTypes: activeItems.map((item) => ({
+          id: item.id,
+          name: item.name,
+          unitPrice: item.unitPrice.toString(),
+        })),
+      });
+    }
+
     const url = new URL(request.url);
     const q = (url.searchParams.get("q") ?? "").trim().slice(0, 100);
     const where = q

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@/app/generated/prisma/client";
 import {
   MaritimeDeclarationValidationError,
   snapshotMaritimeDeclaration,
@@ -17,7 +16,6 @@ import {
   hasMaritimeUserCoordinates,
   parseOptionalMaritimeUserCoordinates,
 } from "@/lib/maritime-user-coordinates";
-import { MARITIME_DECLARATIONS_PAGE_SIZE, resolvePage } from "@/lib/pagination";
 
 async function resolveProductLines(
   tx: Prisma.TransactionClient,
@@ -79,54 +77,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: "Aucun profil maritime n'est associé à ce compte." }, { status: 403 });
     }
 
-    const url = new URL(request.url);
-    const q = (url.searchParams.get("q") ?? "").trim().slice(0, 100);
-    const words = q.split(/\s+/).filter(Boolean).slice(0, 5);
-    const requestedSort = url.searchParams.get("sort");
-    const sort: "companyName" | "boatName" | "arrivalDate" | "createdAt" =
-      requestedSort === "companyName" || requestedSort === "boatName" ||
-      requestedSort === "arrivalDate" || requestedSort === "createdAt"
-        ? requestedSort
-        : "createdAt";
-    const direction: Prisma.SortOrder = url.searchParams.get("direction") === "asc" ? "asc" : "desc";
-    const where = {
-      maritimeUserId: profile.id,
-      departureDate: null,
-      ...(words.length
-        ? {
-            AND: words.map((word) => ({
-              OR: [
-                { companyName: { contains: word, mode: "insensitive" as const } },
-                { boatName: { contains: word, mode: "insensitive" as const } },
-                { boatRegistration: { contains: word, mode: "insensitive" as const } },
-                { captainName: { contains: word, mode: "insensitive" as const } },
-              ],
-            })),
-          }
-        : {}),
-    };
-    const orderBy: Prisma.MaritimeDeclarationOrderByWithRelationInput =
-      sort === "companyName" ? { companyName: direction }
-        : sort === "boatName" ? { boatName: direction }
-          : sort === "arrivalDate" ? { arrivalDate: direction }
-            : { createdAt: direction };
-    const total = await prisma.maritimeDeclaration.count({ where });
-    const { page, totalPages } = resolvePage(
-      url.searchParams.get("page") ?? undefined,
-      total,
-      MARITIME_DECLARATIONS_PAGE_SIZE,
-    );
-    const declarations = await prisma.maritimeDeclaration.findMany({
-      where,
-      orderBy,
-      skip: (page - 1) * MARITIME_DECLARATIONS_PAGE_SIZE,
-      take: MARITIME_DECLARATIONS_PAGE_SIZE,
+    const declaration = await prisma.maritimeDeclaration.findFirst({
+      where: { maritimeUserId: profile.id, departureDate: null },
+      orderBy: { createdAt: "desc" },
       include: { products: true },
     });
-
     return NextResponse.json({
-      declarations: declarations.map(snapshotMaritimeDeclaration),
-      pagination: { page, totalPages, total },
+      declaration: declaration ? snapshotMaritimeDeclaration(declaration) : null,
     });
   } catch (error) {
     console.error("Maritime declaration list failed:", error);

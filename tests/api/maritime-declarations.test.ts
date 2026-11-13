@@ -231,7 +231,6 @@ describe("isolation et CRUD", () => {
     expect(db.maritimeDeclaration.findFirst.mock.calls[0][0].where).toEqual({
       id: "other-id",
       maritimeUserId: PROFILE_ID,
-      departureDate: null,
     });
   });
 
@@ -284,7 +283,7 @@ describe("isolation et CRUD", () => {
     });
   });
 
-  it("clôt la session et désactive le compte lors de l'enregistrement de la date de sortie", async () => {
+  it("enregistre la date de départ sans désactiver le compte de la société", async () => {
     db.maritimeDeclaration.findFirst.mockResolvedValue(storedDeclaration());
     db.maritimeDeclaration.findUniqueOrThrow.mockResolvedValue(storedDeclaration({
       departureDate: new Date("2026-10-05T00:00:00.000Z"),
@@ -301,12 +300,8 @@ describe("isolation et CRUD", () => {
     ));
 
     expect(status).toBe(200);
-    expect(body.accountDeactivated).toBe(true);
-    expect(db.user.update).toHaveBeenCalledWith({
-      where: { id: USER_MAR.id },
-      data: { isActive: false, sessionVersion: { increment: 1 } },
-    });
-    expect(auditEntries(db).some((entry) => entry.details?.reason === "EXIT_DATE")).toBe(true);
+    expect(body.accountDeactivated).toBeUndefined();
+    expect(db.user.update).not.toHaveBeenCalled();
   });
 
   it("supprime définitivement avec cascade attendue et conserve l'instantané dans l'audit", async () => {

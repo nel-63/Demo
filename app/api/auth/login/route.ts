@@ -2,10 +2,6 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth";
-import {
-  deactivateMaritimeAccount,
-  isMaritimeAccountExpired,
-} from "@/lib/maritime-account";
 
 // Limitation des tentatives : echecs comptes sur une fenetre glissante.
 const WINDOW_MS = 15 * 60 * 1000;
@@ -75,8 +71,8 @@ export async function POST(request: Request) {
       where: {
         OR: [
           { email: identifier },
-          { maritimeProfile: { is: { loginId: identifier, onboardingComplete: false } } },
-          { maritimeProfile: { is: { contactPhone: identifier } } },
+          { maritimeProfile: { is: { loginId: identifier, companyAccountId: null } } },
+          { maritimeProfile: { is: { contactPhone: identifier, companyAccountId: null } } },
         ],
       },
       select: {
@@ -88,11 +84,7 @@ export async function POST(request: Request) {
         role: true,
         isActive: true,
         sessionVersion: true,
-        createdAt: true,
-        lastLoginAt: true,
-        maritimeProfile: {
-          select: { id: true, companyName: true, onboardingComplete: true },
-        },
+        maritimeProfile: { select: { id: true, companyName: true } },
       },
     });
 
@@ -101,28 +93,7 @@ export async function POST(request: Request) {
       user ? user.passwordHash : DUMMY_HASH,
     );
 
-    const needsOnboarding =
-      user?.role === "USER_MAR" &&
-      Boolean(user.maritimeProfile) &&
-      !user.maritimeProfile?.onboardingComplete;
-    const isExpired =
-      user?.role === "USER_MAR" &&
-      isMaritimeAccountExpired(user.lastLoginAt, user.createdAt);
-
-    if (!user || !user.isActive || !passwordIsValid || isExpired) {
-      if (user && user.isActive && isExpired && user.maritimeProfile) {
-        await prisma.$transaction((tx) =>
-          deactivateMaritimeAccount(tx, user.id, user.maritimeProfile!.id, "INACTIVITY"),
-        );
-      }
-      // Mot de passe correct mais accès maritime terminé (départ enregistré ou 3 mois sans connexion) :
-      // on l'explique clairement. Le mot de passe étant juste, rien de sensible n'est révélé.
-      if (user?.role === "USER_MAR" && passwordIsValid) {
-        return NextResponse.json(
-          { message: "Ce compte n'est plus actif. Contactez votre société ou l'administrateur." },
-          { status: 403 },
-        );
-      }
+    if (!user || !user.isActive || !passwordIsValid) {
       await prisma.loginFailure.create({ data: { email: identifier, ipAddress } });
       // Nettoyage opportuniste des anciens echecs de cet email.
       await prisma.loginFailure.deleteMany({
@@ -140,12 +111,6 @@ export async function POST(request: Request) {
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
-    const activeDeclaration = user.role === "USER_MAR" && user.maritimeProfile?.onboardingComplete
-      ? await prisma.maritimeDeclaration.findFirst({
-          where: { maritimeUserId: user.maritimeProfile.id, departureDate: null },
-          select: { id: true },
-        })
-      : null;
     await createSession({ id: user.id, sessionVersion: user.sessionVersion });
 
     return NextResponse.json({
@@ -157,8 +122,6 @@ export async function POST(request: Request) {
         email: user.email,
         role: user.role,
       },
-      needsOnboarding,
-      activeDeclarationId: activeDeclaration?.id ?? null,
     });
   } catch (error) {
     console.error("Login error:", error);

@@ -11,11 +11,7 @@ import {
   hasMaritimeUserCoordinates,
   parseOptionalMaritimeUserCoordinates,
 } from "@/lib/maritime-user-coordinates";
-import {
-  deactivateMaritimeAccount,
-  MaritimeContactValidationError,
-  validateMaritimeContact,
-} from "@/lib/maritime-account";
+import { MaritimeContactValidationError, validateMaritimeContact } from "@/lib/maritime-account";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -27,7 +23,6 @@ async function getMaritimeProfile(userId: string) {
       companyName: true,
       latitude: true,
       longitude: true,
-      onboardingComplete: true,
     },
   });
 }
@@ -44,12 +39,9 @@ export async function GET(_request: Request, context: Context) {
     if (!profile) {
       return NextResponse.json({ message: "Aucun profil maritime n'est associé à ce compte." }, { status: 403 });
     }
-    if (!profile.onboardingComplete) {
-      return NextResponse.json({ message: "Complétez d'abord votre profil maritime." }, { status: 403 });
-    }
     const { id } = await context.params;
     const declaration = await prisma.maritimeDeclaration.findFirst({
-      where: { id, maritimeUserId: profile.id, departureDate: null },
+      where: { id, maritimeUserId: profile.id },
       include: { products: true },
     });
     if (!declaration) return NextResponse.json({ message: "Déclaration introuvable." }, { status: 404 });
@@ -71,9 +63,6 @@ async function updateDeclaration(request: Request, context: Context) {
     const profile = await getMaritimeProfile(user.id);
     if (!profile) {
       return NextResponse.json({ message: "Aucun profil maritime n'est associé à ce compte." }, { status: 403 });
-    }
-    if (!profile.onboardingComplete) {
-      return NextResponse.json({ message: "Complétez d'abord votre profil maritime." }, { status: 403 });
     }
     const { id } = await context.params;
     let body: unknown;
@@ -98,7 +87,7 @@ async function updateDeclaration(request: Request, context: Context) {
     const products = input.products ?? [];
     const outcome = await prisma.$transaction(async (tx) => {
       const current = await tx.maritimeDeclaration.findFirst({
-        where: { id, maritimeUserId: profile.id, departureDate: null },
+        where: { id, maritimeUserId: profile.id },
         include: { products: true },
       });
       if (!current) return { kind: "not_found" as const };
@@ -202,13 +191,9 @@ async function updateDeclaration(request: Request, context: Context) {
           details: { before, after },
         },
       });
-      if (input.departureDate) {
-        await deactivateMaritimeAccount(tx, user.id, profile.id, "EXIT_DATE");
-      }
       return {
         kind: "updated" as const,
         declaration: after,
-        accountDeactivated: Boolean(input.departureDate),
       };
     });
 
@@ -257,7 +242,7 @@ export async function DELETE(_request: Request, context: Context) {
     const { id } = await context.params;
     const deleted = await prisma.$transaction(async (tx) => {
       const current = await tx.maritimeDeclaration.findFirst({
-        where: { id, maritimeUserId: profile.id, departureDate: null },
+        where: { id, maritimeUserId: profile.id },
         include: { products: true },
       });
       if (!current) return false;

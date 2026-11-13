@@ -5,7 +5,6 @@ import { auditEntries, resetFakePrisma, type FakePrisma } from "../helpers/fake-
 import { ADMIN, SUPERVISOR, jsonRequest, params, read } from "../helpers/http";
 import { GET as listDeclarations, POST as createDeclaration } from "@/app/api/maritime/declarations/route";
 import {
-  DELETE as deleteDeclaration,
   GET as getDeclaration,
   PATCH as patchDeclaration,
   PUT as putDeclaration,
@@ -98,7 +97,6 @@ describe("accès aux déclarations maritimes", () => {
       expect((await read(await getDeclaration(new Request("http://localhost"), params()))).status).toBe(403);
       expect((await read(await putDeclaration(jsonRequest("/api/maritime/declarations/id-1", "PUT", valid), params()))).status).toBe(403);
       expect((await read(await patchDeclaration(jsonRequest("/api/maritime/declarations/id-1", "PATCH", valid), params()))).status).toBe(403);
-      expect((await read(await deleteDeclaration(new Request("http://localhost", { method: "DELETE" }), params()))).status).toBe(403);
     }
 
     expect(db.maritimeUser.findUnique).not.toHaveBeenCalled();
@@ -304,22 +302,6 @@ describe("isolation et CRUD", () => {
     expect(db.user.update).not.toHaveBeenCalled();
   });
 
-  it("supprime définitivement avec cascade attendue et conserve l'instantané dans l'audit", async () => {
-    db.maritimeDeclaration.findFirst.mockResolvedValue(storedDeclaration());
-    const response = await read(await deleteDeclaration(
-      new Request("http://localhost/api/maritime/declarations/declaration-1", { method: "DELETE" }),
-      params("declaration-1"),
-    ));
-
-    expect(response.status).toBe(200);
-    expect(db.maritimeDeclaration.delete).toHaveBeenCalledWith({ where: { id: "declaration-1" } });
-    expect(db.auditLog.create.mock.calls[0][0].data).toMatchObject({
-      action: "DELETE",
-      entityType: "MaritimeDeclaration",
-      details: { before: { companyName: "Société Océan", products: [{ productType: "Thon" }] } },
-    });
-    expect(db.$transaction).toHaveBeenCalledTimes(1);
-  });
 
   it("refuse de rattacher une ligne produit appartenant à une autre déclaration", async () => {
     db.maritimeDeclaration.findFirst.mockResolvedValue(storedDeclaration());

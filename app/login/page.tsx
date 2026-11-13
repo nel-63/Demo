@@ -25,16 +25,6 @@ export default function LoginPage() {
       });
       const data = await response.json();
       if (!response.ok) { setError(data.message ?? "Connexion impossible."); return; }
-      if (data.needsOnboarding) {
-        router.replace("/dashboard/maritime/onboarding");
-        router.refresh();
-        return;
-      }
-      if (data.user?.role === "USER_MAR" && typeof data.activeDeclarationId === "string") {
-        router.replace(`/dashboard/maritime/${data.activeDeclarationId}/edit`);
-        router.refresh();
-        return;
-      }
       router.replace(dashboardPathForRole(data.user?.role ?? ""));
       router.refresh();
     } catch {

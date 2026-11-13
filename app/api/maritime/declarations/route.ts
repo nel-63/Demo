@@ -8,11 +8,7 @@ import {
   snapshotMaritimeDeclaration,
   validateMaritimeDeclaration,
 } from "@/lib/maritime-declarations";
-import {
-  deactivateMaritimeAccount,
-  MaritimeContactValidationError,
-  validateMaritimeContact,
-} from "@/lib/maritime-account";
+import { MaritimeContactValidationError, validateMaritimeContact } from "@/lib/maritime-account";
 import {
   hasMaritimeUserCoordinates,
   parseOptionalMaritimeUserCoordinates,
@@ -27,7 +23,6 @@ async function getMaritimeProfile(userId: string) {
       companyName: true,
       latitude: true,
       longitude: true,
-      onboardingComplete: true,
     },
   });
 }
@@ -57,7 +52,6 @@ export async function GET(request: Request) {
     const direction: Prisma.SortOrder = url.searchParams.get("direction") === "asc" ? "asc" : "desc";
     const where = {
       maritimeUserId: profile.id,
-      departureDate: null,
       ...(words.length
         ? {
             AND: words.map((word) => ({
@@ -112,9 +106,6 @@ export async function POST(request: Request) {
     if (!profile) {
       return NextResponse.json({ message: "Aucun profil maritime n'est associé à ce compte." }, { status: 403 });
     }
-    if (!profile.onboardingComplete) {
-      return NextResponse.json({ message: "Complétez d'abord votre profil maritime." }, { status: 403 });
-    }
 
     let body: unknown;
     try {
@@ -137,12 +128,6 @@ export async function POST(request: Request) {
     const input = validateMaritimeDeclaration({ ...data, companyName: profile.companyName });
     const products = input.products ?? [];
     const created = await prisma.$transaction(async (tx) => {
-      const activeSession = await tx.maritimeDeclaration.findFirst({
-        where: { maritimeUserId: profile.id, departureDate: null },
-        select: { id: true },
-      });
-      if (activeSession) return { kind: "active_exists" as const, id: activeSession.id };
-
       const productLines = await resolveMaritimeProductLines(tx, products);
       if (contact) {
         await tx.user.update({
@@ -216,18 +201,9 @@ export async function POST(request: Request) {
           details: { after: snapshot },
         },
       });
-      if (input.departureDate) {
-        await deactivateMaritimeAccount(tx, user.id, profile.id, "EXIT_DATE");
-      }
-      return { kind: "created" as const, declaration: snapshot, accountDeactivated: Boolean(input.departureDate) };
+      return { kind: "created" as const, declaration: snapshot };
     });
 
-    if (created.kind === "active_exists") {
-      return NextResponse.json(
-        { message: "Une session maritime est déjà active.", declarationId: created.id },
-        { status: 409 },
-      );
-    }
     return NextResponse.json({ ok: true, ...created }, { status: 201 });
   } catch (error) {
     if (error instanceof MaritimeDeclarationValidationError) {

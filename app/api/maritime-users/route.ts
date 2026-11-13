@@ -110,7 +110,7 @@ export async function POST(request: Request) {
           userId: createdUser.id,
           companyName,
           loginId,
-          onboardingComplete: false,
+          onboardingComplete: true,
         },
         select: {
           id: true,

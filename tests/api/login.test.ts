@@ -78,7 +78,7 @@ describe("connexion réussie", () => {
     expect(createSession).toHaveBeenCalledWith({ id: "u1", sessionVersion: 3 });
   });
 
-  it("signale le premier profil à compléter, sans demander le nom de société", async () => {
+  it("connecte le compte société sans étape de création de compte bateau", async () => {
     db.user.findFirst.mockResolvedValue(user({
       role: "USER_MAR",
       email: null,
@@ -89,9 +89,9 @@ describe("connexion réussie", () => {
 
     expect(status).toBe(200);
     expect(db.user.findFirst.mock.calls[0][0].where.OR).toContainEqual({
-      maritimeProfile: { is: { loginId: "mariner-01", onboardingComplete: false } },
+      maritimeProfile: { is: { loginId: "mariner-01", companyAccountId: null } },
     });
-    expect(body.needsOnboarding).toBe(true);
+    expect(body.needsOnboarding).toBeUndefined();
   });
 
   it("n'exige jamais le nom de société : identifiant et mot de passe suffisent", async () => {
@@ -159,22 +159,17 @@ describe("erreurs de connexion", () => {
     expect(createSession).not.toHaveBeenCalled();
   });
 
-  it("refuse un compte maritime désactivé", async () => {
-    const lastLoginAt = new Date();
-    lastLoginAt.setUTCMonth(lastLoginAt.getUTCMonth() - 4);
+  it("refuse un compte maritime désactivé par l'administrateur", async () => {
     db.user.findFirst.mockResolvedValue(user({
       role: "USER_MAR",
       isActive: false,
-      lastLoginAt,
       maritimeProfile: { id: "mar-1", companyName: "Société Océan", onboardingComplete: true },
     }));
-    const { status, body } = await read(await attempt("rina@test.mg", PASSWORD));
+    const { status } = await read(await attempt("rina@test.mg", PASSWORD));
 
-    expect(status).toBe(403);
-    expect(body.message).toBe("Ce compte n'est plus actif. Contactez votre société ou l'administrateur.");
+    expect(status).toBe(401);
     expect(createSession).not.toHaveBeenCalled();
-    expect(db.user.update).not.toHaveBeenCalled();
-    expect(db.loginFailure.create).not.toHaveBeenCalled();
+    expect(db.loginFailure.create).toHaveBeenCalledTimes(1);
   });
 
   it("refuse des champs vides ou trop longs", async () => {
@@ -184,7 +179,7 @@ describe("erreurs de connexion", () => {
     expect(db.user.findFirst).not.toHaveBeenCalled();
   });
 
-  it("désactive automatiquement un compte maritime après trois mois sans connexion", async () => {
+  it("laisse le compte société actif après plusieurs mois sans connexion", async () => {
     const lastLoginAt = new Date();
     lastLoginAt.setUTCMonth(lastLoginAt.getUTCMonth() - 4);
     db.user.findFirst.mockResolvedValue(user({
@@ -192,15 +187,14 @@ describe("erreurs de connexion", () => {
       lastLoginAt,
       maritimeProfile: { id: "mar-1", companyName: "Société Océan", onboardingComplete: true },
     }));
-    const { status, body } = await read(await attempt("rina@test.mg", PASSWORD));
+    const { status } = await read(await attempt("rina@test.mg", PASSWORD));
 
-    expect(status).toBe(403);
-    expect(body.message).toContain("n'est plus actif");
+    expect(status).toBe(200);
+    expect(createSession).toHaveBeenCalledTimes(1);
     expect(db.user.update).toHaveBeenCalledWith({
       where: { id: "u1" },
-      data: { isActive: false, sessionVersion: { increment: 1 } },
+      data: { lastLoginAt: expect.any(Date) },
     });
-    expect(createSession).not.toHaveBeenCalled();
   });
 });
 

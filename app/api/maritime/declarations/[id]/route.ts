@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
+import { resolveMaritimeProductLines } from "@/lib/maritime-product-lines";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   MaritimeDeclarationValidationError,
   snapshotMaritimeDeclaration,
   validateMaritimeDeclaration,
-  type MaritimeProductInput,
 } from "@/lib/maritime-declarations";
 import {
   hasMaritimeUserCoordinates,
@@ -18,41 +18,6 @@ import {
 } from "@/lib/maritime-account";
 
 type Context = { params: Promise<{ id: string }> };
-type TransactionClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
-
-async function resolveProductLines(
-  tx: TransactionClient,
-  products: MaritimeProductInput[] = [],
-) {
-  const safeProducts = products ?? [];
-  const productIds = safeProducts
-    .map((product) => product.productId ?? product.id)
-    .filter((value): value is string => Boolean(value));
-
-  const catalog = productIds.length
-    ? (await tx.maritimeProductType.findMany({
-        where: { id: { in: productIds }, isActive: true },
-        select: { id: true, name: true, unitPrice: true },
-      })) ?? []
-    : [];
-
-  const catalogById = new Map(catalog.map((item) => [item.id, item]));
-
-  return safeProducts.map((product) => {
-    const catalogItem = product.productId ? catalogById.get(product.productId) : null;
-    const resolvedName = catalogItem?.name ?? product.productType ?? "";
-    const resolvedUnitPrice = catalogItem ? catalogItem.unitPrice.toString() : (product.unitPrice ?? "0");
-    if (product.productId && !catalogItem) {
-      throw new MaritimeDeclarationValidationError("Un produit maritime sélectionné est introuvable ou désactivé.");
-    }
-    return {
-      productTypeId: catalogItem?.id ?? null,
-      productType: resolvedName,
-      quantity: product.quantity,
-      unitPrice: resolvedUnitPrice,
-    };
-  });
-}
 
 async function getMaritimeProfile(userId: string) {
   return prisma.maritimeUser.findUnique({
@@ -143,7 +108,7 @@ async function updateDeclaration(request: Request, context: Context) {
         return { kind: "invalid_product" as const };
       }
 
-      const resolvedProducts = await resolveProductLines(tx, products);
+      const resolvedProducts = await resolveMaritimeProductLines(tx, products);
       if (contact) {
         await tx.user.update({
           where: { id: user.id },

@@ -41,12 +41,9 @@ async function DeclarationDetails({ params }: Props) {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <Link href="/dashboard/maritime" className="text-sm font-medium text-blue-700 hover:underline">
-        &larr; Retour aux déclarations
-      </Link>
-      <header className="my-6 flex flex-wrap items-start justify-between gap-4">
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Déclaration maritime</p>
+          <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Mon passage</p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">{declaration.companyName}</h1>
           <p className="mt-2 text-slate-700">{declaration.boatName} · {declaration.boatRegistration}</p>
         </div>

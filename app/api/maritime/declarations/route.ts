@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveMaritimeProductLines } from "@/lib/maritime-product-lines";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/app/generated/prisma/client";
@@ -6,7 +7,6 @@ import {
   MaritimeDeclarationValidationError,
   snapshotMaritimeDeclaration,
   validateMaritimeDeclaration,
-  type MaritimeProductInput,
 } from "@/lib/maritime-declarations";
 import {
   deactivateMaritimeAccount,
@@ -18,40 +18,6 @@ import {
   parseOptionalMaritimeUserCoordinates,
 } from "@/lib/maritime-user-coordinates";
 import { MARITIME_DECLARATIONS_PAGE_SIZE, resolvePage } from "@/lib/pagination";
-
-async function resolveProductLines(
-  tx: Prisma.TransactionClient,
-  products: MaritimeProductInput[] = [],
-) {
-  const safeProducts = products ?? [];
-  const productIds = safeProducts
-    .map((product) => product.productId ?? product.id)
-    .filter((value): value is string => Boolean(value));
-
-  const catalog = productIds.length
-    ? (await tx.maritimeProductType.findMany({
-        where: { id: { in: productIds }, isActive: true },
-        select: { id: true, name: true, unitPrice: true },
-      })) ?? []
-    : [];
-
-  const catalogById = new Map(catalog.map((item) => [item.id, item]));
-
-  return safeProducts.map((product) => {
-    const catalogItem = product.productId ? catalogById.get(product.productId) : null;
-    const resolvedName = catalogItem?.name ?? product.productType ?? "";
-    const resolvedUnitPrice = catalogItem ? catalogItem.unitPrice.toString() : (product.unitPrice ?? "0");
-    if (product.productId && !catalogItem) {
-      throw new MaritimeDeclarationValidationError("Un produit maritime sélectionné est introuvable ou désactivé.");
-    }
-    return {
-      productTypeId: catalogItem?.id ?? null,
-      productType: resolvedName,
-      quantity: product.quantity,
-      unitPrice: resolvedUnitPrice,
-    };
-  });
-}
 
 async function getMaritimeProfile(userId: string) {
   return prisma.maritimeUser.findUnique({
@@ -177,7 +143,7 @@ export async function POST(request: Request) {
       });
       if (activeSession) return { kind: "active_exists" as const, id: activeSession.id };
 
-      const productLines = await resolveProductLines(tx, products);
+      const productLines = await resolveMaritimeProductLines(tx, products);
       if (contact) {
         await tx.user.update({
           where: { id: user.id },

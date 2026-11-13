@@ -66,6 +66,7 @@ async function EditMaritimeDeclaration({ params }: Props) {
             longitude: profile.longitude?.toString() ?? "",
             products: declaration.products.map((product) => ({
               id: product.id,
+              ...(product.productTypeId ? { productId: product.productTypeId } : {}),
               productType: product.productType,
               quantity: product.quantity.toString(),
               unitPrice: product.unitPrice.toString(),

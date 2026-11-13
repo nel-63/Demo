@@ -18,46 +18,53 @@ function parseUnitPrice(value: unknown): string | null {
   return trimmed;
 }
 
+function serializeUnitPrice<T extends { unitPrice: { toString(): string } }>(rows: T[]) {
+  return rows.map((row) => ({ ...row, unitPrice: row.unitPrice.toString() }));
+}
+
 export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ message: "Connexion requise." }, { status: 401 });
-  if (user.role !== "ADMIN") {
+  const isAdmin = user.role === "ADMIN";
+  if (!isAdmin && user.role !== "USER_MAR") {
     return NextResponse.json({ message: "Accès réservé à l'administrateur." }, { status: 403 });
   }
 
   try {
     const url = new URL(request.url);
     const q = (url.searchParams.get("q") ?? "").trim().slice(0, 100);
-    const where = q
+    const search = q
       ? {
           OR: [
             { name: { contains: q, mode: "insensitive" as const } },
             { normalizedName: { contains: normalizeProductName(q), mode: "insensitive" as const } },
           ],
         }
-      : undefined;
+      : {};
 
-    const items = await prisma.maritimeProductType.findMany({
-      where,
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        normalizedName: true,
-        unitPrice: true,
-        currency: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    // Un utilisateur maritime ne voit que les produits actifs, avec les seuls champs utiles au formulaire.
+    const items = isAdmin
+      ? serializeUnitPrice(await prisma.maritimeProductType.findMany({
+          where: search,
+          orderBy: { name: "asc" },
+          select: {
+            id: true,
+            name: true,
+            normalizedName: true,
+            unitPrice: true,
+            currency: true,
+            isActive: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }))
+      : serializeUnitPrice(await prisma.maritimeProductType.findMany({
+          where: { ...search, isActive: true },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, unitPrice: true, isActive: true },
+        }));
 
-    return NextResponse.json({
-      maritimeProductTypes: items.map((item) => ({
-        ...item,
-        unitPrice: item.unitPrice.toString(),
-      })),
-    });
+    return NextResponse.json({ maritimeProductTypes: items });
   } catch (error) {
     console.error("Maritime product type list failed:", error);
     return NextResponse.json({ message: "Impossible de charger les produits maritimes." }, { status: 500 });

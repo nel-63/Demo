@@ -47,7 +47,7 @@ export async function deactivateMaritimeAccount(
   tx: Prisma.TransactionClient,
   userId: string,
   maritimeUserId: string,
-  reason: "EXIT_DATE" | "INACTIVITY",
+  reason: "EXIT_DATE" | "INACTIVITY" | "BOAT_ACCOUNT_CREATED",
 ) {
   await tx.user.update({
     where: { id: userId },

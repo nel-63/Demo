@@ -17,7 +17,7 @@ export default function DeclarationDeleteButton({ id }: { id: string }) {
         window.alert(result.message ?? "Suppression impossible.");
         return;
       }
-      router.replace("/dashboard/maritime");
+      router.replace("/dashboard/maritime/new");
       router.refresh();
     } catch {
       window.alert("Impossible de contacter le serveur.");

@@ -5,7 +5,6 @@ import { auditEntries, resetFakePrisma, type FakePrisma } from "../helpers/fake-
 import { ADMIN, SUPERVISOR, jsonRequest, params, read } from "../helpers/http";
 import { GET as listDeclarations, POST as createDeclaration } from "@/app/api/maritime/declarations/route";
 import {
-  DELETE as deleteDeclaration,
   GET as getDeclaration,
   PATCH as patchDeclaration,
   PUT as putDeclaration,
@@ -98,7 +97,6 @@ describe("accès aux déclarations maritimes", () => {
       expect((await read(await getDeclaration(new Request("http://localhost"), params()))).status).toBe(403);
       expect((await read(await putDeclaration(jsonRequest("/api/maritime/declarations/id-1", "PUT", valid), params()))).status).toBe(403);
       expect((await read(await patchDeclaration(jsonRequest("/api/maritime/declarations/id-1", "PATCH", valid), params()))).status).toBe(403);
-      expect((await read(await deleteDeclaration(new Request("http://localhost", { method: "DELETE" }), params()))).status).toBe(403);
     }
 
     expect(db.maritimeUser.findUnique).not.toHaveBeenCalled();
@@ -231,7 +229,6 @@ describe("isolation et CRUD", () => {
     expect(db.maritimeDeclaration.findFirst.mock.calls[0][0].where).toEqual({
       id: "other-id",
       maritimeUserId: PROFILE_ID,
-      departureDate: null,
     });
   });
 
@@ -284,7 +281,7 @@ describe("isolation et CRUD", () => {
     });
   });
 
-  it("clôt la session et désactive le compte lors de l'enregistrement de la date de sortie", async () => {
+  it("enregistre la date de départ sans désactiver le compte de la société", async () => {
     db.maritimeDeclaration.findFirst.mockResolvedValue(storedDeclaration());
     db.maritimeDeclaration.findUniqueOrThrow.mockResolvedValue(storedDeclaration({
       departureDate: new Date("2026-10-05T00:00:00.000Z"),
@@ -301,30 +298,10 @@ describe("isolation et CRUD", () => {
     ));
 
     expect(status).toBe(200);
-    expect(body.accountDeactivated).toBe(true);
-    expect(db.user.update).toHaveBeenCalledWith({
-      where: { id: USER_MAR.id },
-      data: { isActive: false, sessionVersion: { increment: 1 } },
-    });
-    expect(auditEntries(db).some((entry) => entry.details?.reason === "EXIT_DATE")).toBe(true);
+    expect(body.accountDeactivated).toBeUndefined();
+    expect(db.user.update).not.toHaveBeenCalled();
   });
 
-  it("supprime définitivement avec cascade attendue et conserve l'instantané dans l'audit", async () => {
-    db.maritimeDeclaration.findFirst.mockResolvedValue(storedDeclaration());
-    const response = await read(await deleteDeclaration(
-      new Request("http://localhost/api/maritime/declarations/declaration-1", { method: "DELETE" }),
-      params("declaration-1"),
-    ));
-
-    expect(response.status).toBe(200);
-    expect(db.maritimeDeclaration.delete).toHaveBeenCalledWith({ where: { id: "declaration-1" } });
-    expect(db.auditLog.create.mock.calls[0][0].data).toMatchObject({
-      action: "DELETE",
-      entityType: "MaritimeDeclaration",
-      details: { before: { companyName: "Société Océan", products: [{ productType: "Thon" }] } },
-    });
-    expect(db.$transaction).toHaveBeenCalledTimes(1);
-  });
 
   it("refuse de rattacher une ligne produit appartenant à une autre déclaration", async () => {
     db.maritimeDeclaration.findFirst.mockResolvedValue(storedDeclaration());

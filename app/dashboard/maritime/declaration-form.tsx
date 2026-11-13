@@ -90,13 +90,13 @@ export default function DeclarationForm({ initial, declarationId }: { initial?: 
       else if (message.includes("nom du bateau")) next.boatName = message;
       else if (message.includes("immatriculation")) next.boatRegistration = message;
       else if (message.includes("capacité")) next.boatCapacity = message;
-      else if (message.includes("commandant")) next.captainName = message;
       else if (message.includes("moyen de contact")) next.captainPhone = message;
       else if (message.includes("email du commandant")) next.captainEmail = message;
+      else if (message.includes("commandant")) next.captainName = message;
       else if (message.includes("port d'origine")) next.originDepartureDate = message;
       else if (message.includes("date d'arrivée")) next.arrivalDate = message;
       else if (message.includes("date de départ d'ici")) next.departureDate = message;
-      else if (message.includes("dates doivent")) next.departureDate = message;
+      else if (message.includes("dates doivent")) next[values.departureDate ? "departureDate" : "arrivalDate"] = message;
       else next.boatName = message;
     }
     const lat = values.latitude.trim();

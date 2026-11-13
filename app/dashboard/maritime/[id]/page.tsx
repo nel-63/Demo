@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -41,9 +40,6 @@ async function DeclarationDetails({ params }: Props) {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <Link href="/dashboard/maritime" className="text-sm font-medium text-blue-700 hover:underline">
-        &larr; Retour aux déclarations
-      </Link>
       <header className="my-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Déclaration maritime</p>

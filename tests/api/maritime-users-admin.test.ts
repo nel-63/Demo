@@ -78,7 +78,7 @@ describe("création d'un utilisateur maritime", () => {
       userId: "user-mar-1",
       companyName: account.companyName,
       loginId: account.email,
-      onboardingComplete: false,
+      onboardingComplete: true,
     });
     expect(db.location.create).not.toHaveBeenCalled();
     expect(auditEntries(db)[0]).toMatchObject({
@@ -104,7 +104,7 @@ describe("création d'un utilisateur maritime", () => {
       userId: "user-mar-1",
       companyName: account.companyName,
       loginId: account.email,
-      onboardingComplete: false,
+      onboardingComplete: true,
     });
   });
 
